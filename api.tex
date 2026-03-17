@@ -1,0 +1,67 @@
+\documentclass[12pt]{article}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+
+\title{Интерфейс к Microsoft SEAL}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{Обозначения}
+\begin{itemize}
+    \item $N$ --- степень полиномиального модуля.
+    \item $\{\Delta_i\}$ --- набор битовых размеров коэффициентного модуля.
+    \item $\Delta$ --- масштаб CKKS.
+    \item $\mathsf{SEALContext}(N, \{\Delta_i\}, \Delta)$ --- внутреннее состояние Microsoft SEAL.
+    \item $\mathsf{KeyGen}$, $\mathsf{Encode}$, $\mathsf{Encrypt}$, $\mathsf{Decrypt}$, $\mathsf{Eval}$ --- стандартные процедуры CKKS.
+\end{itemize}
+
+\section*{API}
+\paragraph{Создание адаптера}
+\[
+  \texttt{SealAdapter::create} : (N, \{\Delta_i\}, \Delta, S) \mapsto \mathsf{SEALContext},
+\]
+где $S$ --- число доступных слотов (не превосходит $N/2$).
+
+\paragraph{Генерация ключей}
+\[
+  \texttt{keygen}(r, g) : \mathsf{SEALContext} \mapsto (\mathsf{sk}, \mathsf{pk}, \mathsf{rk}^{(r)}, \mathsf{gk}^{(g)}),
+\]
+где индикаторы $r,g \in \{0,1\}$ включают релиниаризационные и Galois-ключи.
+
+\paragraph{Кодирование и шифрование}
+\[
+  \texttt{encode}(\mathbf{v}) = \mathsf{Encode}_\Delta(\mathbf{v}) = p,
+\]
+\[
+  \texttt{encrypt}(p) = \mathsf{Enc}_{\mathsf{pk}}(p) = c.
+\]
+
+\paragraph{Гомоморфные операции}
+\[
+  \texttt{add}(c_1, c_2) = c_1 + c_2,
+\]
+\[
+  \texttt{sub}(c_1, c_2) = c_1 - c_2,
+\]
+\[
+  \texttt{mul\_relin\_rescale}(c_1, c_2) = \mathsf{Rescale}(\mathsf{Relin}(c_1 \cdot c_2)),
+\]
+\[
+  \texttt{rotate}(c, k) = \mathsf{Rot}_k(c).
+\]
+
+\paragraph{Расшифрование и декодирование}
+\[
+  \texttt{decrypt}(c) = \mathsf{Dec}_{\mathsf{sk}}(c) = p,
+\]
+\[
+  \texttt{decode}(p) = \mathsf{Decode}_\Delta(p) = \hat{\mathbf{v}}.
+\]
+
+\end{document}
