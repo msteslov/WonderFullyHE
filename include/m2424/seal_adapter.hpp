@@ -1,0 +1,76 @@
+#pragma once
+
+#include <cstddef>
+#include <memory>
+#include <vector>
+
+namespace m2424 {
+
+struct CkksProfile {
+    std::size_t poly_modulus_degree{};
+    std::vector<int> coeff_modulus_bits{};
+    double scale{};
+    std::size_t slots{};
+};
+
+class Plain {
+public:
+    Plain();
+    ~Plain();
+    Plain(const Plain&);
+    Plain& operator=(const Plain&);
+    Plain(Plain&&) noexcept;
+    Plain& operator=(Plain&&) noexcept;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> pimpl_;
+
+    friend class SealAdapter;
+};
+
+class Cipher {
+public:
+    Cipher();
+    ~Cipher();
+    Cipher(const Cipher&);
+    Cipher& operator=(const Cipher&);
+    Cipher(Cipher&&) noexcept;
+    Cipher& operator=(Cipher&&) noexcept;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> pimpl_;
+
+    friend class SealAdapter;
+};
+
+class SealAdapter {
+public:
+    static SealAdapter create(const CkksProfile&);
+
+    void keygen(bool need_relin = true, bool need_galois = true);
+
+    Plain encode(const std::vector<double>&);
+    Cipher encrypt(const Plain&);
+    Plain decrypt(const Cipher&);
+    std::vector<double> decode(const Plain&);
+
+    Cipher add(const Cipher&, const Cipher&);
+    Cipher sub(const Cipher&, const Cipher&);
+    Cipher mul_relin_rescale(const Cipher&, const Cipher&);
+    Cipher rotate(const Cipher&, int steps);
+
+    SealAdapter();
+    ~SealAdapter();
+    SealAdapter(const SealAdapter&) = delete;
+    SealAdapter& operator=(const SealAdapter&) = delete;
+    SealAdapter(SealAdapter&&) noexcept;
+    SealAdapter& operator=(SealAdapter&&) noexcept;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> pimpl_;
+};
+
+} // namespace m2424

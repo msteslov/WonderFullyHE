@@ -1,0 +1,27 @@
+# Build outputs
+/build/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/install_manifest.txt
+
+# Generated binaries/tests
+/*.exe
+/*.dll
+/*.so
+/*.dylib
+/*.a
+
+# IDE / OS cruft
+.DS_Store
+*.swp
+*.user
+
+# LaTeX aux files
+*.aux
+*.log
+*.out
+*.synctex.gz
+
+# Misc
+compile_commands.json
