@@ -1,6 +1,6 @@
+#include "m2424/accuracy.hpp"
 #include "m2424/seal_adapter.hpp"
 
-#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -17,25 +17,6 @@ double elapsed_ms(const std::function<void()>& fn) {
     fn();
     const auto finish = Clock::now();
     return std::chrono::duration<double, std::milli>(finish - start).count();
-}
-
-double max_abs_error(const std::vector<double>& a, const std::vector<double>& b) {
-    const std::size_t n = std::min(a.size(), b.size());
-    double result = 0.0;
-    for (std::size_t i = 0; i < n; ++i) {
-        result = std::max(result, std::fabs(a[i] - b[i]));
-    }
-    return result;
-}
-
-double mean_abs_error(const std::vector<double>& a, const std::vector<double>& b) {
-    const std::size_t n = std::min(a.size(), b.size());
-    if (n == 0) return 0.0;
-    double total = 0.0;
-    for (std::size_t i = 0; i < n; ++i) {
-        total += std::fabs(a[i] - b[i]);
-    }
-    return total / static_cast<double>(n);
 }
 
 void print_row(const char* operation, std::size_t poly_degree, std::size_t payload_size,
@@ -71,6 +52,7 @@ int main() {
     std::vector<double> add_ref;
     add_ref.reserve(payload_size);
     for (double value : input) add_ref.push_back(value + value);
+    auto add_accuracy = m2424::compare(add_ref, add_decoded, 1e-5);
 
     m2424::Cipher multiplied;
     double mul_ms = elapsed_ms([&] { multiplied = adapter.mul_relin_rescale(cipher, cipher); });
@@ -78,6 +60,7 @@ int main() {
     std::vector<double> mul_ref;
     mul_ref.reserve(payload_size);
     for (double value : input) mul_ref.push_back(value * value);
+    auto mul_accuracy = m2424::compare(mul_ref, mul_decoded, 1e-5);
 
     m2424::Cipher rotated;
     double rotate_ms = elapsed_ms([&] { rotated = adapter.rotate(cipher, 1); });
@@ -87,6 +70,7 @@ int main() {
     for (std::size_t i = 0; i < payload_size; ++i) {
         rotate_ref.push_back(input[(i + 1) % payload_size]);
     }
+    auto rotate_accuracy = m2424::compare(rotate_ref, rotated_decoded, 1e-5);
 
     m2424::Plain decrypted;
     double decrypt_ms = elapsed_ms([&] { decrypted = adapter.decrypt(cipher); });
@@ -97,12 +81,12 @@ int main() {
     print_row("encrypt", poly_degree, payload_size, encrypt_ms, 0.0, 0.0, adapter.serialized_size(cipher));
     print_row("decrypt", poly_degree, payload_size, decrypt_ms, 0.0, 0.0, 0);
     print_row("decode", poly_degree, payload_size, decode_ms, 0.0, 0.0, 0);
-    print_row("add", poly_degree, payload_size, add_ms, max_abs_error(add_ref, add_decoded),
-              mean_abs_error(add_ref, add_decoded), adapter.serialized_size(added));
-    print_row("mul_relin_rescale", poly_degree, payload_size, mul_ms, max_abs_error(mul_ref, mul_decoded),
-              mean_abs_error(mul_ref, mul_decoded), adapter.serialized_size(multiplied));
-    print_row("rotate", poly_degree, payload_size, rotate_ms, max_abs_error(rotate_ref, rotated_decoded),
-              mean_abs_error(rotate_ref, rotated_decoded), adapter.serialized_size(rotated));
+    print_row("add", poly_degree, payload_size, add_ms, add_accuracy.max_abs_error,
+              add_accuracy.mean_abs_error, adapter.serialized_size(added));
+    print_row("mul_relin_rescale", poly_degree, payload_size, mul_ms, mul_accuracy.max_abs_error,
+              mul_accuracy.mean_abs_error, adapter.serialized_size(multiplied));
+    print_row("rotate", poly_degree, payload_size, rotate_ms, rotate_accuracy.max_abs_error,
+              rotate_accuracy.mean_abs_error, adapter.serialized_size(rotated));
     print_row("public_key", poly_degree, payload_size, 0.0, 0.0, 0.0, adapter.public_key_size());
     print_row("relin_keys", poly_degree, payload_size, 0.0, 0.0, 0.0, adapter.relin_keys_size());
     print_row("galois_keys", poly_degree, payload_size, 0.0, 0.0, 0.0, adapter.galois_keys_size());

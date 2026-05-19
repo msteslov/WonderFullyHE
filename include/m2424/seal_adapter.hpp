@@ -13,6 +13,13 @@ struct CkksProfile {
     std::size_t slots{};
 };
 
+struct CipherInfo {
+    double scale{};
+    std::size_t chain_index{};
+    std::size_t coeff_modulus_size{};
+    std::size_t ciphertext_size{};
+};
+
 class Plain {
 public:
     Plain();
@@ -63,6 +70,10 @@ public:
     Cipher rotate(const Cipher&, int steps);
 
     std::size_t serialized_size(const Cipher&) const;
+    CipherInfo info(const Cipher&) const;
+    double scale(const Cipher&) const;
+    std::size_t chain_index(const Cipher&) const;
+    std::size_t coeff_modulus_size(const Cipher&) const;
     std::size_t public_key_size() const;
     std::size_t relin_keys_size() const;
     std::size_t galois_keys_size() const;

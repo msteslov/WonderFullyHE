@@ -222,6 +222,30 @@ std::size_t SealAdapter::serialized_size(const Cipher& cipher) const {
     return serialized_size_of(cipher.pimpl_->ct);
 }
 
+CipherInfo SealAdapter::info(const Cipher& cipher) const {
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+    const auto context_data = pimpl_->context->get_context_data(cipher.pimpl_->ct.parms_id());
+    if (!context_data) throw std::runtime_error("ciphertext parameters are not valid for this context");
+    return CipherInfo{
+        cipher.pimpl_->ct.scale(),
+        context_data->chain_index(),
+        context_data->parms().coeff_modulus().size(),
+        cipher.pimpl_->ct.size()
+    };
+}
+
+double SealAdapter::scale(const Cipher& cipher) const {
+    return info(cipher).scale;
+}
+
+std::size_t SealAdapter::chain_index(const Cipher& cipher) const {
+    return info(cipher).chain_index;
+}
+
+std::size_t SealAdapter::coeff_modulus_size(const Cipher& cipher) const {
+    return info(cipher).coeff_modulus_size;
+}
+
 std::size_t SealAdapter::public_key_size() const {
     if (!pimpl_->has_keys) throw std::runtime_error("keys not generated");
     return serialized_size_of(pimpl_->pk);

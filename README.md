@@ -33,7 +33,7 @@ cmake --build build -j
 
 `bench_ckks` печатает CSV со временем операций, ошибкой относительно CPU-эталона и сериализованными размерами ciphertext/ключей. Это измерительная база для дальнейших экспериментов с глубиной цепочки, ABFT и бутстрапингом.
 
-`demo_noise_growth` печатает CSV по последовательным зашифрованным возведениям в квадрат. Сценарий показывает, как растёт ошибка и где заканчивается доступная мультипликативная глубина без bootstrapping.
+`demo_noise_growth` печатает CSV по последовательным зашифрованным возведениям в квадрат. Сценарий показывает, как растёт ошибка, как меняются `scale`/`chain_index`, и где заканчивается доступная мультипликативная глубина без bootstrapping.
 
 `demo_secure_stats` показывает прикладной сценарий защищённой обработки данных: сумма и среднее считаются над зашифрованным вектором через ротации и сложения, после расшифровки результат сравнивается с CPU-эталоном.
 
@@ -61,6 +61,9 @@ ctest --test-dir build --output-on-failure
 - `encrypt` / `decrypt` — обычные операции CKKS над plaintext/ciphertext.
 - `add`, `sub`, `mul_relin_rescale`, `rotate` — гомоморфные примитивы, делегирующие в `seal::Evaluator`.
 - `serialized_size`, `public_key_size`, `relin_keys_size`, `galois_keys_size` — вспомогательные методы для benchmark-измерений.
+- `info`, `scale`, `chain_index`, `coeff_modulus_size` — диагностика состояния ciphertext для анализа глубины и подготовки bootstrapping.
+
+Модуль `m2424::accuracy` задаёт единые метрики точности: `max_abs_error`, `mean_abs_error` и `compare(expected, actual, tolerance)`. Demo и тесты используют этот общий код, чтобы критерии корректности не расходились между сценариями.
 
 Модуль `m2424::abft` пока содержит минимальный checksum-прототип: `append_checksum`, `checksum`, `verify_appended_checksum`. Он намеренно отделён от `SealAdapter`, чтобы SEAL оставался backend-слоем, а ABFT развивался как отдельная экспериментальная логика.
 

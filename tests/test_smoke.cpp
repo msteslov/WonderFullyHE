@@ -4,32 +4,15 @@
 #include <algorithm>
 #include <stdexcept>
 #include "m2424/abft.hpp"
+#include "m2424/accuracy.hpp"
 #include "m2424/seal_adapter.hpp"
-
-static double max_abs_error(const std::vector<double>& a, const std::vector<double>& b) {
-    const std::size_t n = std::min(a.size(), b.size());
-    double m = 0.0;
-    for (std::size_t i = 0; i < n; ++i) {
-        double e = std::fabs(a[i] - b[i]);
-        if (e > m) m = e;
-    }
-    return m;
-}
-
-static double mean_abs_error(const std::vector<double>& a, const std::vector<double>& b) {
-    const std::size_t n = std::min(a.size(), b.size());
-    if (n == 0) return 0.0;
-    long double acc = 0.0L;
-    for (std::size_t i = 0; i < n; ++i) acc += std::fabsl(static_cast<long double>(a[i] - b[i]));
-    return static_cast<double>(acc / n);
-}
 
 static std::vector<double> head(const std::vector<double>& values, std::size_t n) {
     return std::vector<double>(values.begin(), values.begin() + std::min(values.size(), n));
 }
 
 static bool close_enough(const std::vector<double>& expected, const std::vector<double>& actual, double threshold) {
-    return max_abs_error(expected, actual) < threshold && mean_abs_error(expected, actual) < threshold;
+    return m2424::compare(expected, actual, threshold).ok;
 }
 
 static bool expect_runtime_error(void (*fn)()) {
@@ -100,8 +83,7 @@ int main() {
     for (double x : input) ref.push_back(x * x);
     std::vector<double> out_head(out.begin(), out.begin() + std::min(out.size(), N));
 
-    double max_err = max_abs_error(ref, out_head);
-    double mean_err = mean_abs_error(ref, out_head);
+    auto mul_accuracy = m2424::compare(ref, out_head, 1e-3);
 
     auto ct_add = adapter.add(ct, ct);
     std::vector<double> add_ref; add_ref.reserve(N);
@@ -121,13 +103,15 @@ int main() {
     auto abft_out = adapter.decode(adapter.decrypt(abft_ct));
     auto abft_check = m2424::abft::verify_appended_checksum(abft_out, N, 1e-5);
 
-    bool ok = std::isfinite(max_err) && std::isfinite(mean_err) && max_err < 1e-3
+    bool ok = std::isfinite(mul_accuracy.max_abs_error) && std::isfinite(mul_accuracy.mean_abs_error) && mul_accuracy.ok
         && close_enough(add_ref, add_out, 1e-5)
         && close_enough(input, sub_out, 1e-5)
         && close_enough(rot_ref, rot_out, 1e-5)
         && abft_check.ok
         && adapter.slot_count() == slots
         && adapter.serialized_size(ct) > 0
+        && adapter.scale(ct) > 0.0
+        && adapter.coeff_modulus_size(ct) > 0
         && adapter.public_key_size() > 0
         && adapter.relin_keys_size() > 0
         && adapter.galois_keys_size() > 0
@@ -137,6 +121,6 @@ int main() {
         && expect_runtime_error(mul_without_relin_case)
         && expect_runtime_error(rotate_without_galois_case);
     std::printf("[test_smoke] max=%.6e mean=%.6e threshold=1e-3 => %s\n",
-               max_err, mean_err, ok ? "PASS" : "FAIL");
+               mul_accuracy.max_abs_error, mul_accuracy.mean_abs_error, ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

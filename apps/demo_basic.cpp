@@ -1,29 +1,11 @@
+#include "m2424/accuracy.hpp"
+#include "m2424/m2424.hpp"
+#include "m2424/seal_adapter.hpp"
+
 #include <cstdio>
 #include <vector>
 #include <cmath>
 #include <algorithm>
-#include "m2424/m2424.hpp"
-#include "m2424/seal_adapter.hpp"
-
-static double max_abs_error(const std::vector<double>& a, const std::vector<double>& b) {
-    const std::size_t n = std::min(a.size(), b.size());
-    double m = 0.0;
-    for (std::size_t i = 0; i < n; ++i) {
-        double e = std::fabs(a[i] - b[i]);
-        if (e > m) m = e;
-    }
-    return m;
-}
-
-static double mean_abs_error(const std::vector<double>& a, const std::vector<double>& b) {
-    const std::size_t n = std::min(a.size(), b.size());
-    if (n == 0) return 0.0;
-    long double acc = 0.0;
-    for (std::size_t i = 0; i < n; ++i) {
-        acc += std::fabsl(static_cast<long double>(a[i] - b[i]));
-    }
-    return static_cast<double>(acc / n);
-}
 
 static std::vector<double> rotate_left(const std::vector<double>& v, int steps) {
     if (v.empty()) return {};
@@ -78,9 +60,8 @@ int main() {
     }
     std::vector<double> out_head(out.begin(), out.begin() + N);
 
-    double max_err = max_abs_error(ref4, out_head);
-    double mean_err = mean_abs_error(ref4, out_head);
-    std::printf("max_abs_error=%.6e\nmean_abs_error=%.6e\n", max_err, mean_err);
+    auto accuracy = m2424::compare(ref4, out_head, 1e-5);
+    std::printf("max_abs_error=%.6e\nmean_abs_error=%.6e\n", accuracy.max_abs_error, accuracy.mean_abs_error);
     (void)m2424::version();
     return 0;
 }

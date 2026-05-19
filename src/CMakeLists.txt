@@ -1,4 +1,5 @@
 add_library(m2424
+    accuracy.cpp
     abft.cpp
     bootstrap.cpp
     m2424.cpp

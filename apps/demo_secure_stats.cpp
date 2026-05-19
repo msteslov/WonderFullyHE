@@ -1,21 +1,12 @@
 #include "m2424/abft.hpp"
+#include "m2424/accuracy.hpp"
 #include "m2424/seal_adapter.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <vector>
 
 namespace {
-
-double max_abs_error(const std::vector<double>& a, const std::vector<double>& b) {
-    const std::size_t n = std::min(a.size(), b.size());
-    double result = 0.0;
-    for (std::size_t i = 0; i < n; ++i) {
-        result = std::max(result, std::fabs(a[i] - b[i]));
-    }
-    return result;
-}
 
 std::vector<double> encrypted_prefix_sum(m2424::SealAdapter& adapter, const m2424::Cipher& input,
                                          std::size_t payload_size) {
@@ -51,7 +42,7 @@ int main() {
 
     std::vector<double> expected{expected_sum, expected_mean};
     std::vector<double> actual{encrypted_sum, encrypted_mean};
-    const double error = max_abs_error(expected, actual);
+    const auto accuracy = m2424::compare(expected, actual, 1e-5);
 
     std::printf("secure_statistics\n");
     std::printf("payload_size=%zu\n", payload_size);
@@ -59,8 +50,8 @@ int main() {
     std::printf("sum_encrypted=%.12e\n", encrypted_sum);
     std::printf("mean_cpu=%.12e\n", expected_mean);
     std::printf("mean_encrypted=%.12e\n", encrypted_mean);
-    std::printf("max_abs_error=%.6e\n", error);
-    std::printf("status=%s\n", error < 1e-5 ? "PASS" : "FAIL");
+    std::printf("max_abs_error=%.6e\n", accuracy.max_abs_error);
+    std::printf("status=%s\n", accuracy.ok ? "PASS" : "FAIL");
 
-    return error < 1e-5 ? 0 : 1;
+    return accuracy.ok ? 0 : 1;
 }
