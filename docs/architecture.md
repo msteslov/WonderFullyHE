@@ -22,7 +22,7 @@ Microsoft SEAL CKKS backend
 
 ### SealAdapter
 
-`SealAdapter` is the backend boundary. It hides direct SEAL types behind `Plain` and `Cipher` and exposes only the operations currently needed by the project:
+`SealAdapter` is the backend boundary. It hides direct SEAL types behind `Plain` and `Cipher` and exposes the CKKS operations used by the library:
 
 - CKKS context creation from `CkksProfile`;
 - key generation;
@@ -34,7 +34,7 @@ Microsoft SEAL CKKS backend
 - serialized object sizes;
 - ciphertext diagnostics: `scale`, `chain_index`, `coeff_modulus_size`.
 
-This keeps Microsoft SEAL as an implementation detail instead of making the whole SEAL API part of the project API.
+This keeps Microsoft SEAL as the backend dependency and leaves the public API under `m2424`.
 
 ### accuracy
 
@@ -46,7 +46,7 @@ mean_abs_error
 compare(expected, actual, tolerance)
 ```
 
-All demos and tests should use this module instead of duplicating their own error logic.
+The demos and tests use this module as the common accuracy criterion.
 
 ### abft
 
@@ -57,27 +57,27 @@ The `abft` module implements checksum-based correctness checks. The current chec
 - reference checksum for elementwise multiplication;
 - sum preservation under rotation.
 
-ABFT does not improve cryptographic security. Its role is to detect incorrect computation results or unacceptable numerical drift.
+The ABFT layer is used to validate numerical consistency of protected computations.
 
 ### Bootstrapper
 
-`Bootstrapper` is the current bootstrapping entry point. It does not yet return a refreshed ciphertext. It currently provides:
+`Bootstrapper` is the bootstrapping entry point. The current implementation provides:
 
 - multiplication-depth diagnostics;
-- status of the planned CKKS bootstrapping pipeline;
+- status of the CKKS bootstrapping pipeline;
 - explicit stages: `ModRaise`, `CoeffToSlot`, `EvalMod`, `SlotToCoeff`.
 
-This lets the project present bootstrapping as an active module while the mathematically complete implementation is developed stage by stage.
+The module separates depth analysis and bootstrapping pipeline state from the lower-level SEAL adapter.
 
 ### profile_report
 
-`profile_report` makes CKKS parameter reporting reproducible. Instead of copying parameters manually into slides, run:
+`profile_report` makes CKKS parameter reporting reproducible:
 
 ```bash
 ./build/demo_profile_report
 ```
 
-The output table is the source for `N`, slots, modulus chain, total modulus bits, scale, and estimated multiplication depth.
+The output table contains `N`, slots, modulus chain, total modulus bits, scale, and estimated multiplication depth.
 
 ## Current demos
 
@@ -86,12 +86,12 @@ The output table is the source for `N`, slots, modulus chain, total modulus bits
 - `demo_noise_growth` shows depth consumption and failure without bootstrapping.
 - `demo_bootstrap_pipeline` shows current bootstrapping-module status.
 - `bench_ckks` provides operation timing, numerical error, and serialized object sizes.
-- `demo_profile_report` prints the CKKS parameter table used in documentation and slides.
+- `demo_profile_report` prints the CKKS parameter table.
 
-## Development direction
+## Next implementation steps
 
-The next implementation step is to add bootstrapping building blocks that do not depend on the final full model:
+The next implementation step is to add reusable bootstrapping building blocks:
 
-1. polynomial evaluation helpers for future `EvalMod`;
-2. rotation-based linear transform helpers for future `CoeffToSlot` and `SlotToCoeff`;
+1. polynomial evaluation helpers for `EvalMod`;
+2. rotation-based linear transform helpers for `CoeffToSlot` and `SlotToCoeff`;
 3. richer ciphertext diagnostics for parameter and depth analysis.

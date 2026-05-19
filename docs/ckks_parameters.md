@@ -1,4 +1,4 @@
-# CKKS parameter choices
+# CKKS parameters
 
 This project uses Microsoft SEAL as the CKKS backend. The parameters are selected for two separate purposes:
 
@@ -75,8 +75,12 @@ x -> x^2 -> x^4 -> x^8 -> x^16
 
 At each successful multiplication, `chain_index` decreases. On the current profile, the next step toward `x^32` fails with `scale out of bounds`. This is expected: the available multiplication levels have been consumed.
 
-This experiment motivates bootstrapping. Bootstrapping should refresh a ciphertext so that computation can continue after the available depth is exhausted.
+This experiment defines the baseline for the bootstrapping module: after the multiplication levels are consumed, further ciphertext-ciphertext multiplication requires ciphertext refresh.
 
-## Security note
+## Parameter validity
 
-The project does not claim to increase cryptographic security. Security is determined by CKKS/RLWE parameters and Microsoft SEAL validation. The project goal is to preserve the security of the selected CKKS parameters while adding protected computation, accuracy checks, ABFT checks, and a bootstrapping module.
+The profiles are passed through Microsoft SEAL parameter validation during `SealAdapter::create`. Parameter selection balances three quantities:
+
+- available multiplication depth;
+- numerical precision after rescale;
+- polynomial modulus degree required by the selected coefficient modulus.
