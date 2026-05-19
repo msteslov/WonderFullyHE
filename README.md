@@ -56,6 +56,10 @@ ctest --test-dir build --output-on-failure
 
 `CkksProfile` описывает параметры схемы: `poly_modulus_degree`, битовые длины коэффициентов модуля, масштаб `scale` и лимит слотов. Обёртки `Plain` и `Cipher` скрывают `seal::Plaintext`/`seal::Ciphertext`, а `SealAdapter` управляет жизненным циклом SEAL‑контекста.
 
+Подробные проектные заметки:
+- `docs/architecture.md` — слои библиотеки и роль каждого модуля.
+- `docs/ckks_parameters.md` — выбранные CKKS-параметры, расчёт слотов, scale, modulus chain и глубины.
+
 Основные методы адаптера:
 - `SealAdapter::create(profile)` — конфигурирует CKKS‑контекст и encoder под заданный профиль.
 - `keygen(need_relin, need_galois)` — генерирует секретный/публичный ключи и по требованию Relin/Galois наборы.
