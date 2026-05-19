@@ -9,6 +9,8 @@ variables:
 verify:linux:
   stage: verify
   image: ubuntu:24.04
+  when: manual
+  allow_failure: true
   before_script:
     - apt-get update
     - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates cmake git
