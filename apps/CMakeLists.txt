@@ -22,6 +22,10 @@ add_executable(demo_bootstrap_pipeline demo_bootstrap_pipeline.cpp)
 target_compile_features(demo_bootstrap_pipeline PRIVATE cxx_std_17)
 target_link_libraries(demo_bootstrap_pipeline PRIVATE m2424)
 
-set_target_properties(demo_basic demo_abft bench_ckks demo_noise_growth demo_secure_stats demo_bootstrap_pipeline PROPERTIES
+add_executable(demo_profile_report demo_profile_report.cpp)
+target_compile_features(demo_profile_report PRIVATE cxx_std_17)
+target_link_libraries(demo_profile_report PRIVATE m2424)
+
+set_target_properties(demo_basic demo_abft bench_ckks demo_noise_growth demo_secure_stats demo_bootstrap_pipeline demo_profile_report PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
