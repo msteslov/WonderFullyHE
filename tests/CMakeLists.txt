@@ -3,3 +3,6 @@ target_compile_features(test_smoke PRIVATE cxx_std_17)
 target_link_libraries(test_smoke PRIVATE m2424)
 
 add_test(NAME test_smoke COMMAND test_smoke)
+add_test(NAME demo_abft COMMAND demo_abft)
+add_test(NAME demo_secure_stats COMMAND demo_secure_stats)
+add_test(NAME demo_bootstrap_pipeline COMMAND demo_bootstrap_pipeline)

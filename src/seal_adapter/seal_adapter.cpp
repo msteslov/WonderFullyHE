@@ -3,6 +3,7 @@
 #include <seal/seal.h>
 #include <algorithm>
 #include <cmath>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -78,16 +79,52 @@ static seal::EncryptionParameters make_ckks_parms(const CkksProfile& prof) {
     return parms;
 }
 
+static bool is_power_of_two(std::size_t value) {
+    return value != 0 && (value & (value - 1)) == 0;
+}
+
+static void validate_profile_shape(const CkksProfile& profile) {
+    if (!is_power_of_two(profile.poly_modulus_degree)) {
+        throw std::invalid_argument("poly_modulus_degree must be a non-zero power of two");
+    }
+    if (profile.coeff_modulus_bits.empty()) {
+        throw std::invalid_argument("coeff_modulus_bits must not be empty");
+    }
+    if (!std::isfinite(profile.scale) || profile.scale <= 0.0) {
+        throw std::invalid_argument("scale must be a positive finite value");
+    }
+    for (int bits : profile.coeff_modulus_bits) {
+        if (bits <= 0) {
+            throw std::invalid_argument("coeff_modulus_bits entries must be positive");
+        }
+    }
+}
+
+template <class T>
+static std::size_t serialized_size_of(const T& value) {
+    std::ostringstream out(std::ios::binary);
+    value.save(out);
+    return static_cast<std::size_t>(out.tellp());
+}
+
 SealAdapter SealAdapter::create(const CkksProfile& profile) {
+    validate_profile_shape(profile);
+
     SealAdapter a;
     a.pimpl_->profile = profile;
 
     auto parms = make_ckks_parms(profile);
     a.pimpl_->context = std::make_shared<seal::SEALContext>(parms, /*expand_mod_chain*/ true);
+    if (!a.pimpl_->context->parameters_set()) {
+        throw std::invalid_argument("invalid CKKS encryption parameters");
+    }
     a.pimpl_->encoder = std::make_unique<seal::CKKSEncoder>(*a.pimpl_->context);
     a.pimpl_->evaluator = std::make_unique<seal::Evaluator>(*a.pimpl_->context);
     a.pimpl_->scale = profile.scale;
     a.pimpl_->slot_count = a.pimpl_->encoder->slot_count();
+    if (profile.slots > a.pimpl_->slot_count) {
+        throw std::invalid_argument("configured slots exceed CKKS slot_count");
+    }
     return a;
 }
 
@@ -96,6 +133,8 @@ void SealAdapter::keygen(bool need_relin, bool need_galois) {
     seal::KeyGenerator keygen(*pimpl_->context);
     pimpl_->sk = keygen.secret_key();
     keygen.create_public_key(pimpl_->pk);
+    pimpl_->has_relin = false;
+    pimpl_->has_galois = false;
     if (need_relin) {
         keygen.create_relin_keys(pimpl_->rlk);
         pimpl_->has_relin = true;
@@ -110,8 +149,14 @@ void SealAdapter::keygen(bool need_relin, bool need_galois) {
     pimpl_->has_keys = true;
 }
 
+std::size_t SealAdapter::slot_count() const {
+    if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
+    return pimpl_->slot_count;
+}
+
 Plain SealAdapter::encode(const std::vector<double>& vals) {
     if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
+    if (vals.empty()) throw std::invalid_argument("input vector must not be empty");
     if (vals.size() > pimpl_->slot_count || (pimpl_->profile.slots && vals.size() > pimpl_->profile.slots)) {
         throw std::invalid_argument("input size exceeds configured slots");
     }
@@ -171,6 +216,25 @@ Cipher SealAdapter::rotate(const Cipher& c, int steps) {
     Cipher out;
     pimpl_->evaluator->rotate_vector(c.pimpl_->ct, steps, pimpl_->gk, out.pimpl_->ct);
     return out;
+}
+
+std::size_t SealAdapter::serialized_size(const Cipher& cipher) const {
+    return serialized_size_of(cipher.pimpl_->ct);
+}
+
+std::size_t SealAdapter::public_key_size() const {
+    if (!pimpl_->has_keys) throw std::runtime_error("keys not generated");
+    return serialized_size_of(pimpl_->pk);
+}
+
+std::size_t SealAdapter::relin_keys_size() const {
+    if (!pimpl_->has_relin) throw std::runtime_error("relin keys not generated");
+    return serialized_size_of(pimpl_->rlk);
+}
+
+std::size_t SealAdapter::galois_keys_size() const {
+    if (!pimpl_->has_galois) throw std::runtime_error("galois keys not generated");
+    return serialized_size_of(pimpl_->gk);
 }
 
 } // namespace m2424
