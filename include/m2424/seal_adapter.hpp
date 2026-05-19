@@ -50,6 +50,7 @@ public:
     static SealAdapter create(const CkksProfile&);
 
     void keygen(bool need_relin = true, bool need_galois = true);
+    std::size_t slot_count() const;
 
     Plain encode(const std::vector<double>&);
     Cipher encrypt(const Plain&);
@@ -60,6 +61,11 @@ public:
     Cipher sub(const Cipher&, const Cipher&);
     Cipher mul_relin_rescale(const Cipher&, const Cipher&);
     Cipher rotate(const Cipher&, int steps);
+
+    std::size_t serialized_size(const Cipher&) const;
+    std::size_t public_key_size() const;
+    std::size_t relin_keys_size() const;
+    std::size_t galois_keys_size() const;
 
     SealAdapter();
     ~SealAdapter();

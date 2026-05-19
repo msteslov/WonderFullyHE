@@ -1,4 +1,6 @@
 add_library(m2424
+    abft.cpp
+    bootstrap.cpp
     m2424.cpp
     seal_adapter/seal_adapter.cpp
 )

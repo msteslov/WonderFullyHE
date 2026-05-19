@@ -1,6 +1,6 @@
 ## Обзор
 
-Проект использует Microsoft SEAL в роли криптографического движка CKKS. Данная программа демонстрирует базовый функционал, который будет использоваться при добавлении новых технологии(бутстрапинг, ABFT...)
+Проект использует Microsoft SEAL в роли криптографического движка CKKS. Поверх SEAL строится исследовательский слой для будущего добавления бутстрапинга и ABFT: адаптер скрывает детали SEAL, демо проверяют базовые гомоморфные операции, а benchmark-приложение собирает первичные метрики времени, точности и размера сериализованных объектов.
 
 ## Клонирование
 
@@ -19,9 +19,29 @@ cmake --build build -j
 
 `demo_basic` выводит `max_abs_error` и `mean_abs_error` между результатом гомоморфных вычислений и эталоном на CPU. В качестве входа берём синусоиду длиной 64: данный сигнал позволяет измерить накопленную ошибку на типичном профиле, где важна точность.
 
+Дополнительные сценарии:
+
+```bash
+./build/demo_abft
+./build/bench_ckks
+./build/demo_noise_growth
+./build/demo_secure_stats
+./build/demo_bootstrap_pipeline
+```
+
+`demo_abft` показывает первые ABFT-инварианты: для `add/sub` полезная нагрузка дополняется checksum-слотом, для `mul` checksum произведения сравнивается с CPU-эталоном, а для `rotate` проверяется сохранение суммы по всем CKKS-слотам.
+
+`bench_ckks` печатает CSV со временем операций, ошибкой относительно CPU-эталона и сериализованными размерами ciphertext/ключей. Это измерительная база для дальнейших экспериментов с глубиной цепочки, ABFT и бутстрапингом.
+
+`demo_noise_growth` печатает CSV по последовательным зашифрованным возведениям в квадрат. Сценарий показывает, как растёт ошибка и где заканчивается доступная мультипликативная глубина без bootstrapping.
+
+`demo_secure_stats` показывает прикладной сценарий защищённой обработки данных: сумма и среднее считаются над зашифрованным вектором через ротации и сложения, после расшифровки результат сравнивается с CPU-эталоном.
+
+`demo_bootstrap_pipeline` показывает начатую реализацию bootstrapping-модуля: диагностику исчерпания глубины и текущий статус этапов конвейера `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff`.
+
 ## Тесты
 
-`test_smoke` — покрывает encode → encrypt → mul_relin_rescale → decrypt.
+`test_smoke` — покрывает encode → encrypt → mul_relin_rescale → decrypt, а также add/sub/rotate, ABFT checksum, ошибки без нужных ключей и базовую валидацию профиля.
 
 ```bash
 cmake -S . -B build -DBUILD_TESTING=ON
@@ -36,9 +56,15 @@ ctest --test-dir build --output-on-failure
 Основные методы адаптера:
 - `SealAdapter::create(profile)` — конфигурирует CKKS‑контекст и encoder под заданный профиль.
 - `keygen(need_relin, need_galois)` — генерирует секретный/публичный ключи и по требованию Relin/Galois наборы.
+- `slot_count` — возвращает фактическое число CKKS-слотов для выбранного профиля.
 - `encode` / `decode` — преобразуют вещественный вектор в CKKS plaintext и обратно.
 - `encrypt` / `decrypt` — обычные операции CKKS над plaintext/ciphertext.
 - `add`, `sub`, `mul_relin_rescale`, `rotate` — гомоморфные примитивы, делегирующие в `seal::Evaluator`.
+- `serialized_size`, `public_key_size`, `relin_keys_size`, `galois_keys_size` — вспомогательные методы для benchmark-измерений.
+
+Модуль `m2424::abft` пока содержит минимальный checksum-прототип: `append_checksum`, `checksum`, `verify_appended_checksum`. Он намеренно отделён от `SealAdapter`, чтобы SEAL оставался backend-слоем, а ABFT развивался как отдельная экспериментальная логика.
+
+Модуль `m2424::Bootstrapper` выделяет bootstrapping как отдельный компонент библиотеки. Сейчас он реализует диагностику вычислительной глубины и фиксирует этапы будущего CKKS bootstrapping-конвейера. Полное восстановление ciphertext будет добавляться поэтапно поверх уже реализованных операций `mul_relin_rescale` и `rotate`.
 
 Строгие математические формулировки для каждого метода вынесены в `api.tex`.
 
@@ -54,7 +80,14 @@ ctest --test-dir build --output-on-failure
 
 ## TODO: Бенчмарки, которые надо реализовать
 
+- [x] Базовый CSV benchmark для encode/encrypt/decrypt/add/mul/rotate и размеров ключей.
 - [ ] Throughput для `mul_relin_rescale` в зависимости от `poly_modulus_degree` и глубины цепочки.
 - [ ] Латентность `rotate`/`rotate_inverse` для разных наборов Galois‑ключей.
 - [ ] Профилировка `encode`/`decode` на батчах (длина сигнала, влияние `scale`).
 - [ ] Снять отдельные метрики памяти для SEAL‑контекста, наборов ключей и промежуточных ciphertext.
+- [x] Расширить ABFT checksum с add/sub на mul и rotate.
+- [ ] Расширить ABFT checksum на цепочки операций.
+- [x] Добавить noise-growth demo перед проектированием bootstrapping-прототипа.
+- [x] Добавить прикладной сценарий защищённой статистики.
+- [x] Выделить начальный bootstrapping-модуль с диагностикой глубины и статусом этапов.
+- [ ] Реализовать строительные блоки bootstrapping: полиномиальную аппроксимацию и rotation-based linear transforms.

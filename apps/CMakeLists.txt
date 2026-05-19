@@ -2,6 +2,26 @@ add_executable(demo_basic demo_basic.cpp)
 target_compile_features(demo_basic PRIVATE cxx_std_17)
 target_link_libraries(demo_basic PRIVATE m2424)
 
-set_target_properties(demo_basic PROPERTIES
+add_executable(demo_abft demo_abft.cpp)
+target_compile_features(demo_abft PRIVATE cxx_std_17)
+target_link_libraries(demo_abft PRIVATE m2424)
+
+add_executable(bench_ckks bench_ckks.cpp)
+target_compile_features(bench_ckks PRIVATE cxx_std_17)
+target_link_libraries(bench_ckks PRIVATE m2424)
+
+add_executable(demo_noise_growth demo_noise_growth.cpp)
+target_compile_features(demo_noise_growth PRIVATE cxx_std_17)
+target_link_libraries(demo_noise_growth PRIVATE m2424)
+
+add_executable(demo_secure_stats demo_secure_stats.cpp)
+target_compile_features(demo_secure_stats PRIVATE cxx_std_17)
+target_link_libraries(demo_secure_stats PRIVATE m2424)
+
+add_executable(demo_bootstrap_pipeline demo_bootstrap_pipeline.cpp)
+target_compile_features(demo_bootstrap_pipeline PRIVATE cxx_std_17)
+target_link_libraries(demo_bootstrap_pipeline PRIVATE m2424)
+
+set_target_properties(demo_basic demo_abft bench_ckks demo_noise_growth demo_secure_stats demo_bootstrap_pipeline PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
