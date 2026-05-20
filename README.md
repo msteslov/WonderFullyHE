@@ -38,7 +38,7 @@ cmake --build build -j
 
 `demo_secure_stats` показывает прикладной сценарий защищённой обработки данных: сумма и среднее считаются над зашифрованным вектором через ротации и сложения, после расшифровки результат сравнивается с CPU-эталоном.
 
-`demo_bootstrap_pipeline` показывает состояние bootstrapping-модуля: диагностику исчерпания глубины и статус этапов конвейера `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff`.
+`demo_bootstrap_pipeline` печатает отчёт bootstrapping-модуля: профиль `depth_ckks`, границу вычислительной глубины, параметры ciphertext и этапы конвейера `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff`.
 
 `demo_profile_report` печатает CSV-таблицу CKKS-профилей, используемых в демо: степень полиномиального модуля, число слотов, цепочку коэффициентных модулей, суммарный размер modulus, масштаб и оценку доступной глубины умножений.
 
@@ -74,7 +74,7 @@ ctest --test-dir build --output-on-failure
 
 Модуль `m2424::abft` содержит checksum-инструменты: `append_checksum`, `checksum`, `verify_appended_checksum`, `verify_checksum_value`.
 
-Модуль `m2424::Bootstrapper` выделяет bootstrapping как отдельный компонент библиотеки. Текущая реализация выполняет диагностику вычислительной глубины и фиксирует этапы CKKS bootstrapping-конвейера.
+Модуль `m2424::Bootstrapper` выделяет bootstrapping как отдельный компонент библиотеки. Реализация связывает диагностику вычислительной глубины с этапами CKKS bootstrapping-конвейера и фиксирует параметры ciphertext: `scale`, `chain_index`, размер ciphertext и критерии `Dec(c') ≈ Dec(c)`, `level(c') > level(c)`.
 
 Модуль `m2424::profile_report` формирует табличное описание выбранных CKKS-параметров.
 

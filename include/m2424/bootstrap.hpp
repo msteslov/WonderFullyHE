@@ -9,23 +9,39 @@
 namespace m2424 {
 
 enum class BootstrapStageStatus {
-    Done,
-    Prototype,
-    ModelOnly,
-    Planned,
-    Failed
+    Ready,
+    PrimitiveReady,
+    SpecificationReady,
+    Blocked
+};
+
+struct BootstrapCipherMetrics {
+    bool available{};
+    double scale{};
+    std::size_t chain_index{};
+    std::size_t coeff_modulus_size{};
+    std::size_t ciphertext_size{};
+    std::size_t serialized_bytes{};
 };
 
 struct BootstrapStage {
     std::string name;
     BootstrapStageStatus status{};
+    BootstrapCipherMetrics before;
+    BootstrapCipherMetrics after;
+    bool preserves_value{};
+    bool restores_level{};
     std::string note;
 };
 
 struct BootstrapReport {
+    BootstrapCipherMetrics input;
+    BootstrapCipherMetrics depth_boundary;
     std::size_t successful_multiplications{};
     std::size_t next_exponent{};
     std::string stop_reason;
+    bool preserve_value_criterion{};
+    bool restore_level_criterion{};
     std::vector<BootstrapStage> stages;
 };
 

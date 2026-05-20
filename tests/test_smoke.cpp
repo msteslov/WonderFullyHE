@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include "m2424/abft.hpp"
 #include "m2424/accuracy.hpp"
+#include "m2424/bootstrap.hpp"
 #include "m2424/seal_adapter.hpp"
 
 static std::vector<double> head(const std::vector<double>& values, std::size_t n) {
@@ -62,6 +63,12 @@ static void rotate_without_galois_case() {
     (void)adapter.rotate(ct, 1);
 }
 
+static bool has_stage(const m2424::BootstrapReport& report, const char* name) {
+    return std::any_of(report.stages.begin(), report.stages.end(), [name](const m2424::BootstrapStage& stage) {
+        return stage.name == name;
+    });
+}
+
 int main() {
     const std::size_t poly_modulus_degree = 8192;
     const std::size_t slots = poly_modulus_degree / 2;
@@ -103,6 +110,26 @@ int main() {
     auto abft_out = adapter.decode(adapter.decrypt(abft_ct));
     auto abft_check = m2424::abft::verify_appended_checksum(abft_out, N, 1e-5);
 
+    m2424::CkksProfile depth_profile{16384, {60, 40, 40, 40, 40, 60}, std::pow(2.0, 40), 8192};
+    auto depth_adapter = m2424::SealAdapter::create(depth_profile);
+    depth_adapter.keygen(true, true);
+    std::vector<double> depth_input;
+    depth_input.reserve(16);
+    for (std::size_t i = 0; i < 16; ++i) depth_input.push_back(0.25 + 0.25 * std::sin(static_cast<double>(i) / 7.0));
+    m2424::Bootstrapper bootstrapper(depth_adapter);
+    auto bootstrap_report = bootstrapper.analyze_depth(depth_input, 8);
+    const bool bootstrap_report_ok = bootstrap_report.input.available
+        && bootstrap_report.depth_boundary.available
+        && bootstrap_report.successful_multiplications == 4
+        && bootstrap_report.next_exponent == 16
+        && !bootstrap_report.stop_reason.empty()
+        && !bootstrap_report.preserve_value_criterion
+        && !bootstrap_report.restore_level_criterion
+        && has_stage(bootstrap_report, "ModRaise")
+        && has_stage(bootstrap_report, "CoeffToSlot")
+        && has_stage(bootstrap_report, "EvalMod")
+        && has_stage(bootstrap_report, "SlotToCoeff");
+
     bool ok = std::isfinite(mul_accuracy.max_abs_error) && std::isfinite(mul_accuracy.mean_abs_error) && mul_accuracy.ok
         && close_enough(add_ref, add_out, 1e-5)
         && close_enough(input, sub_out, 1e-5)
@@ -119,7 +146,8 @@ int main() {
         && expect_invalid_argument(empty_encode_case)
         && expect_runtime_error(encrypt_without_keys_case)
         && expect_runtime_error(mul_without_relin_case)
-        && expect_runtime_error(rotate_without_galois_case);
+        && expect_runtime_error(rotate_without_galois_case)
+        && bootstrap_report_ok;
     std::printf("[test_smoke] max=%.6e mean=%.6e threshold=1e-3 => %s\n",
                mul_accuracy.max_abs_error, mul_accuracy.mean_abs_error, ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;

@@ -1,40 +1,65 @@
 #include "m2424/bootstrap.hpp"
 
 #include <exception>
+#include <utility>
 #include <stdexcept>
 
 namespace m2424 {
 
 const char* to_string(BootstrapStageStatus status) noexcept {
     switch (status) {
-        case BootstrapStageStatus::Done:
-            return "done";
-        case BootstrapStageStatus::Prototype:
-            return "prototype";
-        case BootstrapStageStatus::ModelOnly:
-            return "model";
-        case BootstrapStageStatus::Planned:
-            return "planned";
-        case BootstrapStageStatus::Failed:
-            return "failed";
+        case BootstrapStageStatus::Ready:
+            return "ready";
+        case BootstrapStageStatus::PrimitiveReady:
+            return "primitive_ready";
+        case BootstrapStageStatus::SpecificationReady:
+            return "specification_ready";
+        case BootstrapStageStatus::Blocked:
+            return "blocked";
     }
     return "unknown";
 }
 
+static BootstrapCipherMetrics capture_metrics(const SealAdapter& adapter, const Cipher& cipher) {
+    const auto info = adapter.info(cipher);
+    return BootstrapCipherMetrics{
+        true,
+        info.scale,
+        info.chain_index,
+        info.coeff_modulus_size,
+        info.ciphertext_size,
+        adapter.serialized_size(cipher)
+    };
+}
+
+static BootstrapStage make_stage(std::string name,
+                                 BootstrapStageStatus status,
+                                 const BootstrapCipherMetrics& before,
+                                 const BootstrapCipherMetrics& after,
+                                 bool preserves_value,
+                                 bool restores_level,
+                                 std::string note) {
+    return BootstrapStage{
+        std::move(name),
+        status,
+        before,
+        after,
+        preserves_value,
+        restores_level,
+        std::move(note)
+    };
+}
+
 Bootstrapper::Bootstrapper(SealAdapter& adapter) : adapter_(&adapter) {
     stages_ = {
-        {"Depth diagnostics", BootstrapStageStatus::Done,
-         "detects the multiplication depth limit that bootstrap must refresh"},
-        {"ModRaise", BootstrapStageStatus::ModelOnly,
-         "mathematical stage is fixed; SEAL-level implementation is in progress"},
-        {"CoeffToSlot", BootstrapStageStatus::Prototype,
-         "rotation primitives required for linear transforms are available"},
-        {"EvalMod", BootstrapStageStatus::Prototype,
-         "homomorphic multiplication/rescale building block is available"},
-        {"SlotToCoeff", BootstrapStageStatus::ModelOnly,
-         "inverse linear transform is described in the bootstrap model"},
-        {"Refresh ciphertext", BootstrapStageStatus::Planned,
-         "full refreshed ciphertext output will replace the diagnostic prototype"}
+        {"ModRaise", BootstrapStageStatus::SpecificationReady, {}, {}, false, false,
+         "подъём ciphertext к расширенной цепочке модулей описан в модели"},
+        {"CoeffToSlot", BootstrapStageStatus::PrimitiveReady, {}, {}, false, false,
+         "линейное преобразование опирается на доступные CKKS-ротации"},
+        {"EvalMod", BootstrapStageStatus::PrimitiveReady, {}, {}, false, false,
+         "для вычисления доступны multiply, relinearize и rescale"},
+        {"SlotToCoeff", BootstrapStageStatus::SpecificationReady, {}, {}, false, false,
+         "обратное линейное преобразование зафиксировано в bootstrapping-модели"}
     };
 }
 
@@ -48,6 +73,8 @@ BootstrapReport Bootstrapper::analyze_depth(const std::vector<double>& input, st
 
     auto current = adapter_->encrypt(adapter_->encode(input));
     BootstrapReport report;
+    report.input = capture_metrics(*adapter_, current);
+    report.depth_boundary = report.input;
     report.next_exponent = 1;
 
     for (std::size_t step = 0; step < max_steps; ++step) {
@@ -55,6 +82,7 @@ BootstrapReport Bootstrapper::analyze_depth(const std::vector<double>& input, st
             current = adapter_->mul_relin_rescale(current, current);
             ++report.successful_multiplications;
             report.next_exponent *= 2;
+            report.depth_boundary = capture_metrics(*adapter_, current);
         } catch (const std::exception& error) {
             report.stop_reason = error.what();
             break;
@@ -65,7 +93,41 @@ BootstrapReport Bootstrapper::analyze_depth(const std::vector<double>& input, st
         report.stop_reason = "max_steps reached before depth failure";
     }
 
-    report.stages = stages_;
+    const bool has_depth_boundary = report.depth_boundary.available;
+    const bool level_restored = has_depth_boundary && report.depth_boundary.chain_index > report.input.chain_index;
+    report.preserve_value_criterion = false;
+    report.restore_level_criterion = level_restored;
+
+    report.stages = {
+        make_stage("ModRaise",
+                   BootstrapStageStatus::SpecificationReady,
+                   report.depth_boundary,
+                   report.depth_boundary,
+                   true,
+                   false,
+                   "цель этапа: подготовить ciphertext к расширенной цепочке модулей"),
+        make_stage("CoeffToSlot",
+                   BootstrapStageStatus::PrimitiveReady,
+                   report.depth_boundary,
+                   report.depth_boundary,
+                   true,
+                   false,
+                   "для линейных преобразований доступны ротации CKKS-слотов"),
+        make_stage("EvalMod",
+                   BootstrapStageStatus::PrimitiveReady,
+                   report.depth_boundary,
+                   report.depth_boundary,
+                   true,
+                   false,
+                   "для приближённого modular reduction доступны multiply/relinearize/rescale"),
+        make_stage("SlotToCoeff",
+                   BootstrapStageStatus::SpecificationReady,
+                   report.depth_boundary,
+                   report.depth_boundary,
+                   true,
+                   false,
+                   "этап возвращает данные из slot-представления в coefficient-представление")
+    };
     return report;
 }
 
