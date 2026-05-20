@@ -63,6 +63,10 @@ static void rotate_without_galois_case() {
     (void)adapter.rotate(ct, 1);
 }
 
+static void accuracy_size_mismatch_case() {
+    (void)m2424::compare({1.0, 2.0}, {1.0}, 1e-5);
+}
+
 static bool has_stage(const m2424::BootstrapReport& report, const char* name) {
     return std::any_of(report.stages.begin(), report.stages.end(), [name](const m2424::BootstrapStage& stage) {
         return stage.name == name;
@@ -147,6 +151,7 @@ int main() {
         && expect_runtime_error(encrypt_without_keys_case)
         && expect_runtime_error(mul_without_relin_case)
         && expect_runtime_error(rotate_without_galois_case)
+        && expect_invalid_argument(accuracy_size_mismatch_case)
         && bootstrap_report_ok;
     std::printf("[test_smoke] max=%.6e mean=%.6e threshold=1e-3 => %s\n",
                mul_accuracy.max_abs_error, mul_accuracy.mean_abs_error, ok ? "PASS" : "FAIL");

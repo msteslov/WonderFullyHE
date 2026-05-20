@@ -7,11 +7,13 @@
 namespace m2424 {
 
 static std::size_t checked_size(const std::vector<double>& expected, const std::vector<double>& actual) {
-    const std::size_t n = std::min(expected.size(), actual.size());
-    if (n == 0) {
+    if (expected.empty() || actual.empty()) {
         throw std::invalid_argument("accuracy comparison requires non-empty vectors");
     }
-    return n;
+    if (expected.size() != actual.size()) {
+        throw std::invalid_argument("accuracy comparison requires vectors of equal size");
+    }
+    return expected.size();
 }
 
 double max_abs_error(const std::vector<double>& expected, const std::vector<double>& actual) {

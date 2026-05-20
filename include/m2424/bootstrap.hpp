@@ -29,8 +29,6 @@ struct BootstrapStage {
     BootstrapStageStatus status{};
     BootstrapCipherMetrics before;
     BootstrapCipherMetrics after;
-    bool preserves_value{};
-    bool restores_level{};
     std::string note;
 };
 

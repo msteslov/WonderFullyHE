@@ -48,21 +48,19 @@ int main() {
     std::printf("metrics_label,state,scale,chain_index,coeff_modulus_size,ciphertext_size,serialized_bytes\n");
     print_metrics("input", report.input);
     print_metrics("depth_boundary", report.depth_boundary);
-    std::printf("stage,status,before_chain,after_chain,before_scale,after_scale,preserves_value,restores_level,note\n");
+    std::printf("stage,status,before_chain,after_chain,before_scale,after_scale,note\n");
     for (const auto& stage : report.stages) {
         const auto before_chain = stage.before.available ? std::to_string(stage.before.chain_index) : "";
         const auto after_chain = stage.after.available ? std::to_string(stage.after.chain_index) : "";
         const double before_scale = stage.before.available ? stage.before.scale : 0.0;
         const double after_scale = stage.after.available ? stage.after.scale : 0.0;
-        std::printf("%s,%s,%s,%s,%.6e,%.6e,%s,%s,%s\n",
+        std::printf("%s,%s,%s,%s,%.6e,%.6e,%s\n",
                     stage.name.c_str(),
                     m2424::to_string(stage.status),
                     before_chain.c_str(),
                     after_chain.c_str(),
                     before_scale,
                     after_scale,
-                    stage.preserves_value ? "true" : "false",
-                    stage.restores_level ? "true" : "false",
                     stage.note.c_str());
     }
 

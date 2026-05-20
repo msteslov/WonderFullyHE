@@ -36,29 +36,25 @@ static BootstrapStage make_stage(std::string name,
                                  BootstrapStageStatus status,
                                  const BootstrapCipherMetrics& before,
                                  const BootstrapCipherMetrics& after,
-                                 bool preserves_value,
-                                 bool restores_level,
                                  std::string note) {
     return BootstrapStage{
         std::move(name),
         status,
         before,
         after,
-        preserves_value,
-        restores_level,
         std::move(note)
     };
 }
 
 Bootstrapper::Bootstrapper(SealAdapter& adapter) : adapter_(&adapter) {
     stages_ = {
-        {"ModRaise", BootstrapStageStatus::SpecificationReady, {}, {}, false, false,
+        {"ModRaise", BootstrapStageStatus::SpecificationReady, {}, {},
          "подъём ciphertext к расширенной цепочке модулей описан в модели"},
-        {"CoeffToSlot", BootstrapStageStatus::PrimitiveReady, {}, {}, false, false,
+        {"CoeffToSlot", BootstrapStageStatus::PrimitiveReady, {}, {},
          "линейное преобразование опирается на доступные CKKS-ротации"},
-        {"EvalMod", BootstrapStageStatus::PrimitiveReady, {}, {}, false, false,
+        {"EvalMod", BootstrapStageStatus::PrimitiveReady, {}, {},
          "для вычисления доступны multiply, relinearize и rescale"},
-        {"SlotToCoeff", BootstrapStageStatus::SpecificationReady, {}, {}, false, false,
+        {"SlotToCoeff", BootstrapStageStatus::SpecificationReady, {}, {},
          "обратное линейное преобразование зафиксировано в bootstrapping-модели"}
     };
 }
@@ -103,29 +99,21 @@ BootstrapReport Bootstrapper::analyze_depth(const std::vector<double>& input, st
                    BootstrapStageStatus::SpecificationReady,
                    report.depth_boundary,
                    report.depth_boundary,
-                   true,
-                   false,
                    "цель этапа: подготовить ciphertext к расширенной цепочке модулей"),
         make_stage("CoeffToSlot",
                    BootstrapStageStatus::PrimitiveReady,
                    report.depth_boundary,
                    report.depth_boundary,
-                   true,
-                   false,
                    "для линейных преобразований доступны ротации CKKS-слотов"),
         make_stage("EvalMod",
                    BootstrapStageStatus::PrimitiveReady,
                    report.depth_boundary,
                    report.depth_boundary,
-                   true,
-                   false,
                    "для приближённого modular reduction доступны multiply/relinearize/rescale"),
         make_stage("SlotToCoeff",
                    BootstrapStageStatus::SpecificationReady,
                    report.depth_boundary,
                    report.depth_boundary,
-                   true,
-                   false,
                    "этап возвращает данные из slot-представления в coefficient-представление")
     };
     return report;
