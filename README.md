@@ -1,3 +1,9 @@
+## English summary
+
+WonderFullyHE is an educational/research C++ prototype for CKKS-based protected computations on top of Microsoft SEAL. It includes a SEAL adapter, accuracy tracking, ABFT checks, depth diagnostics, benchmark demos, and a bootstrapping pipeline report.
+
+The project is not a production-ready cryptographic library. Current implementation focuses on reproducible experiments, parameter reporting, correctness checks, and the software structure needed for CKKS bootstrapping research.
+
 ## Обзор
 
 WonderFullyHE использует Microsoft SEAL в роли криптографического движка CKKS. Поверх SEAL реализуется библиотечный слой для защищённых вычислений: адаптер скрывает детали SEAL, модуль точности задаёт единые метрики ошибки, ABFT-модуль проверяет численную согласованность результатов, а benchmark-приложение собирает первичные метрики времени, точности и размера сериализованных объектов.
@@ -59,6 +65,7 @@ ctest --test-dir build --output-on-failure
 Подробные проектные заметки:
 - `docs/architecture.md` — слои библиотеки и роль каждого модуля.
 - `docs/ckks_parameters.md` — выбранные CKKS-параметры, расчёт слотов, scale, modulus chain и глубины.
+- `docs/project_status.md` — текущий статус реализации, ограничения и следующие этапы.
 
 Основные методы адаптера:
 - `SealAdapter::create(profile)` — конфигурирует CKKS‑контекст и encoder под заданный профиль.
