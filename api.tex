@@ -5,63 +5,320 @@
 \usepackage{amsmath}
 \usepackage{amsfonts}
 \usepackage{amssymb}
+\usepackage{array}
+\usepackage{geometry}
+\geometry{margin=2.2cm}
 
-\title{Интерфейс к Microsoft SEAL}
+\title{WonderFullyHE: математическое описание API}
 \date{}
 
 \begin{document}
 \maketitle
 
-\section*{Обозначения}
+\section*{Назначение библиотеки}
+
+WonderFullyHE реализует библиотечный слой для защищённых вычислений
+над вещественными данными на базе схемы CKKS из Microsoft SEAL.
+Публичный API скрывает низкоуровневые типы SEAL и предоставляет:
 \begin{itemize}
-    \item $N$ --- степень полиномиального модуля.
-    \item $\{\Delta_i\}$ --- набор битовых размеров коэффициентного модуля.
-    \item $\Delta$ --- масштаб CKKS.
-    \item $\mathsf{SEALContext}(N, \{\Delta_i\}, \Delta)$ --- внутреннее состояние Microsoft SEAL.
-    \item $\mathsf{KeyGen}$, $\mathsf{Encode}$, $\mathsf{Encrypt}$, $\mathsf{Decrypt}$, $\mathsf{Eval}$ --- стандартные процедуры CKKS.
+    \item настройку CKKS-профилей;
+    \item кодирование, шифрование, вычисления, расшифрование и декодирование;
+    \item контроль численной ошибки;
+    \item ABFT-проверки корректности вычислений;
+    \item диагностику вычислительной глубины и bootstrapping-конвейер.
 \end{itemize}
 
-\section*{API}
-\paragraph{Создание адаптера}
-\[
-  \texttt{SealAdapter::create} : (N, \{\Delta_i\}, \Delta, S) \mapsto \mathsf{SEALContext},
-\]
-где $S$ --- число доступных слотов (не превосходит $N/2$).
+\section*{CKKS-профиль}
 
-\paragraph{Генерация ключей}
+Профиль CKKS задаётся набором
 \[
-  \texttt{keygen}(r, g) : \mathsf{SEALContext} \mapsto (\mathsf{sk}, \mathsf{pk}, \mathsf{rk}^{(r)}, \mathsf{gk}^{(g)}),
+    P = (N, Q, \Delta, S),
 \]
-где индикаторы $r,g \in \{0,1\}$ включают релиниаризационные и Galois-ключи.
+где:
+\begin{itemize}
+    \item $N$ --- степень полиномиального модуля;
+    \item $Q = (q_0, q_1, \ldots, q_l)$ --- цепочка коэффициентных модулей,
+    в коде задаётся битовыми размерами;
+    \item $\Delta$ --- масштаб CKKS;
+    \item $S$ --- число используемых слотов, $S \leq N/2$.
+\end{itemize}
 
-\paragraph{Кодирование и шифрование}
-\[
-  \texttt{encode}(\mathbf{v}) = \mathsf{Encode}_\Delta(\mathbf{v}) = p,
-\]
-\[
-  \texttt{encrypt}(p) = \mathsf{Enc}_{\mathsf{pk}}(p) = c.
-\]
+В проекте используются два основных профиля:
 
-\paragraph{Гомоморфные операции}
 \[
-  \texttt{add}(c_1, c_2) = c_1 + c_2,
-\]
-\[
-  \texttt{sub}(c_1, c_2) = c_1 - c_2,
-\]
-\[
-  \texttt{mul\_relin\_rescale}(c_1, c_2) = \mathsf{Rescale}(\mathsf{Relin}(c_1 \cdot c_2)),
-\]
-\[
-  \texttt{rotate}(c, k) = \mathsf{Rot}_k(c).
+\begin{array}{|c|c|c|c|c|c|}
+\hline
+\text{Профиль} & N & S & Q\text{, бит} & \Delta & \text{Оценка глубины} \\
+\hline
+\texttt{basic\_ckks} & 8192 & 4096 & 60-40-40-60 & 2^{40} & 2 \\
+\hline
+\texttt{depth\_ckks} & 16384 & 8192 & 60-40-40-40-40-60 & 2^{40} & 4 \\
+\hline
+\end{array}
 \]
 
-\paragraph{Расшифрование и декодирование}
+\section*{Адаптер над Microsoft SEAL}
+
+Создание контекста:
 \[
-  \texttt{decrypt}(c) = \mathsf{Dec}_{\mathsf{sk}}(c) = p,
+    \texttt{SealAdapter::create}(P) \mapsto \mathsf{SEALContext}(P).
+\]
+
+Генерация ключей:
+\[
+    \texttt{keygen}(r,g) \mapsto
+    (\mathsf{sk}, \mathsf{pk}, \mathsf{rlk}^{(r)}, \mathsf{gk}^{(g)}),
+\]
+где $r,g \in \{0,1\}$ задают необходимость Relin- и Galois-ключей.
+
+Кодирование и шифрование:
+\[
+    \texttt{encode}(\mathbf{x}) =
+    \mathsf{Encode}_{\Delta}(\mathbf{x}) = p,
 \]
 \[
-  \texttt{decode}(p) = \mathsf{Decode}_\Delta(p) = \hat{\mathbf{v}}.
+    \texttt{encrypt}(p) =
+    \mathsf{Enc}_{\mathsf{pk}}(p) = c.
+\]
+
+Расшифрование и декодирование:
+\[
+    \texttt{decrypt}(c) =
+    \mathsf{Dec}_{\mathsf{sk}}(c) = p,
+\]
+\[
+    \texttt{decode}(p) =
+    \mathsf{Decode}_{\Delta}(p) = \hat{\mathbf{x}}.
+\]
+
+\section*{Гомоморфные операции}
+
+Сложение:
+\[
+    \texttt{add}(c_1,c_2) = c_1 + c_2.
+\]
+
+Вычитание:
+\[
+    \texttt{sub}(c_1,c_2) = c_1 - c_2.
+\]
+
+Умножение с релинеаризацией и rescale:
+\[
+    \texttt{mul\_relin\_rescale}(c_1,c_2)
+    =
+    \mathsf{Rescale}
+    \left(
+        \mathsf{Relin}_{\mathsf{rlk}}(c_1 \cdot c_2)
+    \right).
+\]
+
+При умножении масштаб растёт:
+\[
+    \Delta \cdot \Delta = 2^{40} \cdot 2^{40} = 2^{80}.
+\]
+
+Операция \(\mathsf{Rescale}\) делит результат на следующий
+примерно 40-битный модуль и возвращает масштаб к значению, близкому к
+\(2^{40}\). При этом расходуется один уровень modulus chain.
+
+Ротация CKKS-слотов:
+\[
+    \texttt{rotate}(c,k) = \mathsf{Rot}_k(c).
+\]
+
+\section*{Диагностика ciphertext}
+
+Для ciphertext \(c\) библиотека возвращает набор параметров:
+\[
+    \texttt{info}(c) =
+    (\mathsf{scale}(c), \mathsf{chain\_index}(c),
+    \mathsf{coeff\_modulus\_size}(c), \mathsf{ciphertext\_size}(c)).
+\]
+
+Также измеряется сериализованный размер:
+\[
+    \texttt{serialized\_size}(c) = |\mathsf{Serialize}(c)|.
+\]
+
+Эти значения используются в benchmark, анализе глубины и bootstrapping-отчёте.
+
+\section*{Контроль точности}
+
+Пусть \(\mathbf{y}\) --- эталонный результат CPU-вычисления,
+а \(\hat{\mathbf{y}}\) --- результат после гомоморфного вычисления,
+расшифрования и декодирования. Для векторов одинаковой длины \(n\):
+
+\[
+    \mathsf{max\_abs\_error}
+    =
+    \max_{0 \leq i < n}|y_i - \hat{y}_i|,
+\]
+
+\[
+    \mathsf{mean\_abs\_error}
+    =
+    \frac{1}{n}\sum_{i=0}^{n-1}|y_i - \hat{y}_i|.
+\]
+
+Критерий прохождения проверки:
+\[
+    \mathsf{ok}
+    =
+    \mathsf{max\_abs\_error} \leq \mathsf{tolerance}.
+\]
+
+\section*{ABFT-проверки}
+
+Контрольная сумма полезной нагрузки:
+\[
+    \mathsf{checksum}(\mathbf{x})
+    =
+    \sum_{i=0}^{m-1}x_i.
+\]
+
+Добавление checksum-слота:
+\[
+    \mathbf{x}' =
+    (x_0,x_1,\ldots,x_{m-1},\mathsf{checksum}(\mathbf{x})).
+\]
+
+Проверка добавленного checksum-слота:
+\[
+    \mathsf{expected} =
+    \sum_{i=0}^{m-1} y_i,
+    \qquad
+    \mathsf{observed} = y_m,
+\]
+\[
+    \mathsf{abs\_error}
+    =
+    |\mathsf{expected} - \mathsf{observed}|,
+    \qquad
+    \mathsf{ok}
+    =
+    \mathsf{abs\_error} \leq \mathsf{tolerance}.
+\]
+
+Для сложения и вычитания используются линейные свойства:
+\[
+    \mathsf{checksum}(\mathbf{x}+\mathbf{y})
+    =
+    \mathsf{checksum}(\mathbf{x})+
+    \mathsf{checksum}(\mathbf{y}),
+\]
+\[
+    \mathsf{checksum}(\mathbf{x}-\mathbf{y})
+    =
+    \mathsf{checksum}(\mathbf{x})-
+    \mathsf{checksum}(\mathbf{y}).
+\]
+
+Для ротации используется инвариант суммы:
+\[
+    \mathsf{checksum}(\mathsf{Rot}_k(\mathbf{x}))
+    =
+    \mathsf{checksum}(\mathbf{x}).
+\]
+
+Для умножения текущая проверка сравнивает сумму результата
+с CPU-эталоном покомпонентного произведения:
+\[
+    \mathsf{expected}
+    =
+    \sum_{i=0}^{m-1} x_i y_i,
+    \qquad
+    \mathsf{observed}
+    =
+    \sum_{i=0}^{m-1} \widehat{(xy)}_i.
+\]
+
+\section*{Анализ вычислительной глубины}
+
+В профиле \texttt{depth\_ckks} библиотека анализирует цепочку
+последовательных зашифрованных возведений в квадрат:
+\[
+    x \rightarrow x^2 \rightarrow x^4 \rightarrow x^8 \rightarrow x^{16}.
+\]
+
+Каждый шаг вызывает:
+\[
+    c_{i+1} =
+    \texttt{mul\_relin\_rescale}(c_i,c_i).
+\]
+
+После каждого успешного шага фиксируются:
+\[
+    \mathsf{scale}(c_i),\quad
+    \mathsf{chain\_index}(c_i),\quad
+    \mathsf{serialized\_size}(c_i),\quad
+    \mathsf{error}(c_i).
+\]
+
+На текущем профиле следующий переход к \(x^{32}\) останавливается,
+потому что доступные уровни modulus chain для очередного rescale
+исчерпаны.
+
+\section*{Bootstrapping-модуль}
+
+Bootstrapping-модуль выделен как отдельный компонент библиотеки.
+Он связан с анализом глубины и фиксирует конвейер:
+\[
+    \mathsf{ModRaise}
+    \rightarrow
+    \mathsf{CoeffToSlot}
+    \rightarrow
+    \mathsf{EvalMod}
+    \rightarrow
+    \mathsf{SlotToCoeff}.
+\]
+
+Цель итогового преобразования:
+\[
+    \mathsf{Bootstrap}(c) = c',
+\]
+где должны выполняться условия:
+\[
+    \mathsf{Dec}(c') \approx \mathsf{Dec}(c),
+\]
+\[
+    \mathsf{level}(c') > \mathsf{level}(c).
+\]
+
+В публичном отчёте \texttt{BootstrapReport} фиксируются:
+\begin{itemize}
+    \item параметры входного ciphertext;
+    \item параметры ciphertext на границе вычислительной глубины;
+    \item число успешно выполненных умножений;
+    \item следующий показатель степени, на котором вычисление останавливается;
+    \item причина остановки;
+    \item стадии конвейера и их статусы;
+    \item состояние критериев \(\mathsf{Dec}(c') \approx \mathsf{Dec}(c)\)
+    и \(\mathsf{level}(c') > \mathsf{level}(c)\).
+\end{itemize}
+
+\section*{Демонстрационные приложения}
+
+В проекте поддерживаются следующие запускные сценарии:
+
+\[
+\begin{array}{|l|p{9cm}|}
+\hline
+\text{Приложение} & \text{Назначение} \\
+\hline
+\texttt{demo\_secure\_stats} & Защищённое вычисление суммы и среднего. \\
+\hline
+\texttt{demo\_abft} & Проверка ABFT-инвариантов для add, sub, mul и rotate. \\
+\hline
+\texttt{demo\_noise\_growth} & Анализ расхода глубины и роста ошибки. \\
+\hline
+\texttt{demo\_bootstrap\_pipeline} & Отчёт bootstrapping-модуля. \\
+\hline
+\texttt{bench\_ckks} & Измерение времени, ошибки и размеров ciphertext/ключей. \\
+\hline
+\texttt{demo\_profile\_report} & Таблица используемых CKKS-профилей. \\
+\hline
+\end{array}
 \]
 
 \end{document}
