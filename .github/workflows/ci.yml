@@ -33,3 +33,4 @@ jobs:
           ./build/demo_noise_growth
           ./build/bench_ckks
           ./build/demo_profile_report
+          ./build/demo_security_report

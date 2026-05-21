@@ -6,6 +6,7 @@
 #include "m2424/abft.hpp"
 #include "m2424/accuracy.hpp"
 #include "m2424/bootstrap.hpp"
+#include "m2424/security_report.hpp"
 #include "m2424/seal_adapter.hpp"
 
 static std::vector<double> head(const std::vector<double>& values, std::size_t n) {
@@ -122,6 +123,22 @@ int main() {
     for (std::size_t i = 0; i < 16; ++i) depth_input.push_back(0.25 + 0.25 * std::sin(static_cast<double>(i) / 7.0));
     m2424::Bootstrapper bootstrapper(depth_adapter);
     auto bootstrap_report = bootstrapper.analyze_depth(depth_input, 8);
+    const auto basic_security = m2424::analyze_security("basic_ckks", prof);
+    const auto depth_security = m2424::analyze_security("depth_ckks", depth_profile);
+    const std::vector<m2424::SecurityReport> security_reports{basic_security, depth_security};
+    const bool security_report_ok = basic_security.total_coeff_modulus_bits == 200
+        && basic_security.tc128_limit == 218
+        && basic_security.passes_tc128
+        && !basic_security.passes_tc192
+        && basic_security.effective_level == m2424::SecurityLevel::TC128
+        && depth_security.total_coeff_modulus_bits == 280
+        && depth_security.tc128_limit == 438
+        && depth_security.tc192_limit == 305
+        && depth_security.passes_tc128
+        && depth_security.passes_tc192
+        && !depth_security.passes_tc256
+        && depth_security.effective_level == m2424::SecurityLevel::TC192
+        && m2424::project_minimum_security(security_reports) == m2424::SecurityLevel::TC128;
     const bool bootstrap_report_ok = bootstrap_report.input.available
         && bootstrap_report.depth_boundary.available
         && bootstrap_report.successful_multiplications == 4
@@ -152,6 +169,7 @@ int main() {
         && expect_runtime_error(mul_without_relin_case)
         && expect_runtime_error(rotate_without_galois_case)
         && expect_invalid_argument(accuracy_size_mismatch_case)
+        && security_report_ok
         && bootstrap_report_ok;
     std::printf("[test_smoke] max=%.6e mean=%.6e threshold=1e-3 => %s\n",
                mul_accuracy.max_abs_error, mul_accuracy.mean_abs_error, ok ? "PASS" : "FAIL");

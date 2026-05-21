@@ -26,6 +26,7 @@ verify:linux:
     - ./build/demo_bootstrap_pipeline | tee ci_results/demo_bootstrap_pipeline.txt
     - ./build/demo_noise_growth | tee ci_results/demo_noise_growth.csv
     - ./build/bench_ckks | tee ci_results/bench_ckks.csv
+    - ./build/demo_security_report | tee ci_results/demo_security_report.csv
   artifacts:
     when: always
     expire_in: 14 days

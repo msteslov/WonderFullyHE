@@ -14,6 +14,7 @@ WonderFullyHE — учебно-исследовательский прототи
 - Анализ расхода вычислительной глубины до остановки на `x^32`.
 - Bootstrapping-конвейер `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff` с отчётом по `scale`, `chain_index` и размеру ciphertext.
 - Benchmark времени операций, ошибок и размеров ciphertext/ключей.
+- Security report по CKKS-профилям относительно лимитов Microsoft SEAL `tc128`, `tc192` и `tc256`.
 - CMake-сборка, smoke-тесты, GitLab CI и GitHub Actions CI.
 
 ## В работе

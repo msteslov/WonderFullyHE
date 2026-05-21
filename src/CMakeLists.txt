@@ -4,6 +4,7 @@ add_library(m2424
     bootstrap.cpp
     m2424.cpp
     profile_report.cpp
+    security_report.cpp
     seal_adapter/seal_adapter.cpp
 )
 

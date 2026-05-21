@@ -34,6 +34,7 @@ cmake --build build -j
 ./build/demo_secure_stats
 ./build/demo_bootstrap_pipeline
 ./build/demo_profile_report
+./build/demo_security_report
 ```
 
 `demo_abft` проверяет ABFT-инварианты: для `add/sub` полезная нагрузка дополняется checksum-слотом, для `mul` checksum произведения сравнивается с CPU-эталоном, а для `rotate` проверяется сохранение суммы по всем CKKS-слотам.
@@ -48,9 +49,11 @@ cmake --build build -j
 
 `demo_profile_report` печатает CSV-таблицу CKKS-профилей, используемых в демо: степень полиномиального модуля, число слотов, цепочку коэффициентных модулей, суммарный размер modulus, масштаб и оценку доступной глубины умножений.
 
+`demo_security_report` печатает CSV-таблицу проверки профилей по лимитам Microsoft SEAL для `tc128`, `tc192` и `tc256`. Общий уровень проекта определяется минимальным уровнем среди используемых профилей.
+
 ## Тесты
 
-`test_smoke` — покрывает encode → encrypt → mul_relin_rescale → decrypt, а также add/sub/rotate, ABFT checksum, ошибки без нужных ключей и базовую валидацию профиля.
+`test_smoke` — покрывает encode → encrypt → mul_relin_rescale → decrypt, а также add/sub/rotate, ABFT checksum, ошибки без нужных ключей, базовую валидацию профиля и security report.
 
 ```bash
 cmake -S . -B build -DBUILD_TESTING=ON
@@ -85,6 +88,8 @@ ctest --test-dir build --output-on-failure
 
 Модуль `m2424::profile_report` формирует табличное описание выбранных CKKS-параметров.
 
+Модуль `m2424::security_report` проверяет суммарный размер коэффициентного модуля относительно лимитов Microsoft SEAL для `tc128`, `tc192` и `tc256`.
+
 Строгие математические формулировки для каждого метода вынесены в `api.tex`.
 
 Функция `m2424::version()` отдаёт семантическую версию библиотеки и используется в демо как sanity‑check линковки.
@@ -110,4 +115,5 @@ ctest --test-dir build --output-on-failure
 - [x] Добавить прикладной сценарий защищённой статистики.
 - [x] Выделить начальный bootstrapping-модуль с диагностикой глубины и статусом этапов.
 - [x] Добавить отчёт по CKKS-профилям и расчётным параметрам.
+- [x] Добавить программный отчёт по криптостойкости CKKS-профилей.
 - [ ] Реализовать строительные блоки bootstrapping: полиномиальную аппроксимацию и rotation-based linear transforms.

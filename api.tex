@@ -297,6 +297,46 @@ Bootstrapping-модуль выделен как отдельный компон
     и \(\mathsf{level}(c') > \mathsf{level}(c)\).
 \end{itemize}
 
+\section*{Отчёт по криптостойкости профилей}
+
+Для CKKS-профиля вычисляется суммарный размер коэффициентного модуля:
+\[
+    \log_2(Q)
+    \approx
+    \sum_i \mathsf{coeff\_modulus\_bits}_i.
+\]
+
+Для каждого профиля библиотека сравнивает это значение с лимитами
+Microsoft SEAL:
+\[
+    \log_2(Q) \leq
+    \mathsf{CoeffModulus::MaxBitCount}(N,\mathsf{sec\_level}).
+\]
+
+В отчёте фиксируются проверки для уровней:
+\[
+    \mathsf{tc128},\quad \mathsf{tc192},\quad \mathsf{tc256}.
+\]
+
+Для текущих профилей:
+\[
+\begin{array}{|c|c|c|c|c|c|}
+\hline
+\text{Профиль} & N & \log_2(Q) & \mathsf{tc128} & \mathsf{tc192} & \mathsf{tc256} \\
+\hline
+\texttt{basic\_ckks} & 8192 & 200 & \mathsf{PASS} & \mathsf{FAIL} & \mathsf{FAIL} \\
+\hline
+\texttt{depth\_ckks} & 16384 & 280 & \mathsf{PASS} & \mathsf{PASS} & \mathsf{FAIL} \\
+\hline
+\end{array}
+\]
+
+Общий уровень проекта определяется минимальным уровнем среди используемых
+профилей:
+\[
+    \min(\mathsf{tc128}, \mathsf{tc192}) = \mathsf{tc128}.
+\]
+
 \section*{Демонстрационные приложения}
 
 В проекте поддерживаются следующие запускные сценарии:
@@ -317,6 +357,8 @@ Bootstrapping-модуль выделен как отдельный компон
 \texttt{bench\_ckks} & Измерение времени, ошибки и размеров ciphertext/ключей. \\
 \hline
 \texttt{demo\_profile\_report} & Таблица используемых CKKS-профилей. \\
+\hline
+\texttt{demo\_security\_report} & Проверка профилей по лимитам Microsoft SEAL. \\
 \hline
 \end{array}
 \]
