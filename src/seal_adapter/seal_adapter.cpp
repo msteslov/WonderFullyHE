@@ -149,6 +149,27 @@ void SealAdapter::keygen(bool need_relin, bool need_galois) {
     pimpl_->has_keys = true;
 }
 
+void SealAdapter::keygen(const std::vector<int>& rotation_steps, bool need_relin) {
+    if (!pimpl_->context) throw std::runtime_error("SealAdapter not initialized");
+    seal::KeyGenerator keygen(*pimpl_->context);
+    pimpl_->sk = keygen.secret_key();
+    keygen.create_public_key(pimpl_->pk);
+    pimpl_->has_relin = false;
+    pimpl_->has_galois = false;
+    if (need_relin) {
+        keygen.create_relin_keys(pimpl_->rlk);
+        pimpl_->has_relin = true;
+    }
+    if (!rotation_steps.empty()) {
+        keygen.create_galois_keys(rotation_steps, pimpl_->gk);
+        pimpl_->has_galois = true;
+    }
+
+    pimpl_->encryptor = std::make_unique<seal::Encryptor>(*pimpl_->context, pimpl_->pk);
+    pimpl_->decryptor = std::make_unique<seal::Decryptor>(*pimpl_->context, pimpl_->sk);
+    pimpl_->has_keys = true;
+}
+
 std::size_t SealAdapter::slot_count() const {
     if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
     return pimpl_->slot_count;
@@ -162,6 +183,25 @@ Plain SealAdapter::encode(const std::vector<double>& vals) {
     }
     Plain out;
     pimpl_->encoder->encode(vals, pimpl_->scale, out.pimpl_->pt);
+    return out;
+}
+
+Plain SealAdapter::encode_like(const std::vector<double>& vals, const Cipher& cipher) {
+    if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
+    if (vals.empty()) throw std::invalid_argument("input vector must not be empty");
+    if (vals.size() > pimpl_->slot_count || (pimpl_->profile.slots && vals.size() > pimpl_->profile.slots)) {
+        throw std::invalid_argument("input size exceeds configured slots");
+    }
+    Plain out;
+    pimpl_->encoder->encode(vals, cipher.pimpl_->ct.parms_id(), cipher.pimpl_->ct.scale(), out.pimpl_->pt);
+    return out;
+}
+
+Plain SealAdapter::encode_scalar_like(double value, const Cipher& cipher) {
+    if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
+    if (!std::isfinite(value)) throw std::invalid_argument("scalar must be finite");
+    Plain out;
+    pimpl_->encoder->encode(value, cipher.pimpl_->ct.parms_id(), cipher.pimpl_->ct.scale(), out.pimpl_->pt);
     return out;
 }
 
@@ -200,6 +240,28 @@ Cipher SealAdapter::sub(const Cipher& a, const Cipher& b) {
     return out;
 }
 
+Cipher SealAdapter::add_plain(const Cipher& a, const Plain& b) {
+    if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
+    Cipher out;
+    pimpl_->evaluator->add_plain(a.pimpl_->ct, b.pimpl_->pt, out.pimpl_->ct);
+    return out;
+}
+
+Cipher SealAdapter::sub_plain(const Cipher& a, const Plain& b) {
+    if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
+    Cipher out;
+    pimpl_->evaluator->sub_plain(a.pimpl_->ct, b.pimpl_->pt, out.pimpl_->ct);
+    return out;
+}
+
+Cipher SealAdapter::mul_plain_rescale(const Cipher& a, const Plain& b) {
+    if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
+    Cipher out;
+    pimpl_->evaluator->multiply_plain(a.pimpl_->ct, b.pimpl_->pt, out.pimpl_->ct);
+    pimpl_->evaluator->rescale_to_next_inplace(out.pimpl_->ct);
+    return out;
+}
+
 Cipher SealAdapter::mul_relin_rescale(const Cipher& a, const Cipher& b) {
     if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
     if (!pimpl_->has_relin) throw std::runtime_error("relin keys not generated");
@@ -207,6 +269,19 @@ Cipher SealAdapter::mul_relin_rescale(const Cipher& a, const Cipher& b) {
     pimpl_->evaluator->multiply(a.pimpl_->ct, b.pimpl_->ct, out.pimpl_->ct);
     pimpl_->evaluator->relinearize_inplace(out.pimpl_->ct, pimpl_->rlk);
     pimpl_->evaluator->rescale_to_next_inplace(out.pimpl_->ct);
+    return out;
+}
+
+Cipher SealAdapter::mod_switch_to(const Cipher& cipher, const Cipher& target) {
+    if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
+    Cipher out = cipher;
+    pimpl_->evaluator->mod_switch_to_inplace(out.pimpl_->ct, target.pimpl_->ct.parms_id());
+    return out;
+}
+
+Cipher SealAdapter::match_level_and_scale(const Cipher& cipher, const Cipher& target) {
+    Cipher out = mod_switch_to(cipher, target);
+    out.pimpl_->ct.scale() = target.pimpl_->ct.scale();
     return out;
 }
 

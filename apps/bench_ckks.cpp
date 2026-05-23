@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <functional>
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,10 @@ void print_row(const char* operation, std::size_t poly_degree, std::size_t paylo
                double time_ms, double max_error, double mean_error, std::size_t bytes) {
     std::printf("%s,%zu,%zu,%.6f,%.6e,%.6e,%zu\n",
                 operation, poly_degree, payload_size, time_ms, max_error, mean_error, bytes);
+}
+
+std::vector<double> payload_head(const std::vector<double>& values, std::size_t payload_size) {
+    return std::vector<double>(values.begin(), values.begin() + std::min(values.size(), payload_size));
 }
 
 } // namespace
@@ -48,7 +53,7 @@ int main() {
 
     m2424::Cipher added;
     double add_ms = elapsed_ms([&] { added = adapter.add(cipher, cipher); });
-    auto add_decoded = adapter.decode(adapter.decrypt(added));
+    auto add_decoded = payload_head(adapter.decode(adapter.decrypt(added)), payload_size);
     std::vector<double> add_ref;
     add_ref.reserve(payload_size);
     for (double value : input) add_ref.push_back(value + value);
@@ -56,7 +61,7 @@ int main() {
 
     m2424::Cipher multiplied;
     double mul_ms = elapsed_ms([&] { multiplied = adapter.mul_relin_rescale(cipher, cipher); });
-    auto mul_decoded = adapter.decode(adapter.decrypt(multiplied));
+    auto mul_decoded = payload_head(adapter.decode(adapter.decrypt(multiplied)), payload_size);
     std::vector<double> mul_ref;
     mul_ref.reserve(payload_size);
     for (double value : input) mul_ref.push_back(value * value);
@@ -64,7 +69,7 @@ int main() {
 
     m2424::Cipher rotated;
     double rotate_ms = elapsed_ms([&] { rotated = adapter.rotate(cipher, 1); });
-    auto rotated_decoded = adapter.decode(adapter.decrypt(rotated));
+    auto rotated_decoded = payload_head(adapter.decode(adapter.decrypt(rotated)), payload_size);
     std::vector<double> rotate_ref;
     rotate_ref.reserve(payload_size);
     for (std::size_t i = 0; i < payload_size; ++i) {

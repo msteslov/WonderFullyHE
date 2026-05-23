@@ -2,10 +2,13 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <numeric>
 #include <stdexcept>
 #include "m2424/abft.hpp"
 #include "m2424/accuracy.hpp"
 #include "m2424/bootstrap.hpp"
+#include "m2424/linear_transform.hpp"
+#include "m2424/polynomial.hpp"
 #include "m2424/security_report.hpp"
 #include "m2424/seal_adapter.hpp"
 
@@ -105,6 +108,21 @@ int main() {
     auto ct_sub = adapter.sub(ct_add, ct);
     auto sub_out = head(adapter.decode(adapter.decrypt(ct_sub)), N);
 
+    auto plain_shift = adapter.encode_like(std::vector<double>(N, 0.25), ct);
+    auto ct_add_plain = adapter.add_plain(ct, plain_shift);
+    auto add_plain_out = head(adapter.decode(adapter.decrypt(ct_add_plain)), N);
+    std::vector<double> add_plain_ref; add_plain_ref.reserve(N);
+    for (double x : input) add_plain_ref.push_back(x + 0.25);
+
+    auto ct_sub_plain = adapter.sub_plain(ct_add_plain, plain_shift);
+    auto sub_plain_out = head(adapter.decode(adapter.decrypt(ct_sub_plain)), N);
+
+    auto scalar = adapter.encode_scalar_like(1.5, ct);
+    auto ct_mul_plain = adapter.mul_plain_rescale(ct, scalar);
+    auto mul_plain_out = head(adapter.decode(adapter.decrypt(ct_mul_plain)), N);
+    std::vector<double> mul_plain_ref; mul_plain_ref.reserve(N);
+    for (double x : input) mul_plain_ref.push_back(1.5 * x);
+
     auto ct_rot = adapter.rotate(ct, 1);
     auto rot_out = head(adapter.decode(adapter.decrypt(ct_rot)), N);
     std::vector<double> rot_ref; rot_ref.reserve(N);
@@ -123,6 +141,33 @@ int main() {
     for (std::size_t i = 0; i < 16; ++i) depth_input.push_back(0.25 + 0.25 * std::sin(static_cast<double>(i) / 7.0));
     m2424::Bootstrapper bootstrapper(depth_adapter);
     auto bootstrap_report = bootstrapper.analyze_depth(depth_input, 8);
+
+    auto depth_ct = depth_adapter.encrypt(depth_adapter.encode(depth_input));
+    m2424::LinearTransform transform({
+        {0, {0.5}},
+        {1, {0.25}}
+    });
+    auto linear_ct = transform.apply(depth_adapter, depth_ct);
+    auto linear_out = head(depth_adapter.decode(depth_adapter.decrypt(linear_ct)), depth_input.size());
+    std::vector<double> linear_ref; linear_ref.reserve(depth_input.size());
+    for (std::size_t i = 0; i < depth_input.size(); ++i) {
+        const double rotated = i + 1 < depth_input.size() ? depth_input[i + 1] : 0.0;
+        linear_ref.push_back(0.5 * depth_input[i] + 0.25 * rotated);
+    }
+
+    auto sum_ct = m2424::sum_slots(depth_adapter, depth_ct, depth_input.size());
+    auto sum_out = head(depth_adapter.decode(depth_adapter.decrypt(sum_ct)), depth_input.size());
+    const double sum_ref_value = std::accumulate(depth_input.begin(), depth_input.end(), 0.0);
+
+    m2424::PolynomialEvaluator polynomial({
+        {1, 0.75},
+        {3, -0.125}
+    });
+    auto polynomial_ct = polynomial.evaluate(depth_adapter, depth_ct);
+    auto polynomial_out = head(depth_adapter.decode(depth_adapter.decrypt(polynomial_ct)), depth_input.size());
+    std::vector<double> polynomial_ref; polynomial_ref.reserve(depth_input.size());
+    for (double x : depth_input) polynomial_ref.push_back(0.75 * x - 0.125 * x * x * x);
+
     const auto basic_security = m2424::analyze_security("basic_ckks", prof);
     const auto depth_security = m2424::analyze_security("depth_ckks", depth_profile);
     const std::vector<m2424::SecurityReport> security_reports{basic_security, depth_security};
@@ -151,10 +196,19 @@ int main() {
         && has_stage(bootstrap_report, "EvalMod")
         && has_stage(bootstrap_report, "SlotToCoeff");
 
-    bool ok = std::isfinite(mul_accuracy.max_abs_error) && std::isfinite(mul_accuracy.mean_abs_error) && mul_accuracy.ok
+    const bool arithmetic_ok = std::isfinite(mul_accuracy.max_abs_error) && std::isfinite(mul_accuracy.mean_abs_error) && mul_accuracy.ok
         && close_enough(add_ref, add_out, 1e-5)
         && close_enough(input, sub_out, 1e-5)
-        && close_enough(rot_ref, rot_out, 1e-5)
+        && close_enough(add_plain_ref, add_plain_out, 1e-5)
+        && close_enough(input, sub_plain_out, 1e-5)
+        && close_enough(mul_plain_ref, mul_plain_out, 1e-5)
+        && close_enough(rot_ref, rot_out, 1e-5);
+    const bool bootstrap_parts_ok = close_enough(linear_ref, linear_out, 1e-4)
+        && std::abs(sum_out.front() - sum_ref_value) < 1e-4
+        && close_enough(polynomial_ref, polynomial_out, 1e-3);
+
+    bool ok = arithmetic_ok
+        && bootstrap_parts_ok
         && abft_check.ok
         && adapter.slot_count() == slots
         && adapter.serialized_size(ct) > 0
@@ -171,7 +225,13 @@ int main() {
         && expect_invalid_argument(accuracy_size_mismatch_case)
         && security_report_ok
         && bootstrap_report_ok;
-    std::printf("[test_smoke] max=%.6e mean=%.6e threshold=1e-3 => %s\n",
-               mul_accuracy.max_abs_error, mul_accuracy.mean_abs_error, ok ? "PASS" : "FAIL");
+    std::printf("[test_smoke] max=%.6e mean=%.6e arithmetic=%s bootstrap_parts=%s security=%s bootstrap_report=%s => %s\n",
+               mul_accuracy.max_abs_error,
+               mul_accuracy.mean_abs_error,
+               arithmetic_ok ? "PASS" : "FAIL",
+               bootstrap_parts_ok ? "PASS" : "FAIL",
+               security_report_ok ? "PASS" : "FAIL",
+               bootstrap_report_ok ? "PASS" : "FAIL",
+               ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

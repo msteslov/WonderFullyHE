@@ -2,7 +2,9 @@ add_library(m2424
     accuracy.cpp
     abft.cpp
     bootstrap.cpp
+    linear_transform.cpp
     m2424.cpp
+    polynomial.cpp
     profile_report.cpp
     security_report.cpp
     seal_adapter/seal_adapter.cpp

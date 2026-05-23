@@ -11,6 +11,8 @@ WonderFullyHE реализует библиотеку защищённых вы�
         +-- SealAdapter: CKKS-контекст, ключи, encode/encrypt/evaluate/decrypt
         +-- accuracy: отчёты по максимальной и средней ошибке
         +-- abft: checksum-проверки корректности вычислений
+        +-- LinearTransform: линейные преобразования через ротации
+        +-- PolynomialEvaluator: вычисление полиномов от ciphertext
         +-- Bootstrapper: диагностика глубины и отчёт по bootstrapping-конвейеру
         +-- profile_report: воспроизводимые таблицы CKKS-параметров
         |
@@ -29,8 +31,12 @@ Microsoft SEAL как CKKS-движок
 - encode/decode;
 - encrypt/decrypt;
 - сложение и вычитание;
+- сложение и вычитание ciphertext с plaintext;
+- умножение ciphertext на plaintext с rescale;
 - умножение с relinearize и rescale;
 - ротация вектора;
+- генерация только нужных Galois-ключей для заданных ротаций;
+- выравнивание уровня и масштаба ciphertext;
 - размеры сериализованных объектов;
 - диагностика ciphertext: `scale`, `chain_index`, `coeff_modulus_size`.
 
@@ -58,6 +64,22 @@ compare(expected, actual, tolerance)
 - сохранение суммы при ротации.
 
 ABFT-слой используется для проверки численной согласованности защищённых вычислений.
+
+### LinearTransform
+
+`LinearTransform` реализует преобразования вида:
+
+```text
+sum_i a_i * rotate(ct, k_i)
+```
+
+Этот блок нужен для этапов `CoeffToSlot` и `SlotToCoeff`, где вычисление строится из ротаций CKKS-слотов, умножений на plaintext-коэффициенты и сложений.
+
+Отдельная функция `sum_slots` считает сумму заданного числа слотов и помещает результат в первый слот ciphertext. Для неё используется последовательность ротаций по степеням двойки.
+
+### PolynomialEvaluator
+
+`PolynomialEvaluator` вычисляет полином от ciphertext по заданным степеням и коэффициентам. Блок нужен для этапа `EvalMod`, где модульная редукция приближается полиномом.
 
 ### Bootstrapper
 
@@ -88,12 +110,13 @@ ABFT-слой используется для проверки численно�
 - `demo_noise_growth` показывает расход глубины и остановку вычисления без bootstrapping.
 - `demo_bootstrap_pipeline` печатает отчёт bootstrapping-модуля.
 - `bench_ckks` измеряет время операций, численную ошибку и размеры сериализованных объектов.
+- `bench_bootstrap_parts` измеряет `mul_plain_rescale`, `linear_transform`, `sum_slots` и `polynomial_eval`.
 - `demo_profile_report` печатает таблицу CKKS-параметров.
 
 ## Следующие шаги реализации
 
 Следующий этап реализации — развитие вычислительных блоков bootstrapping:
 
-1. полиномиальные вычисления для `EvalMod`;
-2. линейные преобразования через ротации для `CoeffToSlot` и `SlotToCoeff`;
-3. проверка критериев `Dec(c') ≈ Dec(c)` и `level(c') > level(c)` на end-to-end сценарии.
+1. подстановка рассчитанных матриц `CoeffToSlot` и `SlotToCoeff` в `LinearTransform`;
+2. подстановка коэффициентов полинома `EvalMod` в `PolynomialEvaluator`;
+3. сборка `Bootstrapper::refresh(cipher)` и проверка критериев `Dec(c') ≈ Dec(c)`, `level(c') > level(c)` на end-to-end сценарии.

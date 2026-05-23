@@ -25,6 +25,8 @@ WonderFullyHE реализует библиотечный слой для защ
     \item кодирование, шифрование, вычисления, расшифрование и декодирование;
     \item контроль численной ошибки;
     \item ABFT-проверки корректности вычислений;
+    \item rotation-based линейные преобразования;
+    \item вычисление полиномов от ciphertext;
     \item диагностику вычислительной глубины и bootstrapping-конвейер.
 \end{itemize}
 
@@ -71,6 +73,14 @@ WonderFullyHE реализует библиотечный слой для защ
 \]
 где $r,g \in \{0,1\}$ задают необходимость Relin- и Galois-ключей.
 
+Для оптимизации размера Galois-ключей поддерживается генерация только
+заданного набора ротаций:
+\[
+    \texttt{keygen}(K,r) \mapsto
+    (\mathsf{sk}, \mathsf{pk}, \mathsf{rlk}^{(r)}, \{\mathsf{gk}_k\}_{k \in K}),
+\]
+где \(K\) --- множество rotation steps.
+
 Кодирование и шифрование:
 \[
     \texttt{encode}(\mathbf{x}) =
@@ -91,6 +101,14 @@ WonderFullyHE реализует библиотечный слой для защ
     \mathsf{Decode}_{\Delta}(p) = \hat{\mathbf{x}}.
 \]
 
+Для операций ciphertext--plaintext используется кодирование на уровне
+заданного ciphertext:
+\[
+    \texttt{encode\_like}(\mathbf{a},c)
+    =
+    \mathsf{Encode}_{\mathsf{scale}(c),\mathsf{level}(c)}(\mathbf{a}).
+\]
+
 \section*{Гомоморфные операции}
 
 Сложение:
@@ -101,6 +119,20 @@ WonderFullyHE реализует библиотечный слой для защ
 Вычитание:
 \[
     \texttt{sub}(c_1,c_2) = c_1 - c_2.
+\]
+
+Сложение и вычитание с plaintext:
+\[
+    \texttt{add\_plain}(c,p) = c + p,
+    \qquad
+    \texttt{sub\_plain}(c,p) = c - p.
+\]
+
+Умножение ciphertext на plaintext с rescale:
+\[
+    \texttt{mul\_plain\_rescale}(c,p)
+    =
+    \mathsf{Rescale}(c \cdot p).
 \]
 
 Умножение с релинеаризацией и rescale:
@@ -126,6 +158,85 @@ WonderFullyHE реализует библиотечный слой для защ
 \[
     \texttt{rotate}(c,k) = \mathsf{Rot}_k(c).
 \]
+
+Для сложения результатов разных степеней поддерживается выравнивание
+уровня и масштаба:
+\[
+    \texttt{match\_level\_and\_scale}(c,t)
+    \mapsto c^*:
+    \mathsf{level}(c^*)=\mathsf{level}(t),
+    \quad
+    \mathsf{scale}(c^*)=\mathsf{scale}(t).
+\]
+
+\section*{Линейные преобразования через ротации}
+
+Модуль \texttt{LinearTransform} применяет преобразование:
+\[
+    L(c)
+    =
+    \sum_{i=0}^{m-1}
+    a_i \cdot \mathsf{Rot}_{k_i}(c),
+\]
+где \(a_i\) --- plaintext-коэффициенты, а \(k_i\) --- шаги ротации.
+
+В коде каждый член вычисляется как:
+\[
+    t_i =
+    \texttt{mul\_plain\_rescale}
+    \left(
+        \texttt{rotate}(c,k_i),
+        \texttt{encode\_like}(a_i,\texttt{rotate}(c,k_i))
+    \right),
+\]
+после чего члены складываются на одном уровне.
+
+Функция \texttt{sum\_slots} считает сумму первых \(m\) слотов:
+\[
+    s =
+    \sum_{i=0}^{m-1} x_i.
+\]
+Для \(m=2^d\) используется последовательность ротаций:
+\[
+    1,2,4,\ldots,2^{d-1}.
+\]
+Результат суммы помещается в первый CKKS-слот.
+
+\section*{Вычисление полиномов}
+
+Модуль \texttt{PolynomialEvaluator} вычисляет полином:
+\[
+    P(c)
+    =
+    \sum_{j \in D} \alpha_j c^j,
+\]
+где \(D\) --- набор используемых степеней, а \(\alpha_j\) ---
+вещественные коэффициенты.
+
+Степени ciphertext строятся последовательными умножениями:
+\[
+    c^{j+1}
+    =
+    \texttt{mul\_relin\_rescale}
+    \left(
+        c^j,
+        \texttt{match\_level\_and\_scale}(c,c^j)
+    \right).
+\]
+
+Каждый член полинома умножается на plaintext-коэффициент:
+\[
+    \alpha_j c^j
+    =
+    \texttt{mul\_plain\_rescale}
+    \left(
+        c^j,
+        \texttt{encode\_scalar\_like}(\alpha_j,c^j)
+    \right).
+\]
+
+Перед сложением членов выполняется выравнивание уровня и масштаба.
+Этот блок используется как программная основа для этапа \(\mathsf{EvalMod}\).
 
 \section*{Диагностика ciphertext}
 
@@ -355,6 +466,8 @@ Microsoft SEAL:
 \texttt{demo\_bootstrap\_pipeline} & Отчёт bootstrapping-модуля. \\
 \hline
 \texttt{bench\_ckks} & Измерение времени, ошибки и размеров ciphertext/ключей. \\
+\hline
+\texttt{bench\_bootstrap\_parts} & Измерение plaintext-умножения, линейного преобразования, суммы слотов и полинома. \\
 \hline
 \texttt{demo\_profile\_report} & Таблица используемых CKKS-профилей. \\
 \hline

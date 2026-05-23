@@ -1,12 +1,6 @@
-## English summary
-
-WonderFullyHE is an educational/research C++ prototype for CKKS-based protected computations on top of Microsoft SEAL. It includes a SEAL adapter, accuracy tracking, ABFT checks, depth diagnostics, benchmark demos, and a bootstrapping pipeline report.
-
-The project is not a production-ready cryptographic library. Current implementation focuses on reproducible experiments, parameter reporting, correctness checks, and the software structure needed for CKKS bootstrapping research.
-
 ## Обзор
 
-WonderFullyHE использует Microsoft SEAL в роли криптографического движка CKKS. Поверх SEAL реализуется библиотечный слой для защищённых вычислений: адаптер скрывает детали SEAL, модуль точности задаёт единые метрики ошибки, ABFT-модуль проверяет численную согласованность результатов, а benchmark-приложение собирает первичные метрики времени, точности и размера сериализованных объектов.
+WonderFullyHE использует Microsoft SEAL в роли криптографического движка CKKS. Поверх SEAL реализован библиотечный слой `m2424` для защищённых облачных вычислений: адаптер скрывает детали SEAL, модуль точности задаёт единые метрики ошибки, ABFT-модуль проверяет численную согласованность результатов, benchmark-приложения собирают метрики времени/точности/размеров, а bootstrapping-блоки готовят вычислительную основу для `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff`.
 
 ## Клонирование
 
@@ -33,6 +27,7 @@ cmake --build build -j
 ./build/demo_noise_growth
 ./build/demo_secure_stats
 ./build/demo_bootstrap_pipeline
+./build/bench_bootstrap_parts
 ./build/demo_profile_report
 ./build/demo_security_report
 ```
@@ -47,13 +42,15 @@ cmake --build build -j
 
 `demo_bootstrap_pipeline` печатает отчёт bootstrapping-модуля: профиль `depth_ckks`, границу вычислительной глубины, параметры ciphertext и этапы конвейера `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff`.
 
-`demo_profile_report` печатает CSV-таблицу CKKS-профилей, используемых в демо: степень полиномиального модуля, число слотов, цепочку коэффициентных модулей, суммарный размер modulus, масштаб и оценку доступной глубины умножений.
+`bench_bootstrap_parts` печатает CSV по строительным блокам bootstrapping: `mul_plain_rescale`, rotation-based `linear_transform`, `sum_slots` и `polynomial_eval`. В отчёт входят время, уровень ciphertext, ошибка и сериализованный размер результата.
+
+`demo_profile_report` печатает CSV-таблицу CKKS-профилей, используемых в демо: степень полиномиального модуля, число доступных слотов, цепочку коэффициентных модулей, суммарный размер modulus, масштаб и оценку доступной глубины умножений.
 
 `demo_security_report` печатает CSV-таблицу проверки профилей по лимитам Microsoft SEAL для `tc128`, `tc192` и `tc256`. Общий уровень проекта определяется минимальным уровнем среди используемых профилей.
 
 ## Тесты
 
-`test_smoke` — покрывает encode → encrypt → mul_relin_rescale → decrypt, а также add/sub/rotate, ABFT checksum, ошибки без нужных ключей, базовую валидацию профиля и security report.
+`test_smoke` — покрывает encode → encrypt → mul_relin_rescale → decrypt, add/sub/rotate, plaintext-операции, linear transform, polynomial evaluator, `sum_slots`, ABFT checksum, ошибки без нужных ключей, базовую валидацию профиля и security report.
 
 ```bash
 cmake -S . -B build -DBUILD_TESTING=ON
@@ -73,16 +70,23 @@ ctest --test-dir build --output-on-failure
 Основные методы адаптера:
 - `SealAdapter::create(profile)` — конфигурирует CKKS‑контекст и encoder под заданный профиль.
 - `keygen(need_relin, need_galois)` — генерирует секретный/публичный ключи и по требованию Relin/Galois наборы.
+- `keygen(rotation_steps, need_relin)` — генерирует только нужные Galois-ключи для заданных ротаций.
 - `slot_count` — возвращает фактическое число CKKS-слотов для выбранного профиля.
 - `encode` / `decode` — преобразуют вещественный вектор в CKKS plaintext и обратно.
+- `encode_like`, `encode_scalar_like` — кодируют plaintext на уровне и масштабе заданного ciphertext.
 - `encrypt` / `decrypt` — обычные операции CKKS над plaintext/ciphertext.
-- `add`, `sub`, `mul_relin_rescale`, `rotate` — гомоморфные примитивы, делегирующие в `seal::Evaluator`.
+- `add`, `sub`, `add_plain`, `sub_plain`, `mul_plain_rescale`, `mul_relin_rescale`, `rotate` — гомоморфные примитивы, делегирующие в `seal::Evaluator`.
+- `mod_switch_to`, `match_level_and_scale` — выравнивание ciphertext перед сложением членов разных уровней.
 - `serialized_size`, `public_key_size`, `relin_keys_size`, `galois_keys_size` — вспомогательные методы для benchmark-измерений.
 - `info`, `scale`, `chain_index`, `coeff_modulus_size` — диагностика состояния ciphertext для анализа глубины и подготовки bootstrapping.
 
 Модуль `m2424::accuracy` задаёт единые метрики точности: `max_abs_error`, `mean_abs_error` и `compare(expected, actual, tolerance)`. Demo и тесты используют этот общий код, чтобы критерии корректности не расходились между сценариями.
 
 Модуль `m2424::abft` содержит checksum-инструменты: `append_checksum`, `checksum`, `verify_appended_checksum`, `verify_checksum_value`.
+
+Модуль `m2424::LinearTransform` применяет линейные преобразования вида `sum_i a_i * rotate(ct, k_i)`. Он нужен для rotation-based блоков `CoeffToSlot` и `SlotToCoeff`. Отдельная функция `sum_slots` считает сумму заданного числа слотов и помещает результат в первый слот.
+
+Модуль `m2424::PolynomialEvaluator` вычисляет полином от ciphertext по степенному базису. Он используется как программная основа для этапа `EvalMod`.
 
 Модуль `m2424::Bootstrapper` выделяет bootstrapping как отдельный компонент библиотеки. Реализация связывает диагностику вычислительной глубины с этапами CKKS bootstrapping-конвейера и фиксирует параметры ciphertext: `scale`, `chain_index`, размер ciphertext и критерии `Dec(c') ≈ Dec(c)`, `level(c') > level(c)`.
 
@@ -97,23 +101,36 @@ ctest --test-dir build --output-on-failure
 ## Структура каталога
 
 - `include/m2424/` — публичные C++-заголовки WonderFullyHE.
-- `src/` — реализация `SealAdapter` и версии.
+- `src/` — реализация адаптера, accuracy, ABFT, linear transform, polynomial evaluator, bootstrapping-отчёта, profile/security reports и версии.
 - `apps/` — демо.
 - `tests/` — компактные проверки корректности.
+- `.github/workflows/ci.yml` и `.gitlab-ci.yml` — CI-проверки сборки и тестов.
 - `extern/seal/` — git submodule Microsoft SEAL; все операции делегируются туда.
 
 ## Планируемое развитие
 
+Закрыто в текущей версии:
+
 - [x] Базовый CSV benchmark для encode/encrypt/decrypt/add/mul/rotate и размеров ключей.
-- [ ] Throughput для `mul_relin_rescale` в зависимости от `poly_modulus_degree` и глубины цепочки.
-- [ ] Латентность `rotate`/`rotate_inverse` для разных наборов Galois‑ключей.
-- [ ] Профилировка `encode`/`decode` на батчах (длина сигнала, влияние `scale`).
-- [ ] Снять отдельные метрики памяти для SEAL‑контекста, наборов ключей и промежуточных ciphertext.
 - [x] Расширить ABFT checksum с add/sub на mul и rotate.
-- [ ] Расширить ABFT checksum на цепочки операций.
 - [x] Добавить noise-growth demo перед проектированием bootstrapping-прототипа.
 - [x] Добавить прикладной сценарий защищённой статистики.
 - [x] Выделить начальный bootstrapping-модуль с диагностикой глубины и статусом этапов.
 - [x] Добавить отчёт по CKKS-профилям и расчётным параметрам.
 - [x] Добавить программный отчёт по криптостойкости CKKS-профилей.
-- [ ] Реализовать строительные блоки bootstrapping: полиномиальную аппроксимацию и rotation-based linear transforms.
+- [x] Добавить CI-конфигурации, лицензию, публичное описание проекта и `api.pdf`.
+- [x] Добавить plaintext-операции для bootstrapping-блоков.
+- [x] Добавить ограниченную генерацию Galois-ключей под заданные ротации.
+- [x] Добавить rotation-based `LinearTransform`, `sum_slots` и `PolynomialEvaluator`.
+- [x] Добавить benchmark строительных блоков bootstrapping.
+
+Следующие инженерные задачи:
+
+- [ ] Расширить benchmark до sweep-режима: несколько `poly_modulus_degree`, разные размеры payload и несколько повторов для усреднения времени.
+- [ ] Добавить отдельные измерения для `rotate` при разных шагах и наборах Galois-ключей.
+- [ ] Расширить ABFT checksum на цепочки операций, а не только на одиночные add/sub/mul/rotate.
+- [ ] Снять отдельные метрики памяти для SEAL-контекста, наборов ключей и промежуточных ciphertext; текущий benchmark уже фиксирует сериализованные размеры.
+- [ ] Разделить клиентский и облачный контекст выполнения: клиент генерирует ключи и шифрует данные, облачная сторона получает только публичные/evaluation-ключи и ciphertext.
+- [ ] Подставить математически рассчитанные матрицы `CoeffToSlot` и `SlotToCoeff`.
+- [ ] Подставить коэффициенты полинома `EvalMod` из математической модели.
+- [ ] Собрать end-to-end `Bootstrapper::refresh(cipher)` поверх готовых строительных блоков.
