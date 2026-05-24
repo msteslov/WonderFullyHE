@@ -29,6 +29,7 @@ cmake --build build -j
 ./build/demo_galois_key_optimization
 ./build/demo_bootstrap_pipeline
 ./build/bench_bootstrap_parts
+./build/bench_parallel_throughput
 ./build/demo_profile_report
 ./build/demo_security_report
 ```
@@ -46,6 +47,8 @@ cmake --build build -j
 `demo_bootstrap_pipeline` печатает отчёт bootstrapping-модуля: профиль `depth_ckks`, границу вычислительной глубины, параметры ciphertext и этапы конвейера `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff`.
 
 `bench_bootstrap_parts` печатает CSV по строительным блокам bootstrapping: `mul_plain_rescale`, rotation-based `linear_transform`, `sum_slots` и `polynomial_eval`. В отчёт входят время, уровень ciphertext, ошибка и сериализованный размер результата.
+
+`bench_parallel_throughput` измеряет масштабирование на независимых ciphertext. Benchmark разделяет `setup_ms` и `runtime_ms`: подготовка включает создание контекстов, ключей и входных ciphertext, а runtime измеряет параллельные вычисления над уже зашифрованными данными.
 
 `demo_profile_report` печатает CSV-таблицу CKKS-профилей, используемых в демо: степень полиномиального модуля, число доступных слотов, цепочку коэффициентных модулей, суммарный размер modulus, масштаб и оценку доступной глубины умножений.
 
@@ -127,6 +130,7 @@ ctest --test-dir build --output-on-failure
 - [x] Добавить rotation-based `LinearTransform`, `sum_slots` и `PolynomialEvaluator`.
 - [x] Добавить benchmark строительных блоков bootstrapping.
 - [x] Добавить демонстрацию уменьшения размера Galois-ключей при генерации только нужных ротаций.
+- [x] Добавить benchmark параллельной обработки независимых ciphertext для облачного сценария.
 
 Следующие инженерные задачи:
 

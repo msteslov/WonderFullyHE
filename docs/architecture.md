@@ -112,6 +112,7 @@ sum_i a_i * rotate(ct, k_i)
 - `demo_bootstrap_pipeline` печатает отчёт bootstrapping-модуля.
 - `bench_ckks` измеряет время операций, численную ошибку и размеры сериализованных объектов.
 - `bench_bootstrap_parts` измеряет `mul_plain_rescale`, `linear_transform`, `sum_slots` и `polynomial_eval`.
+- `bench_parallel_throughput` измеряет throughput при параллельной обработке независимых ciphertext.
 - `demo_profile_report` печатает таблицу CKKS-параметров.
 
 ## Следующие шаги реализации

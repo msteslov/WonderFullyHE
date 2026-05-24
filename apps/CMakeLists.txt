@@ -14,6 +14,10 @@ add_executable(bench_bootstrap_parts bench_bootstrap_parts.cpp)
 target_compile_features(bench_bootstrap_parts PRIVATE cxx_std_17)
 target_link_libraries(bench_bootstrap_parts PRIVATE m2424)
 
+add_executable(bench_parallel_throughput bench_parallel_throughput.cpp)
+target_compile_features(bench_parallel_throughput PRIVATE cxx_std_17)
+target_link_libraries(bench_parallel_throughput PRIVATE m2424)
+
 add_executable(demo_noise_growth demo_noise_growth.cpp)
 target_compile_features(demo_noise_growth PRIVATE cxx_std_17)
 target_link_libraries(demo_noise_growth PRIVATE m2424)
@@ -38,6 +42,6 @@ add_executable(demo_security_report demo_security_report.cpp)
 target_compile_features(demo_security_report PRIVATE cxx_std_17)
 target_link_libraries(demo_security_report PRIVATE m2424)
 
-set_target_properties(demo_basic demo_abft bench_ckks bench_bootstrap_parts demo_noise_growth demo_secure_stats demo_galois_key_optimization demo_bootstrap_pipeline demo_profile_report demo_security_report PROPERTIES
+set_target_properties(demo_basic demo_abft bench_ckks bench_bootstrap_parts bench_parallel_throughput demo_noise_growth demo_secure_stats demo_galois_key_optimization demo_bootstrap_pipeline demo_profile_report demo_security_report PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
