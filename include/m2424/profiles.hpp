@@ -15,5 +15,6 @@ CkksProfile depth_ckks();
 CkksProfile high_precision_ckks();
 
 std::vector<std::pair<std::string, CkksProfile>> all();
+CkksProfile by_name(const std::string& name);
 
 } // namespace m2424::profiles

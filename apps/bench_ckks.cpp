@@ -21,9 +21,10 @@ double elapsed_ms(const std::function<void()>& fn) {
     return std::chrono::duration<double, std::milli>(finish - start).count();
 }
 
-void print_row(const char* operation, std::size_t poly_degree, std::size_t payload_size,
+void print_row(const char* profile_name, const char* operation, std::size_t poly_degree, std::size_t payload_size,
                double time_ms, double max_error, double mean_error, std::size_t bytes) {
-    std::printf("%s,%zu,%zu,%.6f,%.6e,%.6e,%zu\n",
+    std::printf("%s,%s,%zu,%zu,%.6f,%.6e,%.6e,%zu\n",
+                profile_name,
                 operation, poly_degree, payload_size, time_ms, max_error, mean_error, bytes);
 }
 
@@ -33,9 +34,10 @@ std::vector<double> payload_head(const std::vector<double>& values, std::size_t 
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     const std::size_t payload_size = 64;
-    const auto profile = m2424::profiles::basic_ckks();
+    const std::string profile_name = argc > 1 ? argv[1] : "basic_ckks";
+    const auto profile = m2424::profiles::by_name(profile_name);
     const std::size_t poly_degree = profile.poly_modulus_degree;
 
     auto adapter = m2424::SealAdapter::create(profile);
@@ -82,20 +84,20 @@ int main() {
     double decrypt_ms = elapsed_ms([&] { decrypted = adapter.decrypt(cipher); });
     const double decode_ms = elapsed_ms([&] { (void)adapter.decode(decrypted); });
 
-    std::printf("operation,poly_modulus_degree,payload_size,time_ms,max_abs_error,mean_abs_error,serialized_bytes\n");
-    print_row("encode", poly_degree, payload_size, encode_ms, 0.0, 0.0, 0);
-    print_row("encrypt", poly_degree, payload_size, encrypt_ms, 0.0, 0.0, adapter.serialized_size(cipher));
-    print_row("decrypt", poly_degree, payload_size, decrypt_ms, 0.0, 0.0, 0);
-    print_row("decode", poly_degree, payload_size, decode_ms, 0.0, 0.0, 0);
-    print_row("add", poly_degree, payload_size, add_ms, add_accuracy.max_abs_error,
+    std::printf("profile,operation,poly_modulus_degree,payload_size,time_ms,max_abs_error,mean_abs_error,serialized_bytes\n");
+    print_row(profile_name.c_str(), "encode", poly_degree, payload_size, encode_ms, 0.0, 0.0, 0);
+    print_row(profile_name.c_str(), "encrypt", poly_degree, payload_size, encrypt_ms, 0.0, 0.0, adapter.serialized_size(cipher));
+    print_row(profile_name.c_str(), "decrypt", poly_degree, payload_size, decrypt_ms, 0.0, 0.0, 0);
+    print_row(profile_name.c_str(), "decode", poly_degree, payload_size, decode_ms, 0.0, 0.0, 0);
+    print_row(profile_name.c_str(), "add", poly_degree, payload_size, add_ms, add_accuracy.max_abs_error,
               add_accuracy.mean_abs_error, adapter.serialized_size(added));
-    print_row("mul_relin_rescale", poly_degree, payload_size, mul_ms, mul_accuracy.max_abs_error,
+    print_row(profile_name.c_str(), "mul_relin_rescale", poly_degree, payload_size, mul_ms, mul_accuracy.max_abs_error,
               mul_accuracy.mean_abs_error, adapter.serialized_size(multiplied));
-    print_row("rotate", poly_degree, payload_size, rotate_ms, rotate_accuracy.max_abs_error,
+    print_row(profile_name.c_str(), "rotate", poly_degree, payload_size, rotate_ms, rotate_accuracy.max_abs_error,
               rotate_accuracy.mean_abs_error, adapter.serialized_size(rotated));
-    print_row("public_key", poly_degree, payload_size, 0.0, 0.0, 0.0, adapter.public_key_size());
-    print_row("relin_keys", poly_degree, payload_size, 0.0, 0.0, 0.0, adapter.relin_keys_size());
-    print_row("galois_keys", poly_degree, payload_size, 0.0, 0.0, 0.0, adapter.galois_keys_size());
+    print_row(profile_name.c_str(), "public_key", poly_degree, payload_size, 0.0, 0.0, 0.0, adapter.public_key_size());
+    print_row(profile_name.c_str(), "relin_keys", poly_degree, payload_size, 0.0, 0.0, 0.0, adapter.relin_keys_size());
+    print_row(profile_name.c_str(), "galois_keys", poly_degree, payload_size, 0.0, 0.0, 0.0, adapter.galois_keys_size());
 
     return 0;
 }

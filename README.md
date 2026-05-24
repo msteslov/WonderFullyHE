@@ -37,7 +37,11 @@ cmake --build build -j
 
 `demo_abft` проверяет ABFT-инварианты: для `add/sub` полезная нагрузка дополняется checksum-слотом, для `mul` checksum произведения сравнивается с CPU-эталоном, а для `rotate` проверяется сохранение суммы по всем CKKS-слотам.
 
-`bench_ckks` печатает CSV со временем операций, ошибкой относительно CPU-эталона и сериализованными размерами ciphertext/ключей.
+`bench_ckks` печатает CSV со временем операций, ошибкой относительно CPU-эталона и сериализованными размерами ciphertext/ключей. По умолчанию используется `basic_ckks`; профиль можно передать первым аргументом, например:
+
+```bash
+./build/bench_ckks high_precision_ckks
+```
 
 `demo_noise_growth` печатает CSV по последовательным зашифрованным возведениям в квадрат. Сценарий показывает, как растёт ошибка, как меняются `scale`/`chain_index`, и где заканчивается доступная мультипликативная глубина без bootstrapping.
 
@@ -93,6 +97,8 @@ auto encrypted = adapter.encrypt(adapter.encode({1.0, 2.0, 3.0}));
 auto squared = adapter.mul_relin_rescale(encrypted, encrypted);
 auto decoded = adapter.decode(adapter.decrypt(squared));
 ```
+
+Если профиль выбирается из конфигурации или аргументов командной строки, используйте `m2424::profiles::by_name("high_precision_ckks")`.
 
 Подробные проектные заметки:
 - `docs/architecture.md` — слои библиотеки и роль каждого модуля.

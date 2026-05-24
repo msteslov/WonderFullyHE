@@ -82,6 +82,10 @@ static void accuracy_size_mismatch_case() {
     (void)m2424::compare({1.0, 2.0}, {1.0}, 1e-5);
 }
 
+static void unknown_profile_name_case() {
+    (void)m2424::profiles::by_name("unknown_ckks_profile");
+}
+
 static bool has_stage(const m2424::BootstrapReport& report, const char* name) {
     return std::any_of(report.stages.begin(), report.stages.end(), [name](const m2424::BootstrapStage& stage) {
         return stage.name == name;
@@ -92,6 +96,13 @@ static bool all_named_profiles_create_contexts() {
     for (const auto& entry : m2424::profiles::all()) {
         auto adapter = m2424::SealAdapter::create(entry.second);
         if (adapter.slot_count() != entry.second.poly_modulus_degree / 2) {
+            return false;
+        }
+        const auto resolved = m2424::profiles::by_name(entry.first);
+        if (resolved.poly_modulus_degree != entry.second.poly_modulus_degree
+            || resolved.coeff_modulus_bits != entry.second.coeff_modulus_bits
+            || resolved.scale != entry.second.scale
+            || resolved.slots != entry.second.slots) {
             return false;
         }
     }
@@ -287,6 +298,7 @@ int main() {
         && expect_runtime_error(mul_without_relin_case)
         && expect_runtime_error(rotate_without_galois_case)
         && expect_invalid_argument(accuracy_size_mismatch_case)
+        && expect_invalid_argument(unknown_profile_name_case)
         && zero_transform_ok
         && all_named_profiles_create_contexts()
         && security_report_ok

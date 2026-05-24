@@ -1,6 +1,7 @@
 #include "m2424/profiles.hpp"
 
 #include <cmath>
+#include <stdexcept>
 
 namespace m2424::profiles {
 
@@ -32,6 +33,15 @@ std::vector<std::pair<std::string, CkksProfile>> all() {
         {"depth_ckks", depth_ckks()},
         {"high_precision_ckks", high_precision_ckks()}
     };
+}
+
+CkksProfile by_name(const std::string& name) {
+    for (const auto& entry : all()) {
+        if (entry.first == name) {
+            return entry.second;
+        }
+    }
+    throw std::invalid_argument("unknown CKKS profile: " + name);
 }
 
 } // namespace m2424::profiles
