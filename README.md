@@ -26,6 +26,7 @@ cmake --build build -j
 ./build/bench_ckks
 ./build/demo_noise_growth
 ./build/demo_secure_stats
+./build/demo_galois_key_optimization
 ./build/demo_bootstrap_pipeline
 ./build/bench_bootstrap_parts
 ./build/demo_profile_report
@@ -39,6 +40,8 @@ cmake --build build -j
 `demo_noise_growth` печатает CSV по последовательным зашифрованным возведениям в квадрат. Сценарий показывает, как растёт ошибка, как меняются `scale`/`chain_index`, и где заканчивается доступная мультипликативная глубина без bootstrapping.
 
 `demo_secure_stats` показывает прикладной сценарий защищённой обработки данных: сумма и среднее считаются над зашифрованным вектором через ротации и сложения, после расшифровки результат сравнивается с CPU-эталоном.
+
+`demo_galois_key_optimization` сравнивает полный набор Galois-ключей с ограниченным набором rotation keys для конкретного вычисления. Сценарий показывает размер ключей, время генерации, время `linear_transform`/`sum_slots` и численную ошибку.
 
 `demo_bootstrap_pipeline` печатает отчёт bootstrapping-модуля: профиль `depth_ckks`, границу вычислительной глубины, параметры ciphertext и этапы конвейера `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff`.
 
@@ -123,6 +126,7 @@ ctest --test-dir build --output-on-failure
 - [x] Добавить ограниченную генерацию Galois-ключей под заданные ротации.
 - [x] Добавить rotation-based `LinearTransform`, `sum_slots` и `PolynomialEvaluator`.
 - [x] Добавить benchmark строительных блоков bootstrapping.
+- [x] Добавить демонстрацию уменьшения размера Galois-ключей при генерации только нужных ротаций.
 
 Следующие инженерные задачи:
 
@@ -134,3 +138,4 @@ ctest --test-dir build --output-on-failure
 - [ ] Подставить математически рассчитанные матрицы `CoeffToSlot` и `SlotToCoeff`.
 - [ ] Подставить коэффициенты полинома `EvalMod` из математической модели.
 - [ ] Собрать end-to-end `Bootstrapper::refresh(cipher)` поверх готовых строительных блоков.
+- [ ] Добавить сравнение с OpenFHE для тех же строительных блоков и для end-to-end refresh после завершения bootstrapping.
