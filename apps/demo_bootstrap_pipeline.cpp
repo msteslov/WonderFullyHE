@@ -1,6 +1,6 @@
 #include "m2424/bootstrap.hpp"
+#include "m2424/profiles.hpp"
 
-#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -20,9 +20,8 @@ static void print_metrics(const char* label, const m2424::BootstrapCipherMetrics
 }
 
 int main() {
-    const std::size_t poly_degree = 16384;
     const std::size_t payload_size = 32;
-    m2424::CkksProfile profile{poly_degree, {60, 40, 40, 40, 40, 60}, std::pow(2.0, 40), poly_degree / 2};
+    const auto profile = m2424::profiles::depth_ckks();
 
     auto adapter = m2424::SealAdapter::create(profile);
     adapter.keygen(true, true);
@@ -38,7 +37,8 @@ int main() {
 
     std::printf("bootstrap_pipeline_status\n");
     std::printf("profile,poly_modulus_degree,payload_size,scale,coeff_modulus_bits\n");
-    std::printf("depth_ckks,%zu,%zu,%.6e,60-40-40-40-40-60\n", poly_degree, payload_size, profile.scale);
+    std::printf("depth_ckks,%zu,%zu,%.6e,60-40-40-40-40-60\n",
+                profile.poly_modulus_degree, payload_size, profile.scale);
     std::printf("successful_multiplications=%zu\n", report.successful_multiplications);
     std::printf("next_exponent=%zu\n", report.next_exponent * 2);
     std::printf("depth_stop_reason=%s\n", report.stop_reason.c_str());

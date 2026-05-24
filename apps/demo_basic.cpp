@@ -19,9 +19,7 @@ static std::vector<double> rotate_left(const std::vector<double>& v, int steps) 
 }
 
 int main() {
-    const std::size_t poly_modulus_degree = 8192;
-    const std::size_t slots = poly_modulus_degree / 2; // 4096 for CKKS
-    m2424::CkksProfile prof{poly_modulus_degree, {60, 40, 40, 60}, std::pow(2.0, 40), slots};
+    const auto prof = m2424::profiles::basic_ckks();
     auto adapter = m2424::SealAdapter::create(prof);
     adapter.keygen(true, true);
 

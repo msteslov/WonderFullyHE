@@ -5,14 +5,17 @@ add_library(m2424
     linear_transform.cpp
     m2424.cpp
     polynomial.cpp
+    profiles.cpp
     profile_report.cpp
     security_report.cpp
     seal_adapter/seal_adapter.cpp
 )
+add_library(m2424::m2424 ALIAS m2424)
 
 target_include_directories(m2424
     PUBLIC
-        ${PROJECT_SOURCE_DIR}/include
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
 )
 
 target_compile_features(m2424 PUBLIC cxx_std_17)

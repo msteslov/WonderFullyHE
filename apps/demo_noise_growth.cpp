@@ -1,4 +1,5 @@
 #include "m2424/accuracy.hpp"
+#include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
 
 #include <algorithm>
@@ -34,11 +35,10 @@ void print_row(std::size_t step, std::size_t exponent, double time_ms, const m24
 } // namespace
 
 int main() {
-    const std::size_t poly_degree = 16384;
     const std::size_t payload_size = 32;
     const std::size_t max_steps = 8;
 
-    m2424::CkksProfile profile{poly_degree, {60, 40, 40, 40, 40, 60}, std::pow(2.0, 40), poly_degree / 2};
+    const auto profile = m2424::profiles::depth_ckks();
     auto adapter = m2424::SealAdapter::create(profile);
     adapter.keygen(true, false);
 

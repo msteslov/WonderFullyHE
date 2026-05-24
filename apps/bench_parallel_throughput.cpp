@@ -1,4 +1,5 @@
 #include "m2424/accuracy.hpp"
+#include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
 
 #include <algorithm>
@@ -59,15 +60,9 @@ std::vector<double> square_ref(const std::vector<double>& input) {
 } // namespace
 
 int main() {
-    const std::size_t poly_modulus_degree = 8192;
     const std::size_t payload_size = 64;
     const std::size_t task_count = 32;
-    const m2424::CkksProfile profile{
-        poly_modulus_degree,
-        {60, 40, 40, 60},
-        std::pow(2.0, 40),
-        poly_modulus_degree / 2
-    };
+    const auto profile = m2424::profiles::basic_ckks();
 
     const std::vector<std::size_t> thread_counts{1, 2, 4, 8};
 

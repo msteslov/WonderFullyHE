@@ -1,6 +1,7 @@
 #include "m2424/accuracy.hpp"
 #include "m2424/linear_transform.hpp"
 #include "m2424/polynomial.hpp"
+#include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
 
 #include <algorithm>
@@ -47,10 +48,9 @@ void print_row(const char* block,
 } // namespace
 
 int main() {
-    const std::size_t poly_modulus_degree = 16384;
     const std::size_t payload_size = 64;
     const std::size_t sum_size = 64;
-    m2424::CkksProfile profile{poly_modulus_degree, {60, 40, 40, 40, 40, 60}, std::pow(2.0, 40), poly_modulus_degree / 2};
+    const auto profile = m2424::profiles::depth_ckks();
 
     auto adapter = m2424::SealAdapter::create(profile);
     auto rotation_steps = m2424::sum_slots_rotation_steps(sum_size);

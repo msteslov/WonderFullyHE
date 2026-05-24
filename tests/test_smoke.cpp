@@ -9,6 +9,7 @@
 #include "m2424/bootstrap.hpp"
 #include "m2424/linear_transform.hpp"
 #include "m2424/polynomial.hpp"
+#include "m2424/profiles.hpp"
 #include "m2424/security_report.hpp"
 #include "m2424/seal_adapter.hpp"
 
@@ -43,25 +44,25 @@ static void invalid_profile_case() {
 }
 
 static void empty_encode_case() {
-    auto adapter = m2424::SealAdapter::create(m2424::CkksProfile{8192, {60, 40, 40, 60}, std::pow(2.0, 40), 4096});
+    auto adapter = m2424::SealAdapter::create(m2424::profiles::basic_ckks());
     (void)adapter.encode({});
 }
 
 static void encrypt_without_keys_case() {
-    auto adapter = m2424::SealAdapter::create(m2424::CkksProfile{8192, {60, 40, 40, 60}, std::pow(2.0, 40), 4096});
+    auto adapter = m2424::SealAdapter::create(m2424::profiles::basic_ckks());
     auto p = adapter.encode({1.0, 2.0});
     (void)adapter.encrypt(p);
 }
 
 static void mul_without_relin_case() {
-    auto adapter = m2424::SealAdapter::create(m2424::CkksProfile{8192, {60, 40, 40, 60}, std::pow(2.0, 40), 4096});
+    auto adapter = m2424::SealAdapter::create(m2424::profiles::basic_ckks());
     adapter.keygen(false, false);
     auto ct = adapter.encrypt(adapter.encode({1.0, 2.0}));
     (void)adapter.mul_relin_rescale(ct, ct);
 }
 
 static void rotate_without_galois_case() {
-    auto adapter = m2424::SealAdapter::create(m2424::CkksProfile{8192, {60, 40, 40, 60}, std::pow(2.0, 40), 4096});
+    auto adapter = m2424::SealAdapter::create(m2424::profiles::basic_ckks());
     adapter.keygen(false, false);
     auto ct = adapter.encrypt(adapter.encode({1.0, 2.0}));
     (void)adapter.rotate(ct, 1);
@@ -77,10 +78,19 @@ static bool has_stage(const m2424::BootstrapReport& report, const char* name) {
     });
 }
 
+static bool all_named_profiles_create_contexts() {
+    for (const auto& entry : m2424::profiles::all()) {
+        auto adapter = m2424::SealAdapter::create(entry.second);
+        if (adapter.slot_count() != entry.second.poly_modulus_degree / 2) {
+            return false;
+        }
+    }
+    return true;
+}
+
 int main() {
-    const std::size_t poly_modulus_degree = 8192;
-    const std::size_t slots = poly_modulus_degree / 2;
-    m2424::CkksProfile prof{poly_modulus_degree, {60, 40, 40, 60}, std::pow(2.0, 40), slots};
+    const auto prof = m2424::profiles::basic_ckks();
+    const auto slots = prof.slots;
     auto adapter = m2424::SealAdapter::create(prof);
     adapter.keygen(true, true);
 
@@ -133,7 +143,7 @@ int main() {
     auto abft_out = adapter.decode(adapter.decrypt(abft_ct));
     auto abft_check = m2424::abft::verify_appended_checksum(abft_out, N, 1e-5);
 
-    m2424::CkksProfile depth_profile{16384, {60, 40, 40, 40, 40, 60}, std::pow(2.0, 40), 8192};
+    const auto depth_profile = m2424::profiles::depth_ckks();
     auto depth_adapter = m2424::SealAdapter::create(depth_profile);
     depth_adapter.keygen(true, true);
     std::vector<double> depth_input;
@@ -174,13 +184,19 @@ int main() {
     for (double x : depth_input) polynomial_ref.push_back(0.75 * x - 0.125 * x * x * x);
 
     const auto basic_security = m2424::analyze_security("basic_ckks", prof);
+    const auto balanced_security = m2424::analyze_security("balanced_ckks", m2424::profiles::balanced_ckks());
     const auto depth_security = m2424::analyze_security("depth_ckks", depth_profile);
-    const std::vector<m2424::SecurityReport> security_reports{basic_security, depth_security};
+    const auto high_precision_security = m2424::analyze_security("high_precision_ckks", m2424::profiles::high_precision_ckks());
+    const std::vector<m2424::SecurityReport> security_reports{basic_security, balanced_security, depth_security, high_precision_security};
     const bool security_report_ok = basic_security.total_coeff_modulus_bits == 200
         && basic_security.tc128_limit == 218
         && basic_security.passes_tc128
         && !basic_security.passes_tc192
         && basic_security.effective_level == m2424::SecurityLevel::TC128
+        && balanced_security.total_coeff_modulus_bits == 218
+        && balanced_security.passes_tc128
+        && !balanced_security.passes_tc192
+        && balanced_security.effective_level == m2424::SecurityLevel::TC128
         && depth_security.total_coeff_modulus_bits == 280
         && depth_security.tc128_limit == 438
         && depth_security.tc192_limit == 305
@@ -188,6 +204,11 @@ int main() {
         && depth_security.passes_tc192
         && !depth_security.passes_tc256
         && depth_security.effective_level == m2424::SecurityLevel::TC192
+        && high_precision_security.total_coeff_modulus_bits == 270
+        && high_precision_security.passes_tc128
+        && high_precision_security.passes_tc192
+        && !high_precision_security.passes_tc256
+        && high_precision_security.effective_level == m2424::SecurityLevel::TC192
         && m2424::project_minimum_security(security_reports) == m2424::SecurityLevel::TC128;
     const bool bootstrap_report_ok = bootstrap_report.input.available
         && bootstrap_report.depth_boundary.available
@@ -229,6 +250,7 @@ int main() {
         && expect_runtime_error(rotate_without_galois_case)
         && expect_invalid_argument(accuracy_size_mismatch_case)
         && zero_transform_ok
+        && all_named_profiles_create_contexts()
         && security_report_ok
         && bootstrap_report_ok;
     std::printf("[test_smoke] max=%.6e mean=%.6e arithmetic=%s bootstrap_parts=%s security=%s bootstrap_report=%s => %s\n",

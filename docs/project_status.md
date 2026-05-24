@@ -5,7 +5,7 @@ WonderFullyHE — учебно-исследовательский прототи
 ## Реализовано
 
 - Адаптер `SealAdapter`, скрывающий низкоуровневые типы Microsoft SEAL.
-- CKKS-профили `basic_ckks` и `depth_ckks`.
+- Готовые CKKS-профили в `m2424::profiles`: `fast_demo_ckks`, `basic_ckks`, `balanced_ckks`, `depth_ckks`, `high_precision_ckks`.
 - Операции `encode`, `encrypt`, `decrypt`, `decode`.
 - Гомоморфные операции `add`, `sub`, `mul_relin_rescale`, `rotate`.
 - Plaintext-операции `add_plain`, `sub_plain`, `mul_plain_rescale`.
@@ -25,6 +25,7 @@ WonderFullyHE — учебно-исследовательский прототи
 - Benchmark строительных блоков bootstrapping: plaintext multiplication, linear transform, slot summation, polynomial evaluation.
 - Benchmark параллельной обработки независимых ciphertext с разделением setup/runtime.
 - Security report по CKKS-профилям относительно лимитов Microsoft SEAL `tc128`, `tc192` и `tc256`.
+- CMake alias target `m2424::m2424` для подключения библиотеки через `add_subdirectory`.
 - CMake-сборка, smoke-тесты, GitLab CI и GitHub Actions CI.
 
 ## В работе

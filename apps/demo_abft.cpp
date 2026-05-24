@@ -1,8 +1,9 @@
 #include "m2424/abft.hpp"
+#include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
 
-#include <cmath>
 #include <cstdio>
+#include <cmath>
 #include <vector>
 
 namespace {
@@ -19,9 +20,8 @@ std::vector<double> head(const std::vector<double>& values, std::size_t size) {
 } // namespace
 
 int main() {
-    const std::size_t poly_degree = 8192;
     const std::size_t payload_size = 16;
-    m2424::CkksProfile profile{poly_degree, {60, 40, 40, 60}, std::pow(2.0, 40), poly_degree / 2};
+    const auto profile = m2424::profiles::basic_ckks();
 
     auto adapter = m2424::SealAdapter::create(profile);
     adapter.keygen(true, true);

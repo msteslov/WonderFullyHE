@@ -14,6 +14,7 @@ WonderFullyHE реализует библиотеку защищённых вы�
         +-- LinearTransform: линейные преобразования через ротации
         +-- PolynomialEvaluator: вычисление полиномов от ciphertext
         +-- Bootstrapper: диагностика глубины и отчёт по bootstrapping-конвейеру
+        +-- profiles: готовые CKKS-профили для типовых сценариев
         +-- profile_report: воспроизводимые таблицы CKKS-параметров
         |
         v
@@ -92,6 +93,18 @@ sum_i a_i * rotate(ct, k_i)
 - критерии из модели: `Dec(c') ≈ Dec(c)` и `level(c') > level(c)`.
 
 Модуль отделяет анализ глубины и состояние bootstrapping-конвейера от низкоуровневого адаптера SEAL.
+
+### profiles
+
+Модуль `profiles` содержит готовые наборы `CkksProfile` для типовых режимов:
+
+- `fast_demo_ckks` — быстрые локальные проверки;
+- `basic_ckks` — основные демонстрации и benchmark базовых операций;
+- `balanced_ckks` — дополнительная глубина на `N = 8192`;
+- `depth_ckks` — анализ глубины и bootstrapping-блоки;
+- `high_precision_ckks` — профиль с повышенным масштабом для сценариев, где важнее точность.
+
+Это снижает риск ручной ошибки при выборе `poly_modulus_degree`, `coeff_modulus_bits` и `scale`.
 
 ### profile_report
 

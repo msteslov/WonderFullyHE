@@ -50,7 +50,7 @@ cmake --build build -j
 
 `bench_parallel_throughput` измеряет масштабирование на независимых ciphertext. Benchmark разделяет `setup_ms` и `runtime_ms`: подготовка включает создание контекстов, ключей и входных ciphertext, а runtime измеряет параллельные вычисления над уже зашифрованными данными.
 
-`demo_profile_report` печатает CSV-таблицу CKKS-профилей, используемых в демо: степень полиномиального модуля, число доступных слотов, цепочку коэффициентных модулей, суммарный размер modulus, масштаб и оценку доступной глубины умножений.
+`demo_profile_report` печатает CSV-таблицу готовых CKKS-профилей из `m2424::profiles`: степень полиномиального модуля, число доступных слотов, цепочку коэффициентных модулей, суммарный размер modulus, масштаб и оценку доступной глубины умножений.
 
 `demo_security_report` печатает CSV-таблицу проверки профилей по лимитам Microsoft SEAL для `tc128`, `tc192` и `tc256`. Общий уровень проекта определяется минимальным уровнем среди используемых профилей.
 
@@ -66,7 +66,30 @@ ctest --test-dir build --output-on-failure
 
 ## Архитектура и API
 
-`CkksProfile` описывает параметры схемы: `poly_modulus_degree`, битовые длины коэффициентов модуля, масштаб `scale` и лимит слотов. Обёртки `Plain` и `Cipher` скрывают `seal::Plaintext`/`seal::Ciphertext`, а `SealAdapter` управляет жизненным циклом SEAL‑контекста. В текущей C++-реализации публичные типы и функции находятся в пространстве имён `m2424`.
+`CkksProfile` описывает параметры схемы: `poly_modulus_degree`, битовые длины коэффициентов модуля, масштаб `scale` и лимит слотов. Готовые профили находятся в `m2424::profiles`, поэтому обычному пользователю не нужно вручную подбирать modulus chain для первого запуска. Обёртки `Plain` и `Cipher` скрывают `seal::Plaintext`/`seal::Ciphertext`, а `SealAdapter` управляет жизненным циклом SEAL‑контекста. В текущей C++-реализации публичные типы и функции находятся в пространстве имён `m2424`.
+
+Готовые профили:
+
+| Профиль | Назначение |
+|---|---|
+| `profiles::fast_demo_ckks()` | Быстрая локальная проверка и простые эксперименты. |
+| `profiles::basic_ckks()` | Основной профиль для demo, ABFT, защищённой статистики и базовых benchmark. |
+| `profiles::balanced_ckks()` | Дополнительный уровень умножения на `N = 8192` без перехода на более тяжёлый `N = 16384`. |
+| `profiles::depth_ckks()` | Анализ глубины и bootstrapping-блоки. |
+| `profiles::high_precision_ckks()` | Более высокий масштаб `2^50` для сценариев, где точность важнее скорости. |
+
+Минимальный пример:
+
+```cpp
+#include "m2424/m2424.hpp"
+
+auto adapter = m2424::SealAdapter::create(m2424::profiles::basic_ckks());
+adapter.keygen(true, true);
+
+auto encrypted = adapter.encrypt(adapter.encode({1.0, 2.0, 3.0}));
+auto squared = adapter.mul_relin_rescale(encrypted, encrypted);
+auto decoded = adapter.decode(adapter.decrypt(squared));
+```
 
 Подробные проектные заметки:
 - `docs/architecture.md` — слои библиотеки и роль каждого модуля.
@@ -131,6 +154,8 @@ ctest --test-dir build --output-on-failure
 - [x] Добавить benchmark строительных блоков bootstrapping.
 - [x] Добавить демонстрацию уменьшения размера Galois-ключей при генерации только нужных ротаций.
 - [x] Добавить benchmark параллельной обработки независимых ciphertext для облачного сценария.
+- [x] Вынести готовые CKKS-профили в публичный API `m2424::profiles`.
+- [x] Добавить CMake alias target `m2424::m2424` для подключения библиотеки через `add_subdirectory`.
 
 Следующие инженерные задачи:
 

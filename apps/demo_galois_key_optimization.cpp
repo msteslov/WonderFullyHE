@@ -1,5 +1,6 @@
 #include "m2424/accuracy.hpp"
 #include "m2424/linear_transform.hpp"
+#include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
 
 #include <algorithm>
@@ -112,15 +113,9 @@ RunResult run_case(const char* mode,
 } // namespace
 
 int main() {
-    const std::size_t poly_modulus_degree = 16384;
     const std::size_t payload_size = 64;
     const std::size_t sum_size = 64;
-    const m2424::CkksProfile profile{
-        poly_modulus_degree,
-        {60, 40, 40, 40, 40, 60},
-        std::pow(2.0, 40),
-        poly_modulus_degree / 2
-    };
+    const auto profile = m2424::profiles::depth_ckks();
 
     std::vector<double> input;
     input.reserve(payload_size);
