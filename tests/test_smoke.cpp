@@ -147,6 +147,11 @@ int main() {
         {0, {0.5}},
         {1, {0.25}}
     });
+    m2424::LinearTransform zero_transform({
+        {0, {0.0}},
+        {1, {0.0, 0.0}}
+    });
+    const bool zero_transform_ok = zero_transform.rotation_steps().empty();
     auto linear_ct = transform.apply(depth_adapter, depth_ct);
     auto linear_out = head(depth_adapter.decode(depth_adapter.decrypt(linear_ct)), depth_input.size());
     std::vector<double> linear_ref; linear_ref.reserve(depth_input.size());
@@ -223,6 +228,7 @@ int main() {
         && expect_runtime_error(mul_without_relin_case)
         && expect_runtime_error(rotate_without_galois_case)
         && expect_invalid_argument(accuracy_size_mismatch_case)
+        && zero_transform_ok
         && security_report_ok
         && bootstrap_report_ok;
     std::printf("[test_smoke] max=%.6e mean=%.6e arithmetic=%s bootstrap_parts=%s security=%s bootstrap_report=%s => %s\n",

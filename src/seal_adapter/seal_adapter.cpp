@@ -281,7 +281,16 @@ Cipher SealAdapter::mod_switch_to(const Cipher& cipher, const Cipher& target) {
 
 Cipher SealAdapter::match_level_and_scale(const Cipher& cipher, const Cipher& target) {
     Cipher out = mod_switch_to(cipher, target);
-    out.pimpl_->ct.scale() = target.pimpl_->ct.scale();
+    const double source_scale = out.pimpl_->ct.scale();
+    const double target_scale = target.pimpl_->ct.scale();
+    if (!std::isfinite(source_scale) || !std::isfinite(target_scale) || source_scale <= 0.0 || target_scale <= 0.0) {
+        throw std::runtime_error("cannot match ciphertext scales: scale must be positive and finite");
+    }
+    const double relative_error = std::fabs(source_scale - target_scale) / std::max(source_scale, target_scale);
+    if (relative_error > 1e-3) {
+        throw std::runtime_error("cannot match ciphertext scales: relative mismatch is too large");
+    }
+    out.pimpl_->ct.scale() = target_scale;
     return out;
 }
 

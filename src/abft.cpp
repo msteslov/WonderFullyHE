@@ -4,13 +4,24 @@
 #include <stdexcept>
 
 namespace m2424::abft {
+namespace {
 
-double checksum(const std::vector<double>& values) {
+double compensated_sum(const std::vector<double>& values, std::size_t count) {
     double total = 0.0;
-    for (double value : values) {
-        total += value;
+    double correction = 0.0;
+    for (std::size_t i = 0; i < count; ++i) {
+        const double y = values[i] - correction;
+        const double t = total + y;
+        correction = (t - total) - y;
+        total = t;
     }
     return total;
+}
+
+} // namespace
+
+double checksum(const std::vector<double>& values) {
+    return compensated_sum(values, values.size());
 }
 
 std::vector<double> append_checksum(const std::vector<double>& values) {
@@ -33,10 +44,7 @@ ChecksumResult verify_appended_checksum(const std::vector<double>& values, std::
         throw std::invalid_argument("tolerance must be non-negative");
     }
 
-    double expected = 0.0;
-    for (std::size_t i = 0; i < payload_size; ++i) {
-        expected += values[i];
-    }
+    const double expected = compensated_sum(values, payload_size);
     const double observed = values[payload_size];
     const double abs_error = std::fabs(expected - observed);
     return ChecksumResult{expected, observed, abs_error, abs_error <= tolerance};
@@ -54,10 +62,7 @@ ChecksumResult verify_checksum_value(const std::vector<double>& values, std::siz
         throw std::invalid_argument("tolerance must be non-negative");
     }
 
-    double observed = 0.0;
-    for (std::size_t i = 0; i < payload_size; ++i) {
-        observed += values[i];
-    }
+    const double observed = compensated_sum(values, payload_size);
     const double abs_error = std::fabs(expected - observed);
     return ChecksumResult{expected, observed, abs_error, abs_error <= tolerance};
 }

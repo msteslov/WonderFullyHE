@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 namespace m2424 {
+namespace {
 
 static std::size_t checked_size(const std::vector<double>& expected, const std::vector<double>& actual) {
     if (expected.empty() || actual.empty()) {
@@ -15,6 +16,8 @@ static std::size_t checked_size(const std::vector<double>& expected, const std::
     }
     return expected.size();
 }
+
+} // namespace
 
 double max_abs_error(const std::vector<double>& expected, const std::vector<double>& actual) {
     const std::size_t n = checked_size(expected, actual);
@@ -28,8 +31,13 @@ double max_abs_error(const std::vector<double>& expected, const std::vector<doub
 double mean_abs_error(const std::vector<double>& expected, const std::vector<double>& actual) {
     const std::size_t n = checked_size(expected, actual);
     double total = 0.0;
+    double correction = 0.0;
     for (std::size_t i = 0; i < n; ++i) {
-        total += std::fabs(expected[i] - actual[i]);
+        const double value = std::fabs(expected[i] - actual[i]);
+        const double y = value - correction;
+        const double t = total + y;
+        correction = (t - total) - y;
+        total = t;
     }
     return total / static_cast<double>(n);
 }

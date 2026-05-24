@@ -2,10 +2,56 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
+#include <unordered_map>
 #include <stdexcept>
 #include <utility>
 
 namespace m2424 {
+namespace {
+
+constexpr double kZeroCoefficientTolerance = 0.0;
+
+bool has_nonzero_coefficient(const std::vector<double>& coefficients) {
+    return std::any_of(coefficients.begin(), coefficients.end(), [](double coefficient) {
+        return std::fabs(coefficient) > kZeroCoefficientTolerance;
+    });
+}
+
+bool has_repeated_nonzero_rotation(const std::vector<LinearTerm>& terms) {
+    std::vector<int> seen;
+    for (const auto& term : terms) {
+        if (term.rotation == 0 || !has_nonzero_coefficient(term.coefficients)) {
+            continue;
+        }
+        if (std::find(seen.begin(), seen.end(), term.rotation) != seen.end()) {
+            return true;
+        }
+        seen.push_back(term.rotation);
+    }
+    return false;
+}
+
+Cipher pairwise_add(SealAdapter& adapter, std::vector<Cipher> terms) {
+    if (terms.empty()) {
+        throw std::invalid_argument("linear transform has no non-zero terms");
+    }
+    while (terms.size() > 1) {
+        std::vector<Cipher> next;
+        next.reserve((terms.size() + 1) / 2);
+        for (std::size_t i = 0; i < terms.size(); i += 2) {
+            if (i + 1 < terms.size()) {
+                next.push_back(adapter.add(terms[i], terms[i + 1]));
+            } else {
+                next.push_back(std::move(terms[i]));
+            }
+        }
+        terms = std::move(next);
+    }
+    return std::move(terms.front());
+}
+
+} // namespace
 
 LinearTransform::LinearTransform(std::vector<LinearTerm> terms) : terms_(std::move(terms)) {
     if (terms_.empty()) {
@@ -30,7 +76,7 @@ const std::vector<LinearTerm>& LinearTransform::terms() const noexcept {
 std::vector<int> LinearTransform::rotation_steps() const {
     std::vector<int> steps;
     for (const auto& term : terms_) {
-        if (term.rotation != 0) {
+        if (term.rotation != 0 && has_nonzero_coefficient(term.coefficients)) {
             steps.push_back(term.rotation);
         }
     }
@@ -40,25 +86,38 @@ std::vector<int> LinearTransform::rotation_steps() const {
 }
 
 Cipher LinearTransform::apply(SealAdapter& adapter, const Cipher& input) const {
-    bool has_result = false;
-    Cipher result;
+    const bool cache_rotations = has_repeated_nonzero_rotation(terms_);
+    std::unordered_map<int, Cipher> rotated_cache;
+    std::vector<Cipher> weighted_terms;
+    weighted_terms.reserve(terms_.size());
 
     for (const auto& term : terms_) {
-        Cipher rotated = term.rotation == 0 ? input : adapter.rotate(input, term.rotation);
-        Plain encoded = term.coefficients.size() == 1
-            ? adapter.encode_scalar_like(term.coefficients.front(), rotated)
-            : adapter.encode_like(term.coefficients, rotated);
-        Cipher weighted = adapter.mul_plain_rescale(rotated, encoded);
-
-        if (!has_result) {
-            result = std::move(weighted);
-            has_result = true;
-        } else {
-            result = adapter.add(result, weighted);
+        if (!has_nonzero_coefficient(term.coefficients)) {
+            continue;
         }
+
+        std::optional<Cipher> rotated_value;
+        const Cipher* rotated = nullptr;
+        if (term.rotation == 0) {
+            rotated = &input;
+        } else if (!cache_rotations) {
+            rotated_value.emplace(adapter.rotate(input, term.rotation));
+            rotated = &*rotated_value;
+        } else {
+            auto cached = rotated_cache.find(term.rotation);
+            if (cached == rotated_cache.end()) {
+                cached = rotated_cache.emplace(term.rotation, adapter.rotate(input, term.rotation)).first;
+            }
+            rotated = &cached->second;
+        }
+
+        Plain encoded = term.coefficients.size() == 1
+            ? adapter.encode_scalar_like(term.coefficients.front(), *rotated)
+            : adapter.encode_like(term.coefficients, *rotated);
+        weighted_terms.push_back(adapter.mul_plain_rescale(*rotated, encoded));
     }
 
-    return result;
+    return pairwise_add(adapter, std::move(weighted_terms));
 }
 
 std::vector<int> power_of_two_rotation_steps(std::size_t slot_count) {
