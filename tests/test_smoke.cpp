@@ -39,6 +39,16 @@ static bool expect_invalid_argument(void (*fn)()) {
     return false;
 }
 
+template <class Fn>
+static bool expect_runtime_error_from(Fn&& fn) {
+    try {
+        fn();
+    } catch (const std::runtime_error&) {
+        return true;
+    }
+    return false;
+}
+
 static void invalid_profile_case() {
     (void)m2424::SealAdapter::create(m2424::CkksProfile{0, {60, 40, 60}, std::pow(2.0, 40), 0});
 }
@@ -100,6 +110,27 @@ int main() {
 
     auto p = adapter.encode(input);
     auto ct = adapter.encrypt(p);
+    const auto public_key_bytes = adapter.save_public_key();
+    const auto secret_key_bytes = adapter.save_secret_key();
+    const auto relin_key_bytes = adapter.save_relin_keys();
+    const auto galois_key_bytes = adapter.save_galois_keys();
+    const auto cipher_bytes = adapter.save_cipher(ct);
+
+    auto loaded_adapter = m2424::SealAdapter::create(prof);
+    loaded_adapter.load_public_key(public_key_bytes);
+    loaded_adapter.load_secret_key(secret_key_bytes);
+    loaded_adapter.load_relin_keys(relin_key_bytes);
+    loaded_adapter.load_galois_keys(galois_key_bytes);
+    auto loaded_ct = loaded_adapter.load_cipher(cipher_bytes);
+    auto loaded_out = head(loaded_adapter.decode(loaded_adapter.decrypt(loaded_ct)), N);
+
+    auto public_only_adapter = m2424::SealAdapter::create(prof);
+    public_only_adapter.load_public_key(public_key_bytes);
+    public_only_adapter.load_galois_keys(galois_key_bytes);
+    auto public_only_ct = public_only_adapter.load_cipher(cipher_bytes);
+    const bool public_only_cannot_decrypt = expect_runtime_error_from([&] {
+        (void)public_only_adapter.decrypt(public_only_ct);
+    });
     auto ct2 = adapter.mul_relin_rescale(ct, ct);
     auto p2 = adapter.decrypt(ct2);
     auto out = adapter.decode(p2);
@@ -228,7 +259,14 @@ int main() {
         && close_enough(add_plain_ref, add_plain_out, 1e-5)
         && close_enough(input, sub_plain_out, 1e-5)
         && close_enough(mul_plain_ref, mul_plain_out, 1e-5)
-        && close_enough(rot_ref, rot_out, 1e-5);
+        && close_enough(rot_ref, rot_out, 1e-5)
+        && close_enough(input, loaded_out, 1e-5)
+        && public_only_cannot_decrypt
+        && !public_key_bytes.empty()
+        && !secret_key_bytes.empty()
+        && !relin_key_bytes.empty()
+        && !galois_key_bytes.empty()
+        && !cipher_bytes.empty();
     const bool bootstrap_parts_ok = close_enough(linear_ref, linear_out, 1e-4)
         && std::abs(sum_out.front() - sum_ref_value) < 1e-4
         && close_enough(polynomial_ref, polynomial_out, 1e-3);

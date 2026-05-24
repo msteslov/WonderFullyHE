@@ -3,8 +3,10 @@
 #include <seal/seal.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace m2424 {
@@ -61,6 +63,8 @@ struct SealAdapter::Impl {
     double scale{0.0};
     std::size_t slot_count{0};
     bool has_keys{false};
+    bool has_public{false};
+    bool has_secret{false};
     bool has_relin{false};
     bool has_galois{false};
 };
@@ -107,6 +111,27 @@ static std::size_t serialized_size_of(const T& value) {
     return static_cast<std::size_t>(out.tellp());
 }
 
+template <class T>
+static SerializedBuffer serialize_to_buffer(const T& value) {
+    std::ostringstream out(std::ios::binary);
+    value.save(out);
+    const auto bytes = out.str();
+    return SerializedBuffer(bytes.begin(), bytes.end());
+}
+
+static void require_non_empty_buffer(const SerializedBuffer& buffer, const char* name) {
+    if (buffer.empty()) {
+        throw std::invalid_argument(std::string(name) + " buffer must not be empty");
+    }
+}
+
+template <class T>
+static void load_from_buffer(T& value, const seal::SEALContext& context,
+                             const SerializedBuffer& buffer, const char* name) {
+    require_non_empty_buffer(buffer, name);
+    value.load(context, reinterpret_cast<const seal::seal_byte*>(buffer.data()), buffer.size());
+}
+
 SealAdapter SealAdapter::create(const CkksProfile& profile) {
     validate_profile_shape(profile);
 
@@ -135,6 +160,8 @@ void SealAdapter::keygen(bool need_relin, bool need_galois) {
     keygen.create_public_key(pimpl_->pk);
     pimpl_->has_relin = false;
     pimpl_->has_galois = false;
+    pimpl_->has_public = true;
+    pimpl_->has_secret = true;
     if (need_relin) {
         keygen.create_relin_keys(pimpl_->rlk);
         pimpl_->has_relin = true;
@@ -156,6 +183,8 @@ void SealAdapter::keygen(const std::vector<int>& rotation_steps, bool need_relin
     keygen.create_public_key(pimpl_->pk);
     pimpl_->has_relin = false;
     pimpl_->has_galois = false;
+    pimpl_->has_public = true;
+    pimpl_->has_secret = true;
     if (need_relin) {
         keygen.create_relin_keys(pimpl_->rlk);
         pimpl_->has_relin = true;
@@ -206,14 +235,14 @@ Plain SealAdapter::encode_scalar_like(double value, const Cipher& cipher) {
 }
 
 Cipher SealAdapter::encrypt(const Plain& plain) {
-    if (!pimpl_->has_keys || !pimpl_->encryptor) throw std::runtime_error("keys not generated");
+    if (!pimpl_->has_public || !pimpl_->encryptor) throw std::runtime_error("public key not loaded");
     Cipher out;
     pimpl_->encryptor->encrypt(plain.pimpl_->pt, out.pimpl_->ct);
     return out;
 }
 
 Plain SealAdapter::decrypt(const Cipher& cipher) {
-    if (!pimpl_->has_keys || !pimpl_->decryptor) throw std::runtime_error("keys not generated");
+    if (!pimpl_->has_secret || !pimpl_->decryptor) throw std::runtime_error("secret key not loaded");
     Plain out;
     pimpl_->decryptor->decrypt(cipher.pimpl_->ct, out.pimpl_->pt);
     return out;
@@ -331,7 +360,7 @@ std::size_t SealAdapter::coeff_modulus_size(const Cipher& cipher) const {
 }
 
 std::size_t SealAdapter::public_key_size() const {
-    if (!pimpl_->has_keys) throw std::runtime_error("keys not generated");
+    if (!pimpl_->has_public) throw std::runtime_error("public key not loaded");
     return serialized_size_of(pimpl_->pk);
 }
 
@@ -343,6 +372,65 @@ std::size_t SealAdapter::relin_keys_size() const {
 std::size_t SealAdapter::galois_keys_size() const {
     if (!pimpl_->has_galois) throw std::runtime_error("galois keys not generated");
     return serialized_size_of(pimpl_->gk);
+}
+
+SerializedBuffer SealAdapter::save_public_key() const {
+    if (!pimpl_->has_public) throw std::runtime_error("public key not loaded");
+    return serialize_to_buffer(pimpl_->pk);
+}
+
+SerializedBuffer SealAdapter::save_secret_key() const {
+    if (!pimpl_->has_secret) throw std::runtime_error("secret key not loaded");
+    return serialize_to_buffer(pimpl_->sk);
+}
+
+SerializedBuffer SealAdapter::save_relin_keys() const {
+    if (!pimpl_->has_relin) throw std::runtime_error("relin keys not generated");
+    return serialize_to_buffer(pimpl_->rlk);
+}
+
+SerializedBuffer SealAdapter::save_galois_keys() const {
+    if (!pimpl_->has_galois) throw std::runtime_error("galois keys not generated");
+    return serialize_to_buffer(pimpl_->gk);
+}
+
+SerializedBuffer SealAdapter::save_cipher(const Cipher& cipher) const {
+    return serialize_to_buffer(cipher.pimpl_->ct);
+}
+
+void SealAdapter::load_public_key(const SerializedBuffer& buffer) {
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+    load_from_buffer(pimpl_->pk, *pimpl_->context, buffer, "public key");
+    pimpl_->encryptor = std::make_unique<seal::Encryptor>(*pimpl_->context, pimpl_->pk);
+    pimpl_->has_public = true;
+    pimpl_->has_keys = pimpl_->has_secret;
+}
+
+void SealAdapter::load_secret_key(const SerializedBuffer& buffer) {
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+    load_from_buffer(pimpl_->sk, *pimpl_->context, buffer, "secret key");
+    pimpl_->decryptor = std::make_unique<seal::Decryptor>(*pimpl_->context, pimpl_->sk);
+    pimpl_->has_secret = true;
+    pimpl_->has_keys = pimpl_->has_public;
+}
+
+void SealAdapter::load_relin_keys(const SerializedBuffer& buffer) {
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+    load_from_buffer(pimpl_->rlk, *pimpl_->context, buffer, "relin keys");
+    pimpl_->has_relin = true;
+}
+
+void SealAdapter::load_galois_keys(const SerializedBuffer& buffer) {
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+    load_from_buffer(pimpl_->gk, *pimpl_->context, buffer, "galois keys");
+    pimpl_->has_galois = true;
+}
+
+Cipher SealAdapter::load_cipher(const SerializedBuffer& buffer) const {
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+    Cipher out;
+    load_from_buffer(out.pimpl_->ct, *pimpl_->context, buffer, "ciphertext");
+    return out;
 }
 
 } // namespace m2424

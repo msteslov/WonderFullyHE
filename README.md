@@ -1,6 +1,6 @@
 ## Обзор
 
-WonderFullyHE использует Microsoft SEAL в роли криптографического движка CKKS. Поверх SEAL реализован библиотечный слой `m2424` для защищённых облачных вычислений: адаптер скрывает детали SEAL, модуль точности задаёт единые метрики ошибки, ABFT-модуль проверяет численную согласованность результатов, benchmark-приложения собирают метрики времени/точности/размеров, а bootstrapping-блоки готовят вычислительную основу для `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff`.
+WonderFullyHE использует Microsoft SEAL в роли криптографического движка CKKS. Поверх SEAL реализован библиотечный слой `m2424` для защищённых вычислений над вещественными данными: адаптер скрывает детали SEAL, модуль точности задаёт единые метрики ошибки, ABFT-модуль проверяет численную согласованность результатов, benchmark-приложения собирают метрики времени/точности/размеров, а bootstrapping-блоки готовят вычислительную основу для `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff`.
 
 ## Клонирование
 
@@ -26,6 +26,7 @@ cmake --build build -j
 ./build/bench_ckks
 ./build/demo_noise_growth
 ./build/demo_secure_stats
+./build/demo_client_compute_roundtrip
 ./build/demo_galois_key_optimization
 ./build/demo_bootstrap_pipeline
 ./build/bench_bootstrap_parts
@@ -42,6 +43,8 @@ cmake --build build -j
 
 `demo_secure_stats` показывает прикладной сценарий защищённой обработки данных: сумма и среднее считаются над зашифрованным вектором через ротации и сложения, после расшифровки результат сравнивается с CPU-эталоном.
 
+`demo_client_compute_roundtrip` показывает разделённый сценарий: один контекст генерирует ключи и шифрует данные, вычислительный контекст получает только публичный ключ, Galois-ключи и ciphertext, выполняет агрегацию без secret key, после чего результат расшифровывается отдельным контекстом с secret key.
+
 `demo_galois_key_optimization` сравнивает полный набор Galois-ключей с ограниченным набором rotation keys для конкретного вычисления. Сценарий показывает размер ключей, время генерации, время `linear_transform`/`sum_slots` и численную ошибку.
 
 `demo_bootstrap_pipeline` печатает отчёт bootstrapping-модуля: профиль `depth_ckks`, границу вычислительной глубины, параметры ciphertext и этапы конвейера `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff`.
@@ -56,7 +59,7 @@ cmake --build build -j
 
 ## Тесты
 
-`test_smoke` — покрывает encode → encrypt → mul_relin_rescale → decrypt, add/sub/rotate, plaintext-операции, linear transform, polynomial evaluator, `sum_slots`, ABFT checksum, ошибки без нужных ключей, базовую валидацию профиля и security report.
+`test_smoke` — покрывает encode → encrypt → mul_relin_rescale → decrypt, add/sub/rotate, plaintext-операции, сериализацию ключей/ciphertext, linear transform, polynomial evaluator, `sum_slots`, ABFT checksum, ошибки без нужных ключей, базовую валидацию профиля и security report.
 
 ```bash
 cmake -S . -B build -DBUILD_TESTING=ON
@@ -107,6 +110,8 @@ auto decoded = adapter.decode(adapter.decrypt(squared));
 - `add`, `sub`, `add_plain`, `sub_plain`, `mul_plain_rescale`, `mul_relin_rescale`, `rotate` — гомоморфные примитивы, делегирующие в `seal::Evaluator`.
 - `mod_switch_to`, `match_level_and_scale` — выравнивание ciphertext перед сложением членов разных уровней.
 - `serialized_size`, `public_key_size`, `relin_keys_size`, `galois_keys_size` — вспомогательные методы для benchmark-измерений.
+- `save_public_key`, `save_secret_key`, `save_relin_keys`, `save_galois_keys`, `save_cipher` — сериализация ключей и ciphertext в байтовый буфер.
+- `load_public_key`, `load_secret_key`, `load_relin_keys`, `load_galois_keys`, `load_cipher` — загрузка ключей и ciphertext в новый CKKS-контекст с проверкой совместимости параметров.
 - `info`, `scale`, `chain_index`, `coeff_modulus_size` — диагностика состояния ciphertext для анализа глубины и подготовки bootstrapping.
 
 Модуль `m2424::accuracy` задаёт единые метрики точности: `max_abs_error`, `mean_abs_error` и `compare(expected, actual, tolerance)`. Demo и тесты используют этот общий код, чтобы критерии корректности не расходились между сценариями.
@@ -153,9 +158,11 @@ auto decoded = adapter.decode(adapter.decrypt(squared));
 - [x] Добавить rotation-based `LinearTransform`, `sum_slots` и `PolynomialEvaluator`.
 - [x] Добавить benchmark строительных блоков bootstrapping.
 - [x] Добавить демонстрацию уменьшения размера Galois-ключей при генерации только нужных ротаций.
-- [x] Добавить benchmark параллельной обработки независимых ciphertext для облачного сценария.
+- [x] Добавить benchmark параллельной обработки независимых ciphertext.
 - [x] Вынести готовые CKKS-профили в публичный API `m2424::profiles`.
 - [x] Добавить CMake alias target `m2424::m2424` для подключения библиотеки через `add_subdirectory`.
+- [x] Добавить сериализацию публичного/секретного/evaluation-ключей и ciphertext.
+- [x] Добавить разделённый roundtrip-сценарий: шифрование, вычисление без secret key, расшифрование результата.
 
 Следующие инженерные задачи:
 
@@ -163,7 +170,7 @@ auto decoded = adapter.decode(adapter.decrypt(squared));
 - [ ] Добавить отдельные измерения для `rotate` при разных шагах и наборах Galois-ключей.
 - [ ] Расширить ABFT checksum на цепочки операций, а не только на одиночные add/sub/mul/rotate.
 - [ ] Снять отдельные метрики памяти для SEAL-контекста, наборов ключей и промежуточных ciphertext; текущий benchmark уже фиксирует сериализованные размеры.
-- [ ] Разделить клиентский и облачный контекст выполнения: клиент генерирует ключи и шифрует данные, облачная сторона получает только публичные/evaluation-ключи и ciphertext.
+- [x] Разделить контексты выполнения для демонстрации: один контекст генерирует ключи и шифрует данные, вычислительный контекст получает только публичные/evaluation-ключи и ciphertext.
 - [ ] Подставить математически рассчитанные матрицы `CoeffToSlot` и `SlotToCoeff`.
 - [ ] Подставить коэффициенты полинома `EvalMod` из математической модели.
 - [ ] Собрать end-to-end `Bootstrapper::refresh(cipher)` поверх готовых строительных блоков.

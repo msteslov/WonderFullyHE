@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -19,6 +20,8 @@ struct CipherInfo {
     std::size_t coeff_modulus_size{};
     std::size_t ciphertext_size{};
 };
+
+using SerializedBuffer = std::vector<std::uint8_t>;
 
 class Plain {
 public:
@@ -85,6 +88,18 @@ public:
     std::size_t public_key_size() const;
     std::size_t relin_keys_size() const;
     std::size_t galois_keys_size() const;
+
+    SerializedBuffer save_public_key() const;
+    SerializedBuffer save_secret_key() const;
+    SerializedBuffer save_relin_keys() const;
+    SerializedBuffer save_galois_keys() const;
+    SerializedBuffer save_cipher(const Cipher&) const;
+
+    void load_public_key(const SerializedBuffer&);
+    void load_secret_key(const SerializedBuffer&);
+    void load_relin_keys(const SerializedBuffer&);
+    void load_galois_keys(const SerializedBuffer&);
+    Cipher load_cipher(const SerializedBuffer&) const;
 
     SealAdapter();
     ~SealAdapter();

@@ -96,6 +96,24 @@ WonderFullyHE реализует библиотечный слой для защ
 \]
 где \(K\) --- множество rotation steps.
 
+Сериализация объектов:
+\[
+    \texttt{save\_public\_key}() \mapsto B_{\mathsf{pk}},
+    \quad
+    \texttt{save\_secret\_key}() \mapsto B_{\mathsf{sk}},
+\]
+\[
+    \texttt{save\_relin\_keys}() \mapsto B_{\mathsf{rlk}},
+    \quad
+    \texttt{save\_galois\_keys}() \mapsto B_{\mathsf{gk}},
+    \quad
+    \texttt{save\_cipher}(c) \mapsto B_c.
+\]
+Обратные операции \texttt{load\_*} восстанавливают объект в новом
+CKKS-контексте с тем же профилем. Это позволяет разделять контексты:
+контекст с секретным ключом выполняет расшифрование, а вычислительный
+контекст получает только ciphertext и evaluation keys.
+
 Кодирование и шифрование:
 \[
     \texttt{encode}(\mathbf{x}) =
