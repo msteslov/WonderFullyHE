@@ -1,0 +1,66 @@
+#include "m2424/checked_evaluator.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+#include <utility>
+
+namespace m2424 {
+
+CheckedEvaluator::CheckedEvaluator(SealAdapter& adapter, std::size_t payload_size, double tolerance)
+    : adapter_(adapter), payload_size_(payload_size), tolerance_(tolerance) {
+    if (payload_size_ == 0) {
+        throw std::invalid_argument("payload_size must be positive");
+    }
+    if (!std::isfinite(tolerance_) || tolerance_ < 0.0) {
+        throw std::invalid_argument("tolerance must be a non-negative finite value");
+    }
+}
+
+CheckedResult CheckedEvaluator::add(const Cipher& lhs, const Cipher& rhs, const std::vector<double>& expected) {
+    return finalize("add", adapter_.add(lhs, rhs), expected);
+}
+
+CheckedResult CheckedEvaluator::sub(const Cipher& lhs, const Cipher& rhs, const std::vector<double>& expected) {
+    return finalize("sub", adapter_.sub(lhs, rhs), expected);
+}
+
+CheckedResult CheckedEvaluator::mul(const Cipher& lhs, const Cipher& rhs, const std::vector<double>& expected) {
+    return finalize("mul", adapter_.mul_relin_rescale(lhs, rhs), expected);
+}
+
+CheckedResult CheckedEvaluator::rotate(const Cipher& input, int steps, const std::vector<double>& expected) {
+    return finalize("rotate", adapter_.rotate(input, steps), expected);
+}
+
+CheckedResult CheckedEvaluator::sum_slots(const Cipher& input, std::size_t slot_count,
+                                          const std::vector<double>& expected) {
+    return finalize("sum_slots", m2424::sum_slots(adapter_, input, slot_count), expected);
+}
+
+CheckedResult CheckedEvaluator::linear_transform(const Cipher& input, const LinearTransform& transform,
+                                                 const std::vector<double>& expected) {
+    return finalize("linear_transform", transform.apply(adapter_, input), expected);
+}
+
+CheckedResult CheckedEvaluator::finalize(std::string operation, Cipher cipher, const std::vector<double>& expected) {
+    if (expected.size() != payload_size_) {
+        throw std::invalid_argument("expected vector size must match payload_size");
+    }
+    auto decoded = adapter_.decode(adapter_.decrypt(cipher));
+    if (decoded.size() < payload_size_) {
+        throw std::runtime_error("decoded vector is shorter than payload_size");
+    }
+    decoded.resize(payload_size_);
+    auto accuracy = compare(expected, decoded, tolerance_);
+    auto info = adapter_.info(cipher);
+    return CheckedResult{
+        std::move(operation),
+        std::move(cipher),
+        info,
+        accuracy,
+        accuracy.ok
+    };
+}
+
+} // namespace m2424

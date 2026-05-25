@@ -7,6 +7,7 @@
 #include "m2424/abft.hpp"
 #include "m2424/accuracy.hpp"
 #include "m2424/bootstrap.hpp"
+#include "m2424/checked_evaluator.hpp"
 #include "m2424/linear_transform.hpp"
 #include "m2424/polynomial.hpp"
 #include "m2424/profiles.hpp"
@@ -156,6 +157,8 @@ int main() {
     std::vector<double> add_ref; add_ref.reserve(N);
     for (double x : input) add_ref.push_back(x + x);
     auto add_out = head(adapter.decode(adapter.decrypt(ct_add)), N);
+    m2424::CheckedEvaluator checked(adapter, N, 1e-5);
+    auto checked_add = checked.add(ct, ct, add_ref);
 
     auto ct_sub = adapter.sub(ct_add, ct);
     auto sub_out = head(adapter.decode(adapter.decrypt(ct_sub)), N);
@@ -266,6 +269,9 @@ int main() {
 
     const bool arithmetic_ok = std::isfinite(mul_accuracy.max_abs_error) && std::isfinite(mul_accuracy.mean_abs_error) && mul_accuracy.ok
         && close_enough(add_ref, add_out, 1e-5)
+        && checked_add.ok
+        && checked_add.operation == "add"
+        && checked_add.info.ciphertext_size > 0
         && close_enough(input, sub_out, 1e-5)
         && close_enough(add_plain_ref, add_plain_out, 1e-5)
         && close_enough(input, sub_plain_out, 1e-5)

@@ -2,6 +2,7 @@ add_library(m2424
     accuracy.cpp
     abft.cpp
     bootstrap.cpp
+    checked_evaluator.cpp
     linear_transform.cpp
     m2424.cpp
     polynomial.cpp

@@ -31,6 +31,8 @@ cmake --build build -j
 ./build/demo_bootstrap_pipeline
 ./build/bench_bootstrap_parts
 ./build/bench_parallel_throughput
+./build/demo_precision_profiles
+./build/demo_checked_pipeline
 ./build/demo_profile_report
 ./build/demo_security_report
 ```
@@ -57,13 +59,17 @@ cmake --build build -j
 
 `bench_parallel_throughput` измеряет масштабирование на независимых ciphertext. Benchmark разделяет `setup_ms` и `runtime_ms`: подготовка включает создание контекстов, ключей и входных ciphertext, а runtime измеряет параллельные вычисления над уже зашифрованными данными.
 
+`demo_precision_profiles` сравнивает готовые профили `basic_ckks`, `balanced_ckks`, `depth_ckks` и `high_precision_ckks` по времени, ошибке, состоянию ciphertext и сериализованному размеру результата.
+
+`demo_checked_pipeline` показывает контролируемый вычислительный конвейер `add -> mul -> rotate -> sum_slots`: после каждого шага печатаются `max_abs_error`, `mean_abs_error`, `scale`, `chain_index`, размер ciphertext, ABFT-статус и общий статус.
+
 `demo_profile_report` печатает CSV-таблицу готовых CKKS-профилей из `m2424::profiles`: степень полиномиального модуля, число доступных слотов, цепочку коэффициентных модулей, суммарный размер modulus, масштаб и оценку доступной глубины умножений.
 
 `demo_security_report` печатает CSV-таблицу проверки профилей по лимитам Microsoft SEAL для `tc128`, `tc192` и `tc256`. Общий уровень проекта определяется минимальным уровнем среди используемых профилей.
 
 ## Тесты
 
-`test_smoke` — покрывает encode → encrypt → mul_relin_rescale → decrypt, add/sub/rotate, plaintext-операции, сериализацию ключей/ciphertext, linear transform, polynomial evaluator, `sum_slots`, ABFT checksum, ошибки без нужных ключей, базовую валидацию профиля и security report.
+`test_smoke` — покрывает encode → encrypt → mul_relin_rescale → decrypt, add/sub/rotate, plaintext-операции, сериализацию ключей/ciphertext, checked evaluator, linear transform, polynomial evaluator, `sum_slots`, ABFT checksum, ошибки без нужных ключей, базовую валидацию профиля и security report.
 
 ```bash
 cmake -S . -B build -DBUILD_TESTING=ON
@@ -121,6 +127,8 @@ auto decoded = adapter.decode(adapter.decrypt(squared));
 - `info`, `scale`, `chain_index`, `coeff_modulus_size` — диагностика состояния ciphertext для анализа глубины и подготовки bootstrapping.
 
 Модуль `m2424::accuracy` задаёт единые метрики точности: `max_abs_error`, `mean_abs_error` и `compare(expected, actual, tolerance)`. Demo и тесты используют этот общий код, чтобы критерии корректности не расходились между сценариями.
+
+Модуль `m2424::CheckedEvaluator` выполняет операции через `SealAdapter` и возвращает `CheckedResult`: ciphertext, `CipherInfo`, метрики точности, tolerance и статус. Он нужен для сценариев, где после каждого шага вычисления надо контролировать ошибку, уровень ciphertext и масштаб.
 
 Модуль `m2424::abft` содержит checksum-инструменты: `append_checksum`, `checksum`, `verify_appended_checksum`, `verify_checksum_value`.
 
