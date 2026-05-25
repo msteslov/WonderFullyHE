@@ -61,7 +61,7 @@ cmake --build build -j
 
 `bench_bootstrap_parts` печатает CSV по строительным блокам bootstrapping: `mul_plain_rescale`, rotation-based `linear_transform`, `sum_slots` и `polynomial_eval`. В отчёт входят время, уровень ciphertext, ошибка и сериализованный размер результата.
 
-`bench_bootstrap_full` измеряет полный refresh-harness в профиле `boot_ckks`: подготовку rotation steps, генерацию ключей, полный runtime, время `CoeffToSlot`, `EvalMod`, `SlotToCoeff`, финальную ошибку и статус. Диагональные преобразования выполняются через baby-step/giant-step, поэтому для dense-transform на 16 логических slots требуется 6 rotation keys вместо 15.
+`bench_bootstrap_full` измеряет полный refresh-harness в профиле `boot_ckks`: подготовку rotation steps, генерацию ключей, проверяемый runtime, быстрый runtime, время `CoeffToSlot`, `EvalMod`, `SlotToCoeff`, финальную ошибку и статус. Диагональные преобразования выполняются через baby-step/giant-step, поэтому для dense-transform на 16 логических slots требуется 6 rotation keys вместо 15.
 
 `demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
 
@@ -159,7 +159,7 @@ P7(u) = u - 6.579736267393*u^3 + 12.98787880453*u^5 - 12.20811674381*u^7
 
 Рабочий диапазон первой версии: `|u| <= 2^-10`. Ciphertext-версия считает степени `u^2`, `u^3`, `u^5`, `u^7` отдельной схемой, без общего последовательного подъёма степени.
 
-Модуль `m2424::BootstrapPrototype` собирает строительные блоки в refresh-harness. Он генерирует минимальный набор rotation steps для заданного числа slots, применяет диагональные `CoeffToSlot`/`SlotToCoeff`, вызывает `EvalModPolynomial` и возвращает отчёт по этапам: chain index, scale, max error, runtime и статус. Внутри `DiagonalLinearTransform` используется baby-step/giant-step-разложение, которое уменьшает число CKKS-ротаций при плотных диагональных матрицах.
+Модуль `m2424::BootstrapPrototype` собирает строительные блоки в refresh-harness. Он генерирует минимальный набор rotation steps для заданного числа slots, применяет диагональные `CoeffToSlot`/`SlotToCoeff`, вызывает `EvalModPolynomial` и возвращает отчёт по этапам: chain index, scale, max error, runtime и статус. Внутри `DiagonalLinearTransform` используется baby-step/giant-step-разложение, которое уменьшает число CKKS-ротаций при плотных диагональных матрицах. Для повторных запусков кэшируются encoded plaintext-диагонали под конкретные `chain_index` и `scale`; `refresh_harness` оставлен для проверки точности, `refresh_fast` выполняет тот же конвейер без промежуточных decrypt/check.
 
 Модуль `m2424::abft` содержит checksum-инструменты: `append_checksum`, `checksum`, `verify_appended_checksum`, `verify_checksum_value`.
 

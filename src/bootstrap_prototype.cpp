@@ -33,10 +33,11 @@ BootstrapPrototypeStage make_stage(const std::string& name,
                                    const CipherInfo& after,
                                    double max_error,
                                    double tolerance,
-                                   double duration_ms) {
+                                   double duration_ms,
+                                   bool checked = true) {
     return BootstrapPrototypeStage{
         name,
-        max_error <= tolerance ? "PASS" : "FAIL",
+        checked ? (max_error <= tolerance ? "PASS" : "FAIL") : "RUN",
         before.chain_index,
         after.chain_index,
         before.scale,
@@ -103,6 +104,14 @@ std::vector<int> BootstrapPrototype::rotation_steps() const {
 }
 
 BootstrapPrototypeReport BootstrapPrototype::refresh_harness(const ComplexVector& input) const {
+    return refresh_impl(input, true);
+}
+
+BootstrapPrototypeReport BootstrapPrototype::refresh_fast(const ComplexVector& input) const {
+    return refresh_impl(input, false);
+}
+
+BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& input, bool checked) const {
     if (input.size() != slots_) {
         throw std::invalid_argument("input size must match BootstrapPrototype slots");
     }
@@ -112,6 +121,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_harness(const ComplexVector
     report.slots = slots_;
     report.tolerance = tolerance_;
     report.normalization_factor = 1.0;
+    report.checked = checked;
 
     ComplexVector packed(adapter_.slot_count(), Complex{0.0, 0.0});
     for (std::size_t i = 0; i < packed.size(); ++i) {
@@ -135,9 +145,14 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_harness(const ComplexVector
         current = coeff_to_slot_.apply(adapter_, current);
     });
     auto after = adapter_.info(current);
-    auto coeff_actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+    ComplexVector coeff_actual;
+    double coeff_error = 0.0;
+    if (checked) {
+        coeff_actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        coeff_error = max_complex_error(coeff_expected, coeff_actual);
+    }
     report.stages.push_back(make_stage("coeff_to_slot", before, after,
-                                       max_complex_error(coeff_expected, coeff_actual), tolerance_, stage_ms));
+                                       coeff_error, tolerance_, stage_ms, checked));
 
     report.stages.push_back(BootstrapPrototypeStage{
         "eval_mod_normalization",
@@ -150,30 +165,46 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_harness(const ComplexVector
         0.0
     });
 
-    const auto eval_expected = eval_mod.evaluate_plain(coeff_expected);
+    ComplexVector eval_expected;
+    if (checked) {
+        eval_expected = eval_mod.evaluate_plain(coeff_expected);
+    }
     before = adapter_.info(current);
     stage_ms = elapsed_ms([&] {
         current = eval_mod.evaluate(adapter_, current);
     });
     after = adapter_.info(current);
-    auto eval_actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+    ComplexVector eval_actual;
+    double eval_error = 0.0;
+    if (checked) {
+        eval_actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        eval_error = max_complex_error(eval_expected, eval_actual);
+    }
     report.stages.push_back(make_stage("eval_mod", before, after,
-                                       max_complex_error(eval_expected, eval_actual), tolerance_, stage_ms));
+                                       eval_error, tolerance_, stage_ms, checked));
 
-    const auto result_expected = slot_to_coeff_.apply_plain(eval_expected);
+    ComplexVector result_expected;
+    if (checked) {
+        result_expected = slot_to_coeff_.apply_plain(eval_expected);
+    }
     before = adapter_.info(current);
     stage_ms = elapsed_ms([&] {
         current = slot_to_coeff_.apply(adapter_, current);
     });
     after = adapter_.info(current);
-    auto result_actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
-    const double result_error = max_complex_error(result_expected, result_actual);
-    report.stages.push_back(make_stage("slot_to_coeff", before, after, result_error, tolerance_, stage_ms));
+    ComplexVector result_actual;
+    double result_error = 0.0;
+    double preserve_error = 0.0;
+    if (checked) {
+        result_actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        result_error = max_complex_error(result_expected, result_actual);
+        preserve_error = max_complex_error(input, result_actual);
+    }
+    report.stages.push_back(make_stage("slot_to_coeff", before, after, result_error, tolerance_, stage_ms, checked));
 
-    const double preserve_error = max_complex_error(input, result_actual);
     report.stages.push_back(BootstrapPrototypeStage{
         "refresh_result",
-        preserve_error <= tolerance_ ? "PASS" : "FAIL",
+        checked ? (preserve_error <= tolerance_ ? "PASS" : "FAIL") : "RUN",
         after.chain_index,
         after.chain_index,
         after.scale,
@@ -182,7 +213,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_harness(const ComplexVector
         0.0
     });
 
-    report.preserve_value_criterion = preserve_error <= tolerance_;
+    report.preserve_value_criterion = !checked || preserve_error <= tolerance_;
     report.restore_level_criterion = after.chain_index >= 0;
     report.result = std::move(current);
     return report;

@@ -59,30 +59,38 @@ int main() {
     auto input = make_input(slots);
     m2424::BootstrapPrototype prototype(adapter, slots, tolerance);
 
-    m2424::BootstrapPrototypeReport report;
-    const double refresh_ms = elapsed_ms([&] {
-        report = prototype.refresh_harness(input);
+    m2424::BootstrapPrototypeReport checked_report;
+    const double checked_refresh_ms = elapsed_ms([&] {
+        checked_report = prototype.refresh_harness(input);
     });
 
-    const auto* coeff = find_stage(report, "coeff_to_slot");
-    const auto* eval = find_stage(report, "eval_mod");
-    const auto* slot = find_stage(report, "slot_to_coeff");
-    const auto* final = find_stage(report, "refresh_result");
+    m2424::BootstrapPrototypeReport fast_report;
+    const double fast_refresh_ms = elapsed_ms([&] {
+        fast_report = prototype.refresh_fast(input);
+    });
 
-    std::printf("profile,slots,tolerance,rotation_keys,plan_ms,keygen_ms,refresh_ms,coeff_to_slot_ms,eval_mod_ms,slot_to_coeff_ms,final_max_abs_error,chain_after,status\n");
-    std::printf("boot_ckks,%zu,%.6e,%zu,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6e,%zu,%s\n",
-                report.slots,
-                report.tolerance,
+    const auto* coeff = find_stage(fast_report, "coeff_to_slot");
+    const auto* eval = find_stage(fast_report, "eval_mod");
+    const auto* slot = find_stage(fast_report, "slot_to_coeff");
+    const auto* final = find_stage(checked_report, "refresh_result");
+
+    std::printf("profile,slots,tolerance,rotation_keys,plan_ms,keygen_ms,checked_refresh_ms,fast_refresh_ms,coeff_to_slot_ms,eval_mod_ms,slot_to_coeff_ms,final_max_abs_error,chain_after,status\n");
+    std::printf("boot_ckks,%zu,%.6e,%zu,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6e,%zu,%s\n",
+                checked_report.slots,
+                checked_report.tolerance,
                 rotation_steps.size(),
                 plan_ms,
                 keygen_ms,
-                refresh_ms,
+                checked_refresh_ms,
+                fast_refresh_ms,
                 coeff ? coeff->duration_ms : 0.0,
                 eval ? eval->duration_ms : 0.0,
                 slot ? slot->duration_ms : 0.0,
                 final ? final->max_abs_error : 0.0,
                 final ? final->chain_after : 0,
-                report.preserve_value_criterion && report.restore_level_criterion ? "PASS" : "FAIL");
+                checked_report.preserve_value_criterion && checked_report.restore_level_criterion
+                    && fast_report.restore_level_criterion ? "PASS" : "FAIL");
 
-    return report.preserve_value_criterion && report.restore_level_criterion ? 0 : 1;
+    return checked_report.preserve_value_criterion && checked_report.restore_level_criterion
+        && fast_report.restore_level_criterion ? 0 : 1;
 }

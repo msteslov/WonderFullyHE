@@ -4,6 +4,8 @@
 
 #include <complex>
 #include <cstddef>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace m2424 {
@@ -31,6 +33,7 @@ public:
 private:
     std::vector<DiagonalTerm> terms_;
     std::size_t dimension_{};
+    mutable std::unordered_map<std::string, std::vector<Plain>> encoded_diagonal_cache_;
 };
 
 ComplexMatrix canonical_embedding_matrix(std::size_t slots);

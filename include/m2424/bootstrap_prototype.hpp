@@ -24,6 +24,7 @@ struct BootstrapPrototypeReport {
     std::size_t slots{};
     double tolerance{};
     double normalization_factor{};
+    bool checked{};
     bool preserve_value_criterion{};
     bool restore_level_criterion{};
     std::vector<BootstrapPrototypeStage> stages;
@@ -38,8 +39,11 @@ public:
 
     std::vector<int> rotation_steps() const;
     BootstrapPrototypeReport refresh_harness(const ComplexVector& input) const;
+    BootstrapPrototypeReport refresh_fast(const ComplexVector& input) const;
 
 private:
+    BootstrapPrototypeReport refresh_impl(const ComplexVector& input, bool checked) const;
+
     SealAdapter& adapter_;
     std::size_t slots_{};
     double tolerance_{};

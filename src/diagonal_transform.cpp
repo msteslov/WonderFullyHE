@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -65,6 +66,14 @@ ComplexVector place_diagonal_for_giant_step(const ComplexVector& diagonal,
         shifted[i + giant_step] = diagonal[i];
     }
     return shifted;
+}
+
+std::string cache_key(const SealAdapter& adapter, const Cipher& input, std::size_t dimension) {
+    const auto info = adapter.info(input);
+    std::ostringstream out;
+    out.precision(17);
+    out << adapter.slot_count() << ':' << dimension << ':' << info.chain_index << ':' << info.scale;
+    return out.str();
 }
 
 Cipher pairwise_add(SealAdapter& adapter, std::vector<Cipher> terms) {
@@ -173,6 +182,23 @@ ComplexVector DiagonalLinearTransform::apply_plain(const ComplexVector& input) c
 
 Cipher DiagonalLinearTransform::apply(SealAdapter& adapter, const Cipher& input) const {
     const std::size_t baby = baby_step_count(dimension_);
+    const std::string encoded_key = cache_key(adapter, input, dimension_);
+    auto cache_it = encoded_diagonal_cache_.find(encoded_key);
+    if (cache_it == encoded_diagonal_cache_.end()) {
+        std::vector<Plain> encoded;
+        encoded.reserve(terms_.size());
+        for (const auto& term : terms_) {
+            const std::size_t rotation = static_cast<std::size_t>(term.rotation);
+            const std::size_t giant_rotation = rotation - (rotation % baby);
+            const auto placed_diagonal = place_diagonal_for_giant_step(term.diagonal,
+                                                                       giant_rotation,
+                                                                       adapter.slot_count());
+            encoded.push_back(adapter.encode_complex_like(placed_diagonal, input));
+        }
+        cache_it = encoded_diagonal_cache_.emplace(encoded_key, std::move(encoded)).first;
+    }
+    const auto& encoded_diagonals = cache_it->second;
+
     std::vector<Cipher> baby_rotations(baby);
     std::vector<bool> baby_ready(baby, false);
     baby_rotations[0] = input;
@@ -187,9 +213,9 @@ Cipher DiagonalLinearTransform::apply(SealAdapter& adapter, const Cipher& input)
     }
 
     const std::size_t giant_count = (dimension_ + baby - 1) / baby;
-    std::vector<std::vector<const DiagonalTerm*>> groups(giant_count);
-    for (const auto& term : terms_) {
-        groups[static_cast<std::size_t>(term.rotation) / baby].push_back(&term);
+    std::vector<std::vector<std::size_t>> groups(giant_count);
+    for (std::size_t term_index = 0; term_index < terms_.size(); ++term_index) {
+        groups[static_cast<std::size_t>(terms_[term_index].rotation) / baby].push_back(term_index);
     }
 
     std::vector<Cipher> giant_terms;
@@ -202,13 +228,10 @@ Cipher DiagonalLinearTransform::apply(SealAdapter& adapter, const Cipher& input)
         const std::size_t giant_rotation = giant_index * baby;
         std::vector<Cipher> inner_terms;
         inner_terms.reserve(groups[giant_index].size());
-        for (const auto* term : groups[giant_index]) {
-            const std::size_t baby_rotation = static_cast<std::size_t>(term->rotation) % baby;
-            const auto shifted_diagonal = place_diagonal_for_giant_step(term->diagonal,
-                                                                        giant_rotation,
-                                                                        adapter.slot_count());
-            Plain encoded_diagonal = adapter.encode_complex_like(shifted_diagonal, baby_rotations[baby_rotation]);
-            inner_terms.push_back(adapter.mul_plain_rescale(baby_rotations[baby_rotation], encoded_diagonal));
+        for (std::size_t term_index : groups[giant_index]) {
+            const std::size_t baby_rotation = static_cast<std::size_t>(terms_[term_index].rotation) % baby;
+            inner_terms.push_back(adapter.mul_plain_rescale(baby_rotations[baby_rotation],
+                                                            encoded_diagonals[term_index]));
         }
 
         Cipher inner = pairwise_add(adapter, std::move(inner_terms));
