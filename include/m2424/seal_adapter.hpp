@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <complex>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -64,11 +65,14 @@ public:
     std::size_t slot_count() const;
 
     Plain encode(const std::vector<double>&);
+    Plain encode_complex(const std::vector<std::complex<double>>&);
     Plain encode_like(const std::vector<double>&, const Cipher&);
+    Plain encode_complex_like(const std::vector<std::complex<double>>&, const Cipher&);
     Plain encode_scalar_like(double, const Cipher&);
     Cipher encrypt(const Plain&);
     Plain decrypt(const Cipher&);
     std::vector<double> decode(const Plain&);
+    std::vector<std::complex<double>> decode_complex(const Plain&);
 
     Cipher add(const Cipher&, const Cipher&);
     Cipher sub(const Cipher&, const Cipher&);

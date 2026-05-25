@@ -4,6 +4,7 @@
 #include "m2424/accuracy.hpp"
 #include "m2424/bootstrap.hpp"
 #include "m2424/checked_evaluator.hpp"
+#include "m2424/diagonal_transform.hpp"
 #include "m2424/linear_transform.hpp"
 #include "m2424/polynomial.hpp"
 #include "m2424/profiles.hpp"

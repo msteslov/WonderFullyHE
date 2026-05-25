@@ -3,6 +3,7 @@ add_library(m2424
     abft.cpp
     bootstrap.cpp
     checked_evaluator.cpp
+    diagonal_transform.cpp
     linear_transform.cpp
     m2424.cpp
     polynomial.cpp

@@ -8,6 +8,7 @@
 #include "m2424/accuracy.hpp"
 #include "m2424/bootstrap.hpp"
 #include "m2424/checked_evaluator.hpp"
+#include "m2424/diagonal_transform.hpp"
 #include "m2424/linear_transform.hpp"
 #include "m2424/polynomial.hpp"
 #include "m2424/profiles.hpp"
@@ -108,6 +109,30 @@ static bool all_named_profiles_create_contexts() {
         }
     }
     return true;
+}
+
+static bool diagonal_transform_plan_ok() {
+    const auto matrix = m2424::canonical_embedding_matrix(4);
+    const auto inverse = m2424::invert_matrix(matrix);
+    const auto transform = m2424::DiagonalLinearTransform::from_matrix(matrix);
+    const auto inverse_transform = m2424::DiagonalLinearTransform::from_matrix(inverse);
+
+    const m2424::ComplexVector input{
+        {0.1, 0.01},
+        {0.2, -0.02},
+        {-0.05, 0.03},
+        {0.07, -0.04}
+    };
+    const auto slots = transform.apply_plain(input);
+    const auto roundtrip = inverse_transform.apply_plain(slots);
+    for (std::size_t i = 0; i < input.size(); ++i) {
+        if (std::abs(input[i] - roundtrip[i]) > 1e-10) {
+            return false;
+        }
+    }
+    return transform.terms().size() == 4
+        && inverse_transform.terms().size() == 4
+        && transform.rotation_steps().size() == 3;
 }
 
 int main() {
@@ -307,6 +332,7 @@ int main() {
         && expect_invalid_argument(unknown_profile_name_case)
         && zero_transform_ok
         && all_named_profiles_create_contexts()
+        && diagonal_transform_plan_ok()
         && security_report_ok
         && bootstrap_report_ok;
     std::printf("[test_smoke] max=%.6e mean=%.6e arithmetic=%s bootstrap_parts=%s security=%s bootstrap_report=%s => %s\n",

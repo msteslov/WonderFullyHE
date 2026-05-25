@@ -3,6 +3,7 @@
 #include <seal/seal.h>
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <cstdint>
 #include <sstream>
 #include <stdexcept>
@@ -100,6 +101,35 @@ static void validate_profile_shape(const CkksProfile& profile) {
     for (int bits : profile.coeff_modulus_bits) {
         if (bits <= 0) {
             throw std::invalid_argument("coeff_modulus_bits entries must be positive");
+        }
+    }
+}
+
+static void validate_real_values(const std::vector<double>& vals, std::size_t slot_count, std::size_t profile_slots) {
+    if (vals.empty()) {
+        throw std::invalid_argument("input vector must not be empty");
+    }
+    if (vals.size() > slot_count || (profile_slots && vals.size() > profile_slots)) {
+        throw std::invalid_argument("input size exceeds configured slots");
+    }
+    for (double value : vals) {
+        if (!std::isfinite(value)) {
+            throw std::invalid_argument("input values must be finite");
+        }
+    }
+}
+
+static void validate_complex_values(const std::vector<std::complex<double>>& vals,
+                                    std::size_t slot_count, std::size_t profile_slots) {
+    if (vals.empty()) {
+        throw std::invalid_argument("input vector must not be empty");
+    }
+    if (vals.size() > slot_count || (profile_slots && vals.size() > profile_slots)) {
+        throw std::invalid_argument("input size exceeds configured slots");
+    }
+    for (const auto& value : vals) {
+        if (!std::isfinite(value.real()) || !std::isfinite(value.imag())) {
+            throw std::invalid_argument("input values must be finite");
         }
     }
 }
@@ -206,10 +236,15 @@ std::size_t SealAdapter::slot_count() const {
 
 Plain SealAdapter::encode(const std::vector<double>& vals) {
     if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
-    if (vals.empty()) throw std::invalid_argument("input vector must not be empty");
-    if (vals.size() > pimpl_->slot_count || (pimpl_->profile.slots && vals.size() > pimpl_->profile.slots)) {
-        throw std::invalid_argument("input size exceeds configured slots");
-    }
+    validate_real_values(vals, pimpl_->slot_count, pimpl_->profile.slots);
+    Plain out;
+    pimpl_->encoder->encode(vals, pimpl_->scale, out.pimpl_->pt);
+    return out;
+}
+
+Plain SealAdapter::encode_complex(const std::vector<std::complex<double>>& vals) {
+    if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
+    validate_complex_values(vals, pimpl_->slot_count, pimpl_->profile.slots);
     Plain out;
     pimpl_->encoder->encode(vals, pimpl_->scale, out.pimpl_->pt);
     return out;
@@ -217,10 +252,15 @@ Plain SealAdapter::encode(const std::vector<double>& vals) {
 
 Plain SealAdapter::encode_like(const std::vector<double>& vals, const Cipher& cipher) {
     if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
-    if (vals.empty()) throw std::invalid_argument("input vector must not be empty");
-    if (vals.size() > pimpl_->slot_count || (pimpl_->profile.slots && vals.size() > pimpl_->profile.slots)) {
-        throw std::invalid_argument("input size exceeds configured slots");
-    }
+    validate_real_values(vals, pimpl_->slot_count, pimpl_->profile.slots);
+    Plain out;
+    pimpl_->encoder->encode(vals, cipher.pimpl_->ct.parms_id(), cipher.pimpl_->ct.scale(), out.pimpl_->pt);
+    return out;
+}
+
+Plain SealAdapter::encode_complex_like(const std::vector<std::complex<double>>& vals, const Cipher& cipher) {
+    if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
+    validate_complex_values(vals, pimpl_->slot_count, pimpl_->profile.slots);
     Plain out;
     pimpl_->encoder->encode(vals, cipher.pimpl_->ct.parms_id(), cipher.pimpl_->ct.scale(), out.pimpl_->pt);
     return out;
@@ -251,6 +291,13 @@ Plain SealAdapter::decrypt(const Cipher& cipher) {
 std::vector<double> SealAdapter::decode(const Plain& plain) {
     if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
     std::vector<double> result;
+    pimpl_->encoder->decode(plain.pimpl_->pt, result);
+    return result;
+}
+
+std::vector<std::complex<double>> SealAdapter::decode_complex(const Plain& plain) {
+    if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
+    std::vector<std::complex<double>> result;
     pimpl_->encoder->decode(plain.pimpl_->pt, result);
     return result;
 }

@@ -30,6 +30,7 @@ cmake --build build -j
 ./build/demo_galois_key_optimization
 ./build/demo_bootstrap_pipeline
 ./build/bench_bootstrap_parts
+./build/demo_bootstrap_diagonals
 ./build/bench_parallel_throughput
 ./build/demo_precision_profiles
 ./build/demo_checked_pipeline
@@ -56,6 +57,8 @@ cmake --build build -j
 `demo_bootstrap_pipeline` печатает отчёт bootstrapping-модуля: профиль `depth_ckks`, границу вычислительной глубины, параметры ciphertext и этапы конвейера `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff`.
 
 `bench_bootstrap_parts` печатает CSV по строительным блокам bootstrapping: `mul_plain_rescale`, rotation-based `linear_transform`, `sum_slots` и `polynomial_eval`. В отчёт входят время, уровень ciphertext, ошибка и сериализованный размер результата.
+
+`demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
 
 `bench_parallel_throughput` измеряет масштабирование на независимых ciphertext. Benchmark разделяет `setup_ms` и `runtime_ms`: подготовка включает создание контекстов, ключей и входных ciphertext, а runtime измеряет параллельные вычисления над уже зашифрованными данными.
 
@@ -129,6 +132,14 @@ auto decoded = adapter.decode(adapter.decrypt(squared));
 Модуль `m2424::accuracy` задаёт единые метрики точности: `max_abs_error`, `mean_abs_error` и `compare(expected, actual, tolerance)`. Demo и тесты используют этот общий код, чтобы критерии корректности не расходились между сценариями.
 
 Модуль `m2424::CheckedEvaluator` выполняет операции через `SealAdapter` и возвращает `CheckedResult`: ciphertext, `CipherInfo`, метрики точности, tolerance и статус. Он нужен для сценариев, где после каждого шага вычисления надо контролировать ошибку, уровень ciphertext и масштаб.
+
+Модуль `m2424::DiagonalLinearTransform` строит и применяет диагональное разложение комплексной матрицы:
+
+```text
+A*x = sum_k diag_k * Rot_k(x)
+```
+
+Для bootstrapping-блоков добавлены генераторы `canonical_embedding_matrix(slots)` и `invert_matrix(matrix)`. Они дают численные коэффициенты для прототипов `CoeffToSlot` и `SlotToCoeff`; коэффициенты не выписываются вручную, а вычисляются из корней единицы CKKS.
 
 Модуль `m2424::abft` содержит checksum-инструменты: `append_checksum`, `checksum`, `verify_appended_checksum`, `verify_checksum_value`.
 
