@@ -31,6 +31,7 @@ cmake --build build -j
 ./build/demo_bootstrap_pipeline
 ./build/bench_bootstrap_parts
 ./build/demo_bootstrap_diagonals
+./build/demo_eval_mod_polynomial
 ./build/bench_parallel_throughput
 ./build/demo_precision_profiles
 ./build/demo_checked_pipeline
@@ -59,6 +60,8 @@ cmake --build build -j
 `bench_bootstrap_parts` печатает CSV по строительным блокам bootstrapping: `mul_plain_rescale`, rotation-based `linear_transform`, `sum_slots` и `polynomial_eval`. В отчёт входят время, уровень ciphertext, ошибка и сериализованный размер результата.
 
 `demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
+
+`demo_eval_mod_polynomial` проверяет полином `EvalMod` степени 7 на диапазоне `[-2^-10, 2^-10]`: сначала против `sin(2*pi*u)/(2*pi)` на открытых данных, затем на зашифрованном CKKS-векторе в профиле `boot_ckks`.
 
 `bench_parallel_throughput` измеряет масштабирование на независимых ciphertext. Benchmark разделяет `setup_ms` и `runtime_ms`: подготовка включает создание контекстов, ключей и входных ciphertext, а runtime измеряет параллельные вычисления над уже зашифрованными данными.
 
@@ -93,6 +96,7 @@ ctest --test-dir build --output-on-failure
 | `profiles::balanced_ckks()` | Дополнительный уровень умножения на `N = 8192` без перехода на более тяжёлый `N = 16384`. |
 | `profiles::depth_ckks()` | Анализ глубины и bootstrapping-блоки. |
 | `profiles::high_precision_ckks()` | Более высокий масштаб `2^50` для сценариев, где точность важнее скорости. |
+| `profiles::boot_ckks()` | Профиль для экспериментов с полным refresh: длинная цепочка `60-40-40-40-40-40-40-40-60` при `N = 16384`. |
 
 Минимальный пример:
 
@@ -140,6 +144,14 @@ A*x = sum_k diag_k * Rot_k(x)
 ```
 
 Для bootstrapping-блоков добавлены генераторы `canonical_embedding_matrix(slots)` и `invert_matrix(matrix)`. Они дают численные коэффициенты для прототипов `CoeffToSlot` и `SlotToCoeff`; коэффициенты не выписываются вручную, а вычисляются из корней единицы CKKS.
+
+Модуль `m2424::EvalModPolynomial` реализует полином:
+
+```text
+P7(u) = u - 6.579736267393*u^3 + 12.98787880453*u^5 - 12.20811674381*u^7
+```
+
+Рабочий диапазон первой версии: `|u| <= 2^-10`. Ciphertext-версия считает степени `u^2`, `u^3`, `u^5`, `u^7` отдельной схемой, без общего последовательного подъёма степени.
 
 Модуль `m2424::abft` содержит checksum-инструменты: `append_checksum`, `checksum`, `verify_appended_checksum`, `verify_checksum_value`.
 

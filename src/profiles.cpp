@@ -25,13 +25,18 @@ CkksProfile high_precision_ckks() {
     return CkksProfile{16384, {60, 50, 50, 50, 60}, std::pow(2.0, 50), 8192};
 }
 
+CkksProfile boot_ckks() {
+    return CkksProfile{16384, {60, 40, 40, 40, 40, 40, 40, 40, 60}, std::pow(2.0, 40), 8192};
+}
+
 std::vector<std::pair<std::string, CkksProfile>> all() {
     return {
         {"fast_demo_ckks", fast_demo_ckks()},
         {"basic_ckks", basic_ckks()},
         {"balanced_ckks", balanced_ckks()},
         {"depth_ckks", depth_ckks()},
-        {"high_precision_ckks", high_precision_ckks()}
+        {"high_precision_ckks", high_precision_ckks()},
+        {"boot_ckks", boot_ckks()}
     };
 }
 

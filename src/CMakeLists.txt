@@ -4,6 +4,7 @@ add_library(m2424
     bootstrap.cpp
     checked_evaluator.cpp
     diagonal_transform.cpp
+    eval_mod.cpp
     linear_transform.cpp
     m2424.cpp
     polynomial.cpp

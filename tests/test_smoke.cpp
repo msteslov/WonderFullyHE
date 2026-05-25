@@ -9,6 +9,7 @@
 #include "m2424/bootstrap.hpp"
 #include "m2424/checked_evaluator.hpp"
 #include "m2424/diagonal_transform.hpp"
+#include "m2424/eval_mod.hpp"
 #include "m2424/linear_transform.hpp"
 #include "m2424/polynomial.hpp"
 #include "m2424/profiles.hpp"
@@ -135,6 +136,20 @@ static bool diagonal_transform_plan_ok() {
         && transform.rotation_steps().size() == 3;
 }
 
+static bool eval_mod_polynomial_ok() {
+    m2424::EvalModPolynomial eval_mod;
+    const std::vector<double> input{
+        -m2424::EvalModPolynomial::approximation_bound,
+        -0.5 * m2424::EvalModPolynomial::approximation_bound,
+        0.0,
+        0.5 * m2424::EvalModPolynomial::approximation_bound,
+        m2424::EvalModPolynomial::approximation_bound
+    };
+    const auto polynomial = eval_mod.evaluate_plain(input);
+    const auto sine = eval_mod.sine_reference(input);
+    return m2424::compare(sine, polynomial, 1e-12).ok;
+}
+
 int main() {
     const auto prof = m2424::profiles::basic_ckks();
     const auto slots = prof.slots;
@@ -257,7 +272,8 @@ int main() {
     const auto balanced_security = m2424::analyze_security("balanced_ckks", m2424::profiles::balanced_ckks());
     const auto depth_security = m2424::analyze_security("depth_ckks", depth_profile);
     const auto high_precision_security = m2424::analyze_security("high_precision_ckks", m2424::profiles::high_precision_ckks());
-    const std::vector<m2424::SecurityReport> security_reports{basic_security, balanced_security, depth_security, high_precision_security};
+    const auto boot_security = m2424::analyze_security("boot_ckks", m2424::profiles::boot_ckks());
+    const std::vector<m2424::SecurityReport> security_reports{basic_security, balanced_security, depth_security, high_precision_security, boot_security};
     const bool security_report_ok = basic_security.total_coeff_modulus_bits == 200
         && basic_security.tc128_limit == 218
         && basic_security.passes_tc128
@@ -279,6 +295,10 @@ int main() {
         && high_precision_security.passes_tc192
         && !high_precision_security.passes_tc256
         && high_precision_security.effective_level == m2424::SecurityLevel::TC192
+        && boot_security.total_coeff_modulus_bits == 400
+        && boot_security.passes_tc128
+        && !boot_security.passes_tc192
+        && boot_security.effective_level == m2424::SecurityLevel::TC128
         && m2424::project_minimum_security(security_reports) == m2424::SecurityLevel::TC128;
     const bool bootstrap_report_ok = bootstrap_report.input.available
         && bootstrap_report.depth_boundary.available
@@ -333,6 +353,7 @@ int main() {
         && zero_transform_ok
         && all_named_profiles_create_contexts()
         && diagonal_transform_plan_ok()
+        && eval_mod_polynomial_ok()
         && security_report_ok
         && bootstrap_report_ok;
     std::printf("[test_smoke] max=%.6e mean=%.6e arithmetic=%s bootstrap_parts=%s security=%s bootstrap_report=%s => %s\n",
