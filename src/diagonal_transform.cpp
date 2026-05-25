@@ -50,6 +50,23 @@ bool has_nonzero(const ComplexVector& values, double tolerance) {
     });
 }
 
+std::size_t baby_step_count(std::size_t dimension) {
+    return static_cast<std::size_t>(std::ceil(std::sqrt(static_cast<double>(dimension))));
+}
+
+ComplexVector place_diagonal_for_giant_step(const ComplexVector& diagonal,
+                                            std::size_t giant_step,
+                                            std::size_t slot_count) {
+    if (giant_step + diagonal.size() > slot_count) {
+        throw std::invalid_argument("giant step exceeds available CKKS slots");
+    }
+    ComplexVector shifted(slot_count, Complex{0.0, 0.0});
+    for (std::size_t i = 0; i < diagonal.size(); ++i) {
+        shifted[i + giant_step] = diagonal[i];
+    }
+    return shifted;
+}
+
 Cipher pairwise_add(SealAdapter& adapter, std::vector<Cipher> terms) {
     if (terms.empty()) {
         throw std::invalid_argument("diagonal transform has no non-zero terms");
@@ -123,9 +140,16 @@ const std::vector<DiagonalTerm>& DiagonalLinearTransform::terms() const noexcept
 
 std::vector<int> DiagonalLinearTransform::rotation_steps() const {
     std::vector<int> steps;
+    const std::size_t baby = baby_step_count(dimension_);
     for (const auto& term : terms_) {
-        if (term.rotation != 0) {
-            steps.push_back(term.rotation);
+        const std::size_t rotation = static_cast<std::size_t>(term.rotation);
+        const std::size_t baby_rotation = rotation % baby;
+        const std::size_t giant_rotation = rotation - baby_rotation;
+        if (baby_rotation != 0) {
+            steps.push_back(static_cast<int>(baby_rotation));
+        }
+        if (giant_rotation != 0) {
+            steps.push_back(static_cast<int>(giant_rotation));
         }
     }
     std::sort(steps.begin(), steps.end());
@@ -148,24 +172,54 @@ ComplexVector DiagonalLinearTransform::apply_plain(const ComplexVector& input) c
 }
 
 Cipher DiagonalLinearTransform::apply(SealAdapter& adapter, const Cipher& input) const {
-    std::vector<Cipher> weighted_terms;
-    weighted_terms.reserve(terms_.size());
+    const std::size_t baby = baby_step_count(dimension_);
+    std::vector<Cipher> baby_rotations(baby);
+    std::vector<bool> baby_ready(baby, false);
+    baby_rotations[0] = input;
+    baby_ready[0] = true;
 
     for (const auto& term : terms_) {
-        Cipher rotated_value;
-        const Cipher* rotated = nullptr;
-        if (term.rotation == 0) {
-            rotated = &input;
-        } else {
-            rotated_value = adapter.rotate(input, term.rotation);
-            rotated = &rotated_value;
+        const std::size_t baby_rotation = static_cast<std::size_t>(term.rotation) % baby;
+        if (!baby_ready[baby_rotation]) {
+            baby_rotations[baby_rotation] = adapter.rotate(input, static_cast<int>(baby_rotation));
+            baby_ready[baby_rotation] = true;
         }
-
-        Plain encoded_diagonal = adapter.encode_complex_like(term.diagonal, *rotated);
-        weighted_terms.push_back(adapter.mul_plain_rescale(*rotated, encoded_diagonal));
     }
 
-    return pairwise_add(adapter, std::move(weighted_terms));
+    const std::size_t giant_count = (dimension_ + baby - 1) / baby;
+    std::vector<std::vector<const DiagonalTerm*>> groups(giant_count);
+    for (const auto& term : terms_) {
+        groups[static_cast<std::size_t>(term.rotation) / baby].push_back(&term);
+    }
+
+    std::vector<Cipher> giant_terms;
+    giant_terms.reserve(giant_count);
+    for (std::size_t giant_index = 0; giant_index < groups.size(); ++giant_index) {
+        if (groups[giant_index].empty()) {
+            continue;
+        }
+
+        const std::size_t giant_rotation = giant_index * baby;
+        std::vector<Cipher> inner_terms;
+        inner_terms.reserve(groups[giant_index].size());
+        for (const auto* term : groups[giant_index]) {
+            const std::size_t baby_rotation = static_cast<std::size_t>(term->rotation) % baby;
+            const auto shifted_diagonal = place_diagonal_for_giant_step(term->diagonal,
+                                                                        giant_rotation,
+                                                                        adapter.slot_count());
+            Plain encoded_diagonal = adapter.encode_complex_like(shifted_diagonal, baby_rotations[baby_rotation]);
+            inner_terms.push_back(adapter.mul_plain_rescale(baby_rotations[baby_rotation], encoded_diagonal));
+        }
+
+        Cipher inner = pairwise_add(adapter, std::move(inner_terms));
+        if (giant_rotation == 0) {
+            giant_terms.push_back(std::move(inner));
+        } else {
+            giant_terms.push_back(adapter.rotate(inner, static_cast<int>(giant_rotation)));
+        }
+    }
+
+    return pairwise_add(adapter, std::move(giant_terms));
 }
 
 ComplexMatrix canonical_embedding_matrix(std::size_t slots) {
