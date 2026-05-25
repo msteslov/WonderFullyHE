@@ -1,6 +1,7 @@
 #pragma once
 
 #include "m2424/seal_adapter.hpp"
+#include "m2424/diagonal_transform.hpp"
 
 #include <vector>
 
@@ -16,6 +17,8 @@ public:
 
     double evaluate_plain(double u) const;
     std::vector<double> evaluate_plain(const std::vector<double>& input) const;
+    Complex evaluate_plain(Complex u) const;
+    ComplexVector evaluate_plain(const ComplexVector& input) const;
     double sine_reference(double u) const;
     std::vector<double> sine_reference(const std::vector<double>& input) const;
     Cipher evaluate(SealAdapter& adapter, const Cipher& input) const;

@@ -18,6 +18,15 @@ void validate_input(double u) {
     }
 }
 
+void validate_input(Complex u) {
+    if (!std::isfinite(u.real()) || !std::isfinite(u.imag())) {
+        throw std::invalid_argument("EvalMod input must be finite");
+    }
+    if (std::abs(u) > EvalModPolynomial::approximation_bound) {
+        throw std::invalid_argument("EvalMod input is outside approximation interval");
+    }
+}
+
 Cipher multiply_same_level(SealAdapter& adapter, const Cipher& lhs, const Cipher& rhs) {
     return adapter.mul_relin_rescale(lhs, rhs);
 }
@@ -49,6 +58,27 @@ std::vector<double> EvalModPolynomial::evaluate_plain(const std::vector<double>&
     std::vector<double> result;
     result.reserve(input.size());
     for (double value : input) {
+        result.push_back(evaluate_plain(value));
+    }
+    return result;
+}
+
+Complex EvalModPolynomial::evaluate_plain(Complex u) const {
+    validate_input(u);
+    const Complex u2 = u * u;
+    const Complex u3 = u * u2;
+    const Complex u5 = u3 * u2;
+    const Complex u7 = u5 * u2;
+    return a1 * u + a3 * u3 + a5 * u5 + a7 * u7;
+}
+
+ComplexVector EvalModPolynomial::evaluate_plain(const ComplexVector& input) const {
+    if (input.empty()) {
+        throw std::invalid_argument("EvalMod input vector must not be empty");
+    }
+    ComplexVector result;
+    result.reserve(input.size());
+    for (Complex value : input) {
         result.push_back(evaluate_plain(value));
     }
     return result;

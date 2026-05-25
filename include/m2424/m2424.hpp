@@ -3,6 +3,7 @@
 #include "m2424/abft.hpp"
 #include "m2424/accuracy.hpp"
 #include "m2424/bootstrap.hpp"
+#include "m2424/bootstrap_prototype.hpp"
 #include "m2424/checked_evaluator.hpp"
 #include "m2424/diagonal_transform.hpp"
 #include "m2424/eval_mod.hpp"
