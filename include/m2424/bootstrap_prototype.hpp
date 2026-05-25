@@ -17,6 +17,7 @@ struct BootstrapPrototypeStage {
     double scale_before{};
     double scale_after{};
     double max_abs_error{};
+    double duration_ms{};
 };
 
 struct BootstrapPrototypeReport {
@@ -32,6 +33,8 @@ struct BootstrapPrototypeReport {
 class BootstrapPrototype {
 public:
     BootstrapPrototype(SealAdapter& adapter, std::size_t slots, double tolerance);
+
+    static std::vector<int> required_rotation_steps(std::size_t slots);
 
     std::vector<int> rotation_steps() const;
     BootstrapPrototypeReport refresh_harness(const ComplexVector& input) const;

@@ -3,6 +3,7 @@
 #include "m2424/eval_mod.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <stdexcept>
 #include <utility>
@@ -11,7 +12,10 @@ namespace m2424 {
 namespace {
 
 double max_complex_error(const ComplexVector& expected, const ComplexVector& actual) {
-    const std::size_t n = std::min(expected.size(), actual.size());
+    if (expected.size() != actual.size()) {
+        throw std::invalid_argument("vectors must have equal size");
+    }
+    const std::size_t n = expected.size();
     double result = 0.0;
     for (std::size_t i = 0; i < n; ++i) {
         result = std::max(result, std::abs(expected[i] - actual[i]));
@@ -28,7 +32,8 @@ BootstrapPrototypeStage make_stage(const std::string& name,
                                    const CipherInfo& before,
                                    const CipherInfo& after,
                                    double max_error,
-                                   double tolerance) {
+                                   double tolerance,
+                                   double duration_ms) {
     return BootstrapPrototypeStage{
         name,
         max_error <= tolerance ? "PASS" : "FAIL",
@@ -36,7 +41,8 @@ BootstrapPrototypeStage make_stage(const std::string& name,
         after.chain_index,
         before.scale,
         after.scale,
-        max_error
+        max_error,
+        duration_ms
     };
 }
 
@@ -48,8 +54,17 @@ BootstrapPrototypeStage make_harness_stage(const CipherInfo& after) {
         after.chain_index,
         after.scale,
         after.scale,
+        0.0,
         0.0
     };
+}
+
+template <typename Fn>
+double elapsed_ms(Fn&& fn) {
+    const auto started = std::chrono::steady_clock::now();
+    fn();
+    const auto finished = std::chrono::steady_clock::now();
+    return std::chrono::duration<double, std::milli>(finished - started).count();
 }
 
 } // namespace
@@ -68,13 +83,23 @@ BootstrapPrototype::BootstrapPrototype(SealAdapter& adapter, std::size_t slots, 
     }
 }
 
-std::vector<int> BootstrapPrototype::rotation_steps() const {
-    std::vector<int> steps = coeff_to_slot_.rotation_steps();
-    auto inverse_steps = slot_to_coeff_.rotation_steps();
+std::vector<int> BootstrapPrototype::required_rotation_steps(std::size_t slots) {
+    if (slots == 0) {
+        throw std::invalid_argument("slots must be positive");
+    }
+    auto coeff_to_slot = DiagonalLinearTransform::from_matrix(canonical_embedding_matrix(slots));
+    auto slot_to_coeff = DiagonalLinearTransform::from_matrix(invert_matrix(canonical_embedding_matrix(slots)));
+
+    std::vector<int> steps = coeff_to_slot.rotation_steps();
+    auto inverse_steps = slot_to_coeff.rotation_steps();
     steps.insert(steps.end(), inverse_steps.begin(), inverse_steps.end());
     std::sort(steps.begin(), steps.end());
     steps.erase(std::unique(steps.begin(), steps.end()), steps.end());
     return steps;
+}
+
+std::vector<int> BootstrapPrototype::rotation_steps() const {
+    return required_rotation_steps(slots_);
 }
 
 BootstrapPrototypeReport BootstrapPrototype::refresh_harness(const ComplexVector& input) const {
@@ -106,11 +131,13 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_harness(const ComplexVector
     }
 
     auto before = adapter_.info(current);
-    current = coeff_to_slot_.apply(adapter_, current);
+    double stage_ms = elapsed_ms([&] {
+        current = coeff_to_slot_.apply(adapter_, current);
+    });
     auto after = adapter_.info(current);
     auto coeff_actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
     report.stages.push_back(make_stage("coeff_to_slot", before, after,
-                                       max_complex_error(coeff_expected, coeff_actual), tolerance_));
+                                       max_complex_error(coeff_expected, coeff_actual), tolerance_, stage_ms));
 
     report.stages.push_back(BootstrapPrototypeStage{
         "eval_mod_normalization",
@@ -119,24 +146,29 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_harness(const ComplexVector
         after.chain_index,
         after.scale,
         after.scale,
+        0.0,
         0.0
     });
 
     const auto eval_expected = eval_mod.evaluate_plain(coeff_expected);
     before = adapter_.info(current);
-    current = eval_mod.evaluate(adapter_, current);
+    stage_ms = elapsed_ms([&] {
+        current = eval_mod.evaluate(adapter_, current);
+    });
     after = adapter_.info(current);
     auto eval_actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
     report.stages.push_back(make_stage("eval_mod", before, after,
-                                       max_complex_error(eval_expected, eval_actual), tolerance_));
+                                       max_complex_error(eval_expected, eval_actual), tolerance_, stage_ms));
 
     const auto result_expected = slot_to_coeff_.apply_plain(eval_expected);
     before = adapter_.info(current);
-    current = slot_to_coeff_.apply(adapter_, current);
+    stage_ms = elapsed_ms([&] {
+        current = slot_to_coeff_.apply(adapter_, current);
+    });
     after = adapter_.info(current);
     auto result_actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
     const double result_error = max_complex_error(result_expected, result_actual);
-    report.stages.push_back(make_stage("slot_to_coeff", before, after, result_error, tolerance_));
+    report.stages.push_back(make_stage("slot_to_coeff", before, after, result_error, tolerance_, stage_ms));
 
     const double preserve_error = max_complex_error(input, result_actual);
     report.stages.push_back(BootstrapPrototypeStage{
@@ -146,7 +178,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_harness(const ComplexVector
         after.chain_index,
         after.scale,
         after.scale,
-        preserve_error
+        preserve_error,
+        0.0
     });
 
     report.preserve_value_criterion = preserve_error <= tolerance_;

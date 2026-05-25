@@ -21,9 +21,7 @@ int main() {
         });
     }
 
-    auto planning_adapter = m2424::SealAdapter::create(m2424::profiles::boot_ckks());
-    m2424::BootstrapPrototype planning(planning_adapter, slots, tolerance);
-    auto rotation_steps = planning.rotation_steps();
+    auto rotation_steps = m2424::BootstrapPrototype::required_rotation_steps(slots);
 
     auto adapter = m2424::SealAdapter::create(m2424::profiles::boot_ckks());
     adapter.keygen(rotation_steps, true);
@@ -37,16 +35,17 @@ int main() {
                 report.tolerance,
                 report.normalization_factor,
                 rotation_steps.size());
-    std::printf("stage,status,chain_before,chain_after,scale_before,scale_after,max_abs_error\n");
+    std::printf("stage,status,chain_before,chain_after,scale_before,scale_after,max_abs_error,duration_ms\n");
     for (const auto& stage : report.stages) {
-        std::printf("%s,%s,%zu,%zu,%.6e,%.6e,%.6e\n",
+        std::printf("%s,%s,%zu,%zu,%.6e,%.6e,%.6e,%.6f\n",
                     stage.name.c_str(),
                     stage.status.c_str(),
                     stage.chain_before,
                     stage.chain_after,
                     stage.scale_before,
                     stage.scale_after,
-                    stage.max_abs_error);
+                    stage.max_abs_error,
+                    stage.duration_ms);
     }
     std::printf("criterion,status\n");
     std::printf("Dec(c_prime)_approx_Dec(c),%s\n", report.preserve_value_criterion ? "PASS" : "FAIL");
