@@ -29,7 +29,7 @@ int main() {
     lowered_out.resize(std::min(lowered_out.size(), input.size()));
     raised_out.resize(std::min(raised_out.size(), input.size()));
     const auto lowered_accuracy = m2424::compare(input, lowered_out, 1e-5);
-    const auto raised_decode_delta = m2424::compare(lowered_out, raised_out, 1e90);
+    const auto raised_decode_delta = m2424::compare(lowered_out, raised_out, 1e-5);
 
     const auto initial_info = adapter.info(encrypted);
     const auto lowered_info = adapter.info(lowered);
@@ -46,14 +46,16 @@ int main() {
                 lowered_info.scale,
                 lowered_accuracy.max_abs_error,
                 lowered_accuracy.ok ? "PASS" : "FAIL");
+    const bool structural_ok = raised_info.chain_index > lowered_info.chain_index
+        && raised_info.coeff_modulus_size > lowered_info.coeff_modulus_size;
+    const bool raised_ok = structural_ok && raised_decode_delta.ok;
+
     std::printf("raised_structural,%zu,%zu,%.6e,%.6e,%s\n",
                 raised_info.chain_index,
                 raised_info.coeff_modulus_size,
                 raised_info.scale,
                 raised_decode_delta.max_abs_error,
-                raised_info.chain_index > lowered_info.chain_index
-                    && raised_info.coeff_modulus_size > lowered_info.coeff_modulus_size ? "PASS" : "FAIL");
+                raised_ok ? "PASS" : "FAIL");
 
-    return raised_info.chain_index > lowered_info.chain_index
-        && raised_info.coeff_modulus_size > lowered_info.coeff_modulus_size ? 0 : 1;
+    return raised_ok ? 0 : 1;
 }

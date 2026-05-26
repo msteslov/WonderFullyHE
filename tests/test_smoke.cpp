@@ -133,7 +133,7 @@ static bool diagonal_transform_plan_ok() {
     }
     return transform.terms().size() == 4
         && inverse_transform.terms().size() == 4
-        && transform.rotation_steps().size() == 2;
+        && transform.rotation_steps().size() == 6;
 }
 
 static bool eval_mod_polynomial_ok() {

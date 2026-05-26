@@ -66,21 +66,21 @@ cmake --build build -j
 
 `bench_bootstrap_parts` печатает CSV по строительным блокам bootstrapping: `mul_plain_rescale`, rotation-based `linear_transform`, `sum_slots` и `polynomial_eval`. В отчёт входят время, уровень ciphertext, ошибка и сериализованный размер результата.
 
-`bench_bootstrap_full` измеряет полный refresh-harness в профиле `boot_ckks`: подготовку rotation steps, генерацию ключей, проверяемый runtime, быстрый runtime, время `CoeffToSlot`, `EvalMod`, `SlotToCoeff`, финальную ошибку и статус. Диагональные преобразования выполняются через baby-step/giant-step, поэтому для dense-transform на 16 логических slots требуется 6 rotation keys вместо 15.
+`bench_bootstrap_full` измеряет полный refresh-harness в профиле `boot_ckks`: подготовку rotation steps, генерацию ключей, проверяемый runtime, быстрый runtime, время `CoeffToSlot`, `EvalMod`, `SlotToCoeff`, финальную ошибку и статус. Диагональные преобразования выполняются над первыми логическими slots с явным wrap-around через положительные и отрицательные ротации.
 
 `bench_bootstrap_refresh` измеряет публичный путь `Bootstrapper::refresh`: подготовку rotation steps, генерацию ключей, общее время refresh и времена этапов `ModRaise`, `CoeffToSlot`, `eval_mod_normalization`, `EvalMod`, `SlotToCoeff`, `post_refresh_mod_raise`.
 
-`bench_bootstrap_validation` выполняет строгую проверку refresh-пути на сетке входов: тип входа, амплитуда, начальный уровень, восстановленный уровень, ошибка сохранения значения и ошибка после последующих операций. Таблица нужна для отделения структурного восстановления уровня от полноценного сохранения значения.
+`bench_bootstrap_validation` выполняет строгую проверку refresh-пути на сетке входов: тип входа, амплитуда, начальный уровень, восстановленный уровень, максимум входа, максимум после `CoeffToSlot`, коэффициент нормализации, попадание в интервал `EvalMod`, ошибка `EvalMod`, финальная ошибка и ошибка после последующих операций.
 
 `demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
 
 `demo_bootstrap_prototype` связывает bootstrapping-блоки в один проверяемый refresh-harness: `mod_raise_harness -> CoeffToSlot -> eval_mod_normalization -> EvalMod -> SlotToCoeff -> refresh_result`. Для каждого этапа печатаются уровень ciphertext, масштаб, максимальная ошибка, runtime и статус относительно tolerance `2e-5`. Коэффициент нормализации вычисляется по максимальной амплитуде после `CoeffToSlot`, чтобы вход `EvalMod` попадал в рабочий интервал полинома.
 
-`demo_mod_raise` проверяет низкоуровневый CKKS ModRaise: ciphertext после снижения уровня расширяется обратно к первой RNS-базе без расшифрования. В отчёт входят `chain_index`, число коэффициентных модулей, масштаб и структурный статус.
+`demo_mod_raise` проверяет низкоуровневый CKKS ModRaise: ciphertext после снижения уровня расширяется обратно к первой RNS-базе без расшифрования. В отчёт входят `chain_index`, число коэффициентных модулей, масштаб, ошибка декодирования относительно ciphertext до подъёма и статус.
 
 `demo_bootstrap_cipher_path` запускает ciphertext-only путь `ModRaise -> CoeffToSlot -> eval_mod_normalization -> EvalMod -> SlotToCoeff -> post_refresh_mod_raise` для уже существующего ciphertext. Этот сценарий показывает прохождение конвейера без открытого входного вектора.
 
-`demo_bootstrap_end_to_end` проверяет исполняемый сценарий продолжения вычислений после refresh: ciphertext сначала переводится на более низкий уровень, затем проходит refresh-путь, после чего над результатом выполняется следующая plaintext-операция с rescale.
+`demo_bootstrap_end_to_end` проверяет исполняемый сценарий продолжения вычислений после refresh: ciphertext сначала переводится на более низкий уровень, затем проходит refresh-путь, после чего над результатом выполняется следующая plaintext-операция с rescale. В статус входит сохранение значения после refresh.
 
 `demo_eval_mod_polynomial` проверяет полином `EvalMod` степени 7 на диапазоне `[-2^-10, 2^-10]`: сначала против `sin(2*pi*u)/(2*pi)` на открытых данных, затем на зашифрованном CKKS-векторе в профиле `boot_ckks`.
 

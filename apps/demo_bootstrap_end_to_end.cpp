@@ -1,3 +1,4 @@
+#include "m2424/accuracy.hpp"
 #include "m2424/bootstrap.hpp"
 #include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
@@ -25,8 +26,17 @@ int main() {
     const auto before_info = adapter.info(before_refresh);
 
     m2424::Bootstrapper bootstrapper(adapter);
-    auto refresh_report = bootstrapper.refresh(before_refresh, slots, tolerance);
+    std::vector<m2424::Complex> expected;
+    expected.reserve(input.size());
+    for (double value : input) {
+        expected.push_back({value, 0.0});
+    }
+
+    auto refresh_report = bootstrapper.refresh_checked(before_refresh, expected, slots, tolerance);
     const auto refreshed_info = adapter.info(refresh_report.result);
+    auto refreshed_values = adapter.decode(adapter.decrypt(refresh_report.result));
+    refreshed_values.resize(slots);
+    const auto refreshed_accuracy = m2424::compare(input, refreshed_values, tolerance);
 
     auto continued = adapter.mul_plain_rescale(refresh_report.result,
                                                adapter.encode_scalar_like(1.0, refresh_report.result));
@@ -34,6 +44,7 @@ int main() {
 
     const bool restored_level = refreshed_info.chain_index > before_info.chain_index;
     const bool consumed_after_refresh = continued_info.chain_index < refreshed_info.chain_index;
+    const bool preserve_value = refreshed_accuracy.ok;
 
     std::printf("bootstrap_end_to_end\n");
     std::printf("stage,chain_index,coeff_modulus_size,scale,status\n");
@@ -52,8 +63,10 @@ int main() {
                 continued_info.scale,
                 consumed_after_refresh ? "PASS" : "FAIL");
     std::printf("criterion,status\n");
+    std::printf("preserve_value_after_refresh,%s\n", preserve_value ? "PASS" : "FAIL");
+    std::printf("max_abs_error_after_refresh,%.6e\n", refreshed_accuracy.max_abs_error);
     std::printf("level_after_refresh_gt_level_before,%s\n", restored_level ? "PASS" : "FAIL");
     std::printf("operation_after_refresh_available,%s\n", consumed_after_refresh ? "PASS" : "FAIL");
 
-    return restored_level && consumed_after_refresh ? 0 : 1;
+    return preserve_value && restored_level && consumed_after_refresh ? 0 : 1;
 }

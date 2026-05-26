@@ -24,6 +24,10 @@ struct BootstrapPrototypeReport {
     std::size_t slots{};
     double tolerance{};
     double normalization_factor{};
+    double max_abs_input{};
+    double max_abs_after_coeff_to_slot{};
+    double max_abs_after_normalization{};
+    bool inside_evalmod_interval{};
     bool checked{};
     bool preserve_value_criterion{};
     bool restore_level_criterion{};

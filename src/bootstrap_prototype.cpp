@@ -37,11 +37,16 @@ ComplexVector scaled(const ComplexVector& values, double factor) {
     return result;
 }
 
-double normalization_factor_for(const ComplexVector& values) {
-    double max_abs = 0.0;
+double max_abs_value(const ComplexVector& values) {
+    double result = 0.0;
     for (const auto& value : values) {
-        max_abs = std::max(max_abs, std::abs(value));
+        result = std::max(result, std::abs(value));
     }
+    return result;
+}
+
+double normalization_factor_for(const ComplexVector& values) {
+    const double max_abs = max_abs_value(values);
     if (max_abs == 0.0) {
         return 1.0;
     }
@@ -161,19 +166,25 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
     report.slots = slots_;
     report.tolerance = tolerance_;
     report.checked = checked;
+    report.max_abs_input = max_abs_value(input);
 
     ComplexVector packed(adapter_.slot_count(), Complex{0.0, 0.0});
-    for (std::size_t i = 0; i < packed.size(); ++i) {
-        packed[i] = input[i % slots_];
+    for (std::size_t i = 0; i < slots_; ++i) {
+        packed[i] = input[i];
     }
 
     auto current = adapter_.encrypt(adapter_.encode_complex(packed));
-    report.stages.push_back(make_harness_stage(adapter_.info(current)));
+    const auto initial_info = adapter_.info(current);
+    report.stages.push_back(make_harness_stage(initial_info));
 
     const auto coeff_expected_raw = coeff_to_slot_.apply_plain(input);
     const double normalization_factor = normalization_factor_for(coeff_expected_raw);
     report.normalization_factor = normalization_factor;
+    report.max_abs_after_coeff_to_slot = max_abs_value(coeff_expected_raw);
     const auto coeff_expected = scaled(coeff_expected_raw, normalization_factor);
+    report.max_abs_after_normalization = max_abs_value(coeff_expected);
+    report.inside_evalmod_interval =
+        report.max_abs_after_normalization <= EvalModPolynomial::approximation_bound;
 
     auto before = adapter_.info(current);
     double stage_ms = elapsed_ms([&] {
@@ -277,7 +288,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
     });
 
     report.preserve_value_criterion = !checked || preserve_error <= tolerance_;
-    report.restore_level_criterion = final_info.chain_index >= 0;
+    report.restore_level_criterion = final_info.chain_index >= initial_info.chain_index;
     report.result = std::move(current);
     return report;
 }
@@ -293,8 +304,12 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
     report.tolerance = tolerance_;
     report.normalization_factor = normalization_factor_;
     report.checked = expected != nullptr;
+    if (expected) {
+        report.max_abs_input = max_abs_value(*expected);
+    }
 
-    auto before = adapter_.info(input);
+    const auto input_info = adapter_.info(input);
+    auto before = input_info;
     Cipher current;
     double stage_ms = elapsed_ms([&] {
         current = adapter_.mod_raise_to_first(input);
@@ -321,6 +336,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
     ComplexVector coeff_expected;
     if (expected) {
         coeff_expected = coeff_to_slot_.apply_plain(current_expected);
+        report.max_abs_after_coeff_to_slot = max_abs_value(coeff_expected);
+        report.normalization_factor = normalization_factor_for(coeff_expected);
     }
     before = adapter_.info(current);
     stage_ms = elapsed_ms([&] {
@@ -340,12 +357,16 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
                                        stage_ms,
                                        expected != nullptr));
 
+    const double effective_normalization_factor = report.normalization_factor;
     if (expected) {
-        coeff_expected = scaled(coeff_expected, normalization_factor_);
+        coeff_expected = scaled(coeff_expected, effective_normalization_factor);
+        report.max_abs_after_normalization = max_abs_value(coeff_expected);
+        report.inside_evalmod_interval =
+            report.max_abs_after_normalization <= EvalModPolynomial::approximation_bound;
     }
     before = after;
     stage_ms = elapsed_ms([&] {
-        current = adapter_.multiply_decoded_value(current, normalization_factor_);
+        current = adapter_.multiply_decoded_value(current, effective_normalization_factor);
     });
     after = adapter_.info(current);
     stage_error = 0.0;
@@ -410,13 +431,13 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
                                        stage_ms,
                                        expected != nullptr));
 
-    if (normalization_factor_ != 1.0) {
+    if (effective_normalization_factor != 1.0) {
         if (expected) {
-            result_expected = scaled(result_expected, 1.0 / normalization_factor_);
+            result_expected = scaled(result_expected, 1.0 / effective_normalization_factor);
         }
         before = adapter_.info(current);
         stage_ms = elapsed_ms([&] {
-            current = adapter_.multiply_decoded_value(current, 1.0 / normalization_factor_);
+            current = adapter_.multiply_decoded_value(current, 1.0 / effective_normalization_factor);
         });
         after = adapter_.info(current);
         stage_error = 0.0;
@@ -468,7 +489,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
     });
 
     report.preserve_value_criterion = expected && preserve_error <= tolerance_;
-    report.restore_level_criterion = after.chain_index >= 0;
+    report.restore_level_criterion = after.chain_index > input_info.chain_index;
     report.result = std::move(current);
     return report;
 }
