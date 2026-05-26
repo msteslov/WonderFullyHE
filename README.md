@@ -32,6 +32,7 @@ cmake --build build -j
 ./build/bench_bootstrap_parts
 ./build/bench_bootstrap_full
 ./build/bench_bootstrap_refresh
+./build/bench_bootstrap_validation
 ./build/demo_bootstrap_diagonals
 ./build/demo_bootstrap_prototype
 ./build/demo_bootstrap_cipher_path
@@ -68,6 +69,8 @@ cmake --build build -j
 `bench_bootstrap_full` измеряет полный refresh-harness в профиле `boot_ckks`: подготовку rotation steps, генерацию ключей, проверяемый runtime, быстрый runtime, время `CoeffToSlot`, `EvalMod`, `SlotToCoeff`, финальную ошибку и статус. Диагональные преобразования выполняются через baby-step/giant-step, поэтому для dense-transform на 16 логических slots требуется 6 rotation keys вместо 15.
 
 `bench_bootstrap_refresh` измеряет публичный путь `Bootstrapper::refresh`: подготовку rotation steps, генерацию ключей, общее время refresh и времена этапов `ModRaise`, `CoeffToSlot`, `eval_mod_normalization`, `EvalMod`, `SlotToCoeff`, `post_refresh_mod_raise`.
+
+`bench_bootstrap_validation` выполняет строгую проверку refresh-пути на сетке входов: тип входа, амплитуда, начальный уровень, восстановленный уровень, ошибка сохранения значения и ошибка после последующих операций. Таблица нужна для отделения структурного восстановления уровня от полноценного сохранения значения.
 
 `demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
 
@@ -241,4 +244,5 @@ P7(u) = u - 6.579736267393*u^3 + 12.98787880453*u^5 - 12.20811674381*u^7
 - [x] Собрать end-to-end refresh-путь поверх готовых строительных блоков.
 - [x] Перенести refresh-путь из `BootstrapPrototype` в стабильный публичный `Bootstrapper::refresh(cipher)`.
 - [x] Добавить benchmark публичного refresh-пути.
+- [x] Добавить строгий validation-benchmark для проверки сохранения значения, восстановления уровня и последующей глубины.
 - [ ] Добавить сравнение с OpenFHE для тех же строительных блоков и для end-to-end refresh после завершения bootstrapping.
