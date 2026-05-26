@@ -122,6 +122,7 @@ auto decoded = adapter.decode(adapter.decrypt(squared));
 Подробные проектные заметки:
 - `docs/architecture.md` — слои библиотеки и роль каждого модуля.
 - `docs/ckks_parameters.md` — выбранные CKKS-параметры, расчёт слотов, scale, modulus chain и глубины.
+- `docs/m2424_math_model.tex` / `docs/m2424_math_model.pdf` — математическая модель библиотеки: входные объекты, CKKS-операции, ABFT-инварианты, линейные преобразования и refresh-harness.
 - `docs/project_status.md` — текущий статус реализации, ограничения и следующие этапы.
 
 Основные методы адаптера:

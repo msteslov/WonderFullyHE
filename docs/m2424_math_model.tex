@@ -1,0 +1,579 @@
+\documentclass[12pt]{article}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{array}
+\usepackage{geometry}
+\geometry{margin=2.1cm}
+
+\title{m2424: математическая модель библиотеки}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{1. Исходные объекты}
+
+Библиотека работает с вещественным или комплексным вектором
+\[
+    x = (x_0,\ldots,x_{m-1}) \in \mathbb{C}^{m}.
+\]
+
+CKKS-профиль задаётся набором
+\[
+    P=(N,Q,\Delta,S),
+\]
+где
+\[
+    N \in 2\mathbb{N}, \qquad
+    Q=\prod_{i=0}^{L} q_i,\qquad
+    \Delta>0,\qquad
+    S=\frac{N}{2}.
+\]
+
+Здесь \(N\) --- степень полиномиального модуля,
+\[
+    R_Q=\mathbb{Z}_Q[X]/(X^N+1)
+\]
+--- кольцо ciphertext, \(Q\) --- цепочка коэффициентных модулей,
+\(\Delta\) --- масштаб CKKS, \(S\) --- число CKKS-слотов.
+
+Для bootstrapping-профиля в текущей реализации используется
+\[
+    N=16384,\qquad
+    S=8192,\qquad
+    \Delta=2^{40},
+\]
+\[
+    \log_2(q_0),\ldots,\log_2(q_L)
+    =
+    60,40,40,40,40,40,40,40,60.
+\]
+
+\section*{2. Кодирование, шифрование и состояние ciphertext}
+
+Кодирование CKKS переводит вектор \(x\) в plaintext
+\[
+    p=\operatorname{Encode}_{\Delta}(x)\in R_Q.
+\]
+
+Шифрование задаёт ciphertext
+\[
+    c=\operatorname{Enc}_{pk}(p)\in R_Q^2.
+\]
+
+Расшифрование и декодирование дают приближённый результат
+\[
+    \hat{x}
+    =
+    \operatorname{Decode}_{\Delta}
+    \left(
+        \operatorname{Dec}_{sk}(c)
+    \right).
+\]
+
+Состояние ciphertext описывается тройкой
+\[
+    \operatorname{state}(c)
+    =
+    \bigl(\operatorname{level}(c),\operatorname{scale}(c),
+    \operatorname{size}(c)\bigr),
+\]
+где \(\operatorname{level}(c)\) задаёт текущую позицию в modulus chain,
+\(\operatorname{scale}(c)\) задаёт текущий CKKS-масштаб, а
+\(\operatorname{size}(c)\) задаёт число полиномов ciphertext.
+
+\section*{3. Базовые гомоморфные операции}
+
+Для ciphertext \(c_x=\operatorname{Enc}(x)\) и
+\(c_y=\operatorname{Enc}(y)\) библиотека реализует следующие операции.
+
+Сложение:
+\[
+    c_{x+y}=c_x+c_y,
+    \qquad
+    \operatorname{Dec}(c_{x+y}) \approx x+y.
+\]
+
+Вычитание:
+\[
+    c_{x-y}=c_x-c_y,
+    \qquad
+    \operatorname{Dec}(c_{x-y}) \approx x-y.
+\]
+
+Умножение ciphertext на plaintext-вектор \(a\):
+\[
+    c_{a\odot x}
+    =
+    \operatorname{Rescale}
+    \left(
+        c_x\cdot \operatorname{Encode}(a)
+    \right),
+\]
+\[
+    \operatorname{Dec}(c_{a\odot x})\approx a\odot x.
+\]
+
+Умножение двух ciphertext:
+\[
+    c_{xy}
+    =
+    \operatorname{Rescale}
+    \left(
+        \operatorname{Relin}_{rlk}(c_x\cdot c_y)
+    \right),
+\]
+\[
+    \operatorname{Dec}(c_{xy})\approx x\odot y.
+\]
+
+После умножения масштаб увеличивается:
+\[
+    \Delta\cdot \Delta=\Delta^2.
+\]
+Операция \(\operatorname{Rescale}\) делит ciphertext на следующий
+модуль \(q_i\) и возвращает масштаб к величине порядка \(\Delta\):
+\[
+    \operatorname{scale}
+    \left(
+        \operatorname{Rescale}(c)
+    \right)
+    \approx
+    \frac{\operatorname{scale}(c)}{q_i}.
+\]
+При этом уровень ciphertext уменьшается на один.
+
+Ротация слотов:
+\[
+    \operatorname{Rot}_k(c_x)
+    =
+    \operatorname{Enc}(x^{(k)}),
+\]
+где
+\[
+    x^{(k)}_i=x_{(i+k)\bmod S}.
+\]
+
+\section*{4. Метрики ошибки}
+
+Для точного вектора \(x\) и результата \(\hat{x}\) используются метрики
+\[
+    e_{\max}(x,\hat{x})
+    =
+    \max_i |x_i-\hat{x}_i|,
+\]
+\[
+    e_{\operatorname{mean}}(x,\hat{x})
+    =
+    \frac{1}{m}\sum_{i=0}^{m-1}|x_i-\hat{x}_i|.
+\]
+
+Критерий прохождения вычисления:
+\[
+    \operatorname{ok}(x,\hat{x},\tau)
+    =
+    \begin{cases}
+        1, & e_{\max}(x,\hat{x})\leq \tau,\\
+        0, & e_{\max}(x,\hat{x})> \tau.
+    \end{cases}
+\]
+
+Для bootstrapping-harness используется
+\[
+    \tau=2\cdot 10^{-5}.
+\]
+
+\section*{5. ABFT-инварианты}
+
+Для полезной нагрузки
+\[
+    x=(x_0,\ldots,x_{m-1})
+\]
+задаётся checksum
+\[
+    \sigma(x)=\sum_{i=0}^{m-1}x_i.
+\]
+
+Расширенный вектор:
+\[
+    x^{+}=(x_0,\ldots,x_{m-1},\sigma(x)).
+\]
+
+Для сложения:
+\[
+    \sigma(x+y)=\sigma(x)+\sigma(y).
+\]
+
+Для вычитания:
+\[
+    \sigma(x-y)=\sigma(x)-\sigma(y).
+\]
+
+Для ротации:
+\[
+    \sigma(x^{(k)})=\sigma(x).
+\]
+
+Для покомпонентного умножения проверяется равенство наблюдаемой суммы
+CPU-эталону:
+\[
+    \sigma(x\odot y)
+    =
+    \sum_{i=0}^{m-1}x_i y_i.
+\]
+
+ABFT-проверка задаётся условием
+\[
+    |\sigma_{\operatorname{observed}}-\sigma_{\operatorname{expected}}|
+    \leq \tau_{\operatorname{abft}}.
+\]
+
+\section*{6. Линейные преобразования через ротации}
+
+Пусть
+\[
+    D_k=\operatorname{diag}(d_{k,0},\ldots,d_{k,S-1})
+\]
+--- диагональная plaintext-матрица, а \(\operatorname{Rot}_k\) ---
+оператор ротации CKKS-слотов. Тогда линейное преобразование задаётся как
+\[
+    L(c)
+    =
+    \sum_{k\in K}D_k\operatorname{Rot}_k(c).
+\]
+
+В расшифрованном виде:
+\[
+    \operatorname{Dec}(L(c_x))
+    \approx
+    \sum_{k\in K}D_k x^{(k)}.
+\]
+
+Для плотных диагональных матриц используется baby-step/giant-step.
+Пусть
+\[
+    b=\left\lceil\sqrt{|K|}\right\rceil,
+    \qquad
+    k=i+jb,
+    \qquad
+    0\leq i<b.
+\]
+
+Baby-steps:
+\[
+    B_i=\operatorname{Rot}_i(c).
+\]
+
+Giant-группа:
+\[
+    U_j=\sum_i D_{i,j}B_i.
+\]
+
+Итоговое преобразование:
+\[
+    L(c)=\sum_j \operatorname{Rot}_{jb}(U_j).
+\]
+
+Для dense-transform на \(16\) логических slots число rotation keys
+снижается с \(15\) до \(6\).
+
+\section*{7. Сумма слотов}
+
+Для \(m=2^d\) сумма первых \(m\) слотов вычисляется последовательностью
+\[
+    c^{(0)}=c,
+\]
+\[
+    c^{(j+1)}
+    =
+    c^{(j)}+\operatorname{Rot}_{2^j}(c^{(j)}),
+    \qquad
+    j=0,\ldots,d-1.
+\]
+
+После \(d\) шагов первый слот содержит
+\[
+    \left(\operatorname{Dec}(c^{(d)})\right)_0
+    \approx
+    \sum_{i=0}^{m-1}x_i.
+\]
+
+\section*{8. Полиномиальные вычисления}
+
+Для полинома
+\[
+    f(t)=\sum_{j=0}^{r}a_j t^j
+\]
+вычисление над ciphertext задаётся как
+\[
+    f(c)=\sum_{j=0}^{r}a_j c^j,
+\]
+где произведения выполняются через
+\[
+    \operatorname{MulRelinRescale}.
+\]
+
+Каждое ciphertext-ciphertext умножение расходует один уровень modulus
+chain. Перед сложением членов полинома выполняется выравнивание уровней
+и масштабов.
+
+\section*{9. EvalMod}
+
+В bootstrapping-harness используется нечётный полином степени \(7\):
+\[
+    P_7(u)
+    =
+    u
+    -6.579736267393u^3
+    +12.98787880453u^5
+    -12.20811674381u^7.
+\]
+
+Рабочий интервал:
+\[
+    |u|\leq 2^{-10}.
+\]
+
+CPU-форма:
+\[
+    y=P_7(u).
+\]
+
+Ciphertext-форма:
+\[
+    c_{u^2}=c_u^2,
+    \qquad
+    c_{u^3}=c_u\cdot c_{u^2},
+\]
+\[
+    c_{u^5}=c_{u^3}\cdot c_{u^2},
+    \qquad
+    c_{u^7}=c_{u^5}\cdot c_{u^2}.
+\]
+
+После выравнивания уровней:
+\[
+    P_7(c_u)
+    =
+    c_u
+    -6.579736267393c_{u^3}
+    +12.98787880453c_{u^5}
+    -12.20811674381c_{u^7}.
+\]
+
+\section*{10. CoeffToSlot и SlotToCoeff}
+
+Пусть \(M\) --- матрица канонического вложения CKKS для заданного числа
+логических slots:
+\[
+    z=Mx.
+\]
+
+В реализации матрица строится из корней единицы:
+\[
+    M_{ij}=\zeta^{g_i j},
+    \qquad
+    \zeta=\exp\left(\frac{2\pi i}{4n}\right),
+    \qquad
+    g_i=5^i\bmod 4n.
+\]
+
+Преобразование CoeffToSlot:
+\[
+    \operatorname{CoeffToSlot}(c_x)
+    =
+    L_M(c_x),
+\]
+где \(L_M\) --- diagonal-transform матрицы \(M\).
+
+Преобразование SlotToCoeff:
+\[
+    \operatorname{SlotToCoeff}(c_z)
+    =
+    L_{M^{-1}}(c_z).
+\]
+
+CPU-критерий обратимости:
+\[
+    M^{-1}Mx=x.
+\]
+
+Ciphertext-критерий:
+\[
+    \operatorname{Dec}
+    \left(
+        \operatorname{SlotToCoeff}
+        \left(
+            \operatorname{CoeffToSlot}(c_x)
+        \right)
+    \right)
+    \approx x.
+\]
+
+\section*{11. Refresh-harness}
+
+Вход:
+\[
+    x\in \mathbb{C}^{m},
+    \qquad
+    m=16
+\]
+для текущего демонстрационного refresh-harness.
+
+Упаковка во все CKKS-слоты:
+\[
+    \tilde{x}_i=x_{i\bmod m},
+    \qquad
+    i=0,\ldots,S-1.
+\]
+
+Шифрование:
+\[
+    c_0=\operatorname{Enc}(\operatorname{Encode}_{\Delta}(\tilde{x})).
+\]
+
+Этап \(1\). Подготовка уровня:
+\[
+    c_1=\operatorname{ModRaiseHarness}(c_0).
+\]
+
+Этап \(2\). Переход в slot-представление:
+\[
+    c_2=\operatorname{CoeffToSlot}(c_1).
+\]
+
+Этап \(3\). Нормализация:
+\[
+    c_3=\alpha c_2,
+    \qquad
+    \alpha=1
+\]
+в текущем refresh-harness.
+
+Этап \(4\). Полиномиальная модульная редукция:
+\[
+    c_4=P_7(c_3).
+\]
+
+Этап \(5\). Возврат в coefficient-представление:
+\[
+    c_5=\operatorname{SlotToCoeff}(c_4).
+\]
+
+Итоговый критерий сохранения значения:
+\[
+    e_{\max}
+    \left(
+        x,
+        \operatorname{head}_m
+        \left(
+            \operatorname{Decode}
+            \left(
+                \operatorname{Dec}(c_5)
+            \right)
+        \right)
+    \right)
+    \leq
+    2\cdot 10^{-5}.
+\]
+
+Критерий доступности результата:
+\[
+    \operatorname{level}(c_5)\geq 0.
+\]
+
+\section*{12. Общая схема вычисления}
+
+\[
+\begin{array}{c}
+x\in\mathbb{C}^{m}
+\\[4pt]
+\downarrow\ \operatorname{Encode}_{\Delta}
+\\[4pt]
+p\in R_Q
+\\[4pt]
+\downarrow\ \operatorname{Enc}_{pk}
+\\[4pt]
+c\in R_Q^2
+\\[4pt]
+\downarrow\ 
+\begin{array}{c}
+\operatorname{Add},\operatorname{Sub},
+\operatorname{MulRelinRescale},
+\operatorname{Rot},
+L(c),f(c)
+\end{array}
+\\[10pt]
+c_{\operatorname{eval}}
+\\[4pt]
+\downarrow\
+\begin{array}{c}
+\operatorname{accuracy}(e_{\max},e_{\operatorname{mean}})\\
+\operatorname{ABFT}(\sigma)
+\end{array}
+\\[10pt]
+c_{\operatorname{checked}}
+\\[4pt]
+\downarrow\
+\begin{array}{c}
+\operatorname{CoeffToSlot}\\
+P_7\\
+\operatorname{SlotToCoeff}
+\end{array}
+\\[10pt]
+c_{\operatorname{refresh}}
+\\[4pt]
+\downarrow\ \operatorname{Dec}_{sk},\operatorname{Decode}_{\Delta}
+\\[4pt]
+\hat{x}
+\end{array}
+\]
+
+\section*{13. Формальный результат}
+
+Библиотека реализует отображение
+\[
+    \mathcal{F}_{m2424}:
+    (x,P,\tau)
+    \mapsto
+    (c_{\operatorname{out}},\hat{x},R),
+\]
+где \(c_{\operatorname{out}}\) --- результирующий ciphertext,
+\(\hat{x}\) --- расшифрованный приближённый результат, \(R\) --- отчёт
+о вычислении.
+
+Отчёт имеет вид
+\[
+    R=
+    \left(
+        e_{\max},
+        e_{\operatorname{mean}},
+        \operatorname{level},
+        \operatorname{scale},
+        \operatorname{status}
+    \right).
+\]
+
+Статус вычисления:
+\[
+    \operatorname{status}=
+    \begin{cases}
+        \operatorname{PASS}, & e_{\max}\leq\tau,\\
+        \operatorname{FAIL}, & e_{\max}>\tau.
+    \end{cases}
+\]
+
+Для refresh-harness текущий результат удовлетворяет
+\[
+    e_{\max}\approx 1.36\cdot 10^{-5},
+    \qquad
+    \tau=2\cdot 10^{-5},
+    \qquad
+    \operatorname{status}=\operatorname{PASS}.
+\]
+
+\end{document}
