@@ -80,6 +80,7 @@ public:
     Cipher sub_plain(const Cipher&, const Plain&);
     Cipher mul_plain_rescale(const Cipher&, const Plain&);
     Cipher mul_relin_rescale(const Cipher&, const Cipher&);
+    Cipher mod_raise_to_first(const Cipher&);
     Cipher mod_switch_to(const Cipher&, const Cipher&);
     Cipher match_level_and_scale(const Cipher&, const Cipher&);
     Cipher rotate(const Cipher&, int steps);

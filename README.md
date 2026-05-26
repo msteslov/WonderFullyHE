@@ -33,6 +33,8 @@ cmake --build build -j
 ./build/bench_bootstrap_full
 ./build/demo_bootstrap_diagonals
 ./build/demo_bootstrap_prototype
+./build/demo_bootstrap_cipher_path
+./build/demo_mod_raise
 ./build/demo_eval_mod_polynomial
 ./build/bench_parallel_throughput
 ./build/demo_precision_profiles
@@ -66,6 +68,10 @@ cmake --build build -j
 `demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
 
 `demo_bootstrap_prototype` связывает bootstrapping-блоки в один проверяемый refresh-harness: `mod_raise_harness -> CoeffToSlot -> EvalMod -> SlotToCoeff -> refresh_result`. Для каждого этапа печатаются уровень ciphertext, масштаб, максимальная ошибка, runtime и статус относительно tolerance `2e-5`. В текущей версии `mod_raise_harness` использует повторное шифрование в `boot_ckks`, а остальные этапы выполняются над ciphertext.
+
+`demo_mod_raise` проверяет низкоуровневый CKKS ModRaise: ciphertext после снижения уровня расширяется обратно к первой RNS-базе без расшифрования. В отчёт входят `chain_index`, число коэффициентных модулей, масштаб и структурный статус.
+
+`demo_bootstrap_cipher_path` запускает ciphertext-only путь `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff` для уже существующего ciphertext. Этот сценарий показывает прохождение конвейера без открытого входного вектора.
 
 `demo_eval_mod_polynomial` проверяет полином `EvalMod` степени 7 на диапазоне `[-2^-10, 2^-10]`: сначала против `sin(2*pi*u)/(2*pi)` на открытых данных, затем на зашифрованном CKKS-векторе в профиле `boot_ckks`.
 
@@ -135,6 +141,7 @@ auto decoded = adapter.decode(adapter.decrypt(squared));
 - `encrypt` / `decrypt` — обычные операции CKKS над plaintext/ciphertext.
 - `add`, `sub`, `add_plain`, `sub_plain`, `mul_plain_rescale`, `mul_relin_rescale`, `rotate` — гомоморфные примитивы, делегирующие в `seal::Evaluator`.
 - `mod_switch_to`, `match_level_and_scale` — выравнивание ciphertext перед сложением членов разных уровней.
+- `mod_raise_to_first` — расширение CKKS ciphertext с текущего уровня к первой RNS-базе modulus chain без расшифрования.
 - `serialized_size`, `public_key_size`, `relin_keys_size`, `galois_keys_size` — вспомогательные методы для benchmark-измерений.
 - `save_public_key`, `save_secret_key`, `save_relin_keys`, `save_galois_keys`, `save_cipher` — сериализация ключей и ciphertext в байтовый буфер.
 - `load_public_key`, `load_secret_key`, `load_relin_keys`, `load_galois_keys`, `load_cipher` — загрузка ключей и ciphertext в новый CKKS-контекст с проверкой совместимости параметров.
@@ -160,7 +167,7 @@ P7(u) = u - 6.579736267393*u^3 + 12.98787880453*u^5 - 12.20811674381*u^7
 
 Рабочий диапазон первой версии: `|u| <= 2^-10`. Ciphertext-версия считает степени `u^2`, `u^3`, `u^5`, `u^7` отдельной схемой, без общего последовательного подъёма степени.
 
-Модуль `m2424::BootstrapPrototype` собирает строительные блоки в refresh-harness. Он генерирует минимальный набор rotation steps для заданного числа slots, применяет диагональные `CoeffToSlot`/`SlotToCoeff`, вызывает `EvalModPolynomial` и возвращает отчёт по этапам: chain index, scale, max error, runtime и статус. Внутри `DiagonalLinearTransform` используется baby-step/giant-step-разложение, которое уменьшает число CKKS-ротаций при плотных диагональных матрицах. Для повторных запусков кэшируются encoded plaintext-диагонали под конкретные `chain_index` и `scale`; `refresh_harness` оставлен для проверки точности, `refresh_fast` выполняет тот же конвейер без промежуточных decrypt/check.
+Модуль `m2424::BootstrapPrototype` собирает строительные блоки в refresh-harness. Он генерирует минимальный набор rotation steps для заданного числа slots, применяет диагональные `CoeffToSlot`/`SlotToCoeff`, вызывает `EvalModPolynomial` и возвращает отчёт по этапам: chain index, scale, max error, runtime и статус. Внутри `DiagonalLinearTransform` используется baby-step/giant-step-разложение, которое уменьшает число CKKS-ротаций при плотных диагональных матрицах. Для повторных запусков кэшируются encoded plaintext-диагонали под конкретные `chain_index` и `scale`; `refresh_harness` оставлен для проверки точности, `refresh_fast` выполняет тот же конвейер без промежуточных decrypt/check, `refresh_cipher_fast` запускает путь от существующего ciphertext через `mod_raise_to_first`.
 
 Модуль `m2424::abft` содержит checksum-инструменты: `append_checksum`, `checksum`, `verify_appended_checksum`, `verify_checksum_value`.
 

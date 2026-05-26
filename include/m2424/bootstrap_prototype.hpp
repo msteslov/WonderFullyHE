@@ -40,9 +40,11 @@ public:
     std::vector<int> rotation_steps() const;
     BootstrapPrototypeReport refresh_harness(const ComplexVector& input) const;
     BootstrapPrototypeReport refresh_fast(const ComplexVector& input) const;
+    BootstrapPrototypeReport refresh_cipher_fast(const Cipher& input) const;
 
 private:
     BootstrapPrototypeReport refresh_impl(const ComplexVector& input, bool checked) const;
+    BootstrapPrototypeReport refresh_cipher_impl(const Cipher& input) const;
 
     SealAdapter& adapter_;
     std::size_t slots_{};

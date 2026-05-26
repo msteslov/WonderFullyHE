@@ -111,6 +111,10 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_fast(const ComplexVector& i
     return refresh_impl(input, false);
 }
 
+BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_fast(const Cipher& input) const {
+    return refresh_cipher_impl(input);
+}
+
 BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& input, bool checked) const {
     if (input.size() != slots_) {
         throw std::invalid_argument("input size must match BootstrapPrototype slots");
@@ -214,6 +218,80 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
     });
 
     report.preserve_value_criterion = !checked || preserve_error <= tolerance_;
+    report.restore_level_criterion = after.chain_index >= 0;
+    report.result = std::move(current);
+    return report;
+}
+
+BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& input) const {
+    EvalModPolynomial eval_mod;
+    BootstrapPrototypeReport report;
+    report.slots = slots_;
+    report.tolerance = tolerance_;
+    report.normalization_factor = 1.0;
+    report.checked = false;
+
+    auto before = adapter_.info(input);
+    Cipher current;
+    double stage_ms = elapsed_ms([&] {
+        current = adapter_.mod_raise_to_first(input);
+    });
+    auto after = adapter_.info(current);
+    report.stages.push_back(BootstrapPrototypeStage{
+        "mod_raise",
+        "RUN",
+        before.chain_index,
+        after.chain_index,
+        before.scale,
+        after.scale,
+        0.0,
+        stage_ms
+    });
+
+    before = adapter_.info(current);
+    stage_ms = elapsed_ms([&] {
+        current = coeff_to_slot_.apply(adapter_, current);
+    });
+    after = adapter_.info(current);
+    report.stages.push_back(make_stage("coeff_to_slot", before, after, 0.0, tolerance_, stage_ms, false));
+
+    report.stages.push_back(BootstrapPrototypeStage{
+        "eval_mod_normalization",
+        "RUN",
+        after.chain_index,
+        after.chain_index,
+        after.scale,
+        after.scale,
+        0.0,
+        0.0
+    });
+
+    before = adapter_.info(current);
+    stage_ms = elapsed_ms([&] {
+        current = eval_mod.evaluate(adapter_, current);
+    });
+    after = adapter_.info(current);
+    report.stages.push_back(make_stage("eval_mod", before, after, 0.0, tolerance_, stage_ms, false));
+
+    before = adapter_.info(current);
+    stage_ms = elapsed_ms([&] {
+        current = slot_to_coeff_.apply(adapter_, current);
+    });
+    after = adapter_.info(current);
+    report.stages.push_back(make_stage("slot_to_coeff", before, after, 0.0, tolerance_, stage_ms, false));
+
+    report.stages.push_back(BootstrapPrototypeStage{
+        "refresh_result",
+        "RUN",
+        after.chain_index,
+        after.chain_index,
+        after.scale,
+        after.scale,
+        0.0,
+        0.0
+    });
+
+    report.preserve_value_criterion = false;
     report.restore_level_criterion = after.chain_index >= 0;
     report.result = std::move(current);
     return report;
