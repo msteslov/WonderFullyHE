@@ -24,8 +24,10 @@ WonderFullyHE — учебно-исследовательский прототи
 - Анализ расхода вычислительной глубины до остановки на `x^32`.
 - Низкоуровневый CKKS `ModRaise` для расширения ciphertext к первой RNS-базе.
 - Bootstrapping-конвейер `ModRaise -> CoeffToSlot -> eval_mod_normalization -> EvalMod -> SlotToCoeff -> post_refresh_mod_raise` с отчётом по `scale`, `chain_index` и размеру ciphertext.
+- Публичный API `Bootstrapper::refresh(cipher, slots, tolerance)` и `Bootstrapper::refresh_rotation_steps(slots)`.
 - Нормализация входа `EvalMod` по амплитуде после `CoeffToSlot`.
 - End-to-end demo, где после refresh выполняется следующая plaintext-операция с rescale.
+- Benchmark публичного refresh-пути.
 - Benchmark времени операций, ошибок и размеров ciphertext/ключей.
 - Benchmark строительных блоков bootstrapping: plaintext multiplication, linear transform, slot summation, polynomial evaluation.
 - Benchmark параллельной обработки независимых ciphertext с разделением setup/runtime.
@@ -35,8 +37,8 @@ WonderFullyHE — учебно-исследовательский прототи
 
 ## В работе
 
-- Перенос refresh-пути из `BootstrapPrototype` в стабильный публичный `Bootstrapper::refresh(cipher)`.
 - Расширение ABFT на цепочки операций.
+- Sweep-benchmark для refresh на разных размерах входа и параметрах.
 
 ## Ограничения
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "m2424/bootstrap_prototype.hpp"
 #include "m2424/seal_adapter.hpp"
 
 #include <cstddef>
@@ -47,7 +48,23 @@ class Bootstrapper {
 public:
     explicit Bootstrapper(SealAdapter& adapter);
 
+    static std::vector<int> refresh_rotation_steps(std::size_t slots);
+
     BootstrapReport analyze_depth(const std::vector<double>& input, std::size_t max_steps);
+    BootstrapPrototypeReport refresh(const Cipher& input, std::size_t slots, double tolerance);
+    BootstrapPrototypeReport refresh(const Cipher& input,
+                                     std::size_t slots,
+                                     double tolerance,
+                                     double normalization_factor);
+    BootstrapPrototypeReport refresh_checked(const Cipher& input,
+                                             const ComplexVector& expected,
+                                             std::size_t slots,
+                                             double tolerance);
+    BootstrapPrototypeReport refresh_checked(const Cipher& input,
+                                             const ComplexVector& expected,
+                                             std::size_t slots,
+                                             double tolerance,
+                                             double normalization_factor);
     const std::vector<BootstrapStage>& pipeline() const noexcept;
 
 private:

@@ -1,4 +1,4 @@
-#include "m2424/bootstrap_prototype.hpp"
+#include "m2424/bootstrap.hpp"
 #include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
 
@@ -10,7 +10,7 @@ int main() {
     constexpr std::size_t slots = 16;
     constexpr double tolerance = 2e-5;
 
-    auto rotation_steps = m2424::BootstrapPrototype::required_rotation_steps(slots);
+    auto rotation_steps = m2424::Bootstrapper::refresh_rotation_steps(slots);
     auto adapter = m2424::SealAdapter::create(m2424::profiles::boot_ckks());
     adapter.keygen(rotation_steps, true);
 
@@ -23,8 +23,8 @@ int main() {
     auto encrypted = adapter.encrypt(adapter.encode(input));
     auto lowered = adapter.mul_plain_rescale(encrypted, adapter.encode_scalar_like(1.0, encrypted));
 
-    m2424::BootstrapPrototype prototype(adapter, slots, tolerance);
-    auto report = prototype.refresh_cipher_fast(lowered);
+    m2424::Bootstrapper bootstrapper(adapter);
+    auto report = bootstrapper.refresh(lowered, slots, tolerance);
 
     std::printf("bootstrap_cipher_path\n");
     std::printf("profile,slots,tolerance,normalization_factor,rotation_keys\n");

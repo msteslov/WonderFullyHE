@@ -31,6 +31,7 @@ cmake --build build -j
 ./build/demo_bootstrap_pipeline
 ./build/bench_bootstrap_parts
 ./build/bench_bootstrap_full
+./build/bench_bootstrap_refresh
 ./build/demo_bootstrap_diagonals
 ./build/demo_bootstrap_prototype
 ./build/demo_bootstrap_cipher_path
@@ -65,6 +66,8 @@ cmake --build build -j
 `bench_bootstrap_parts` печатает CSV по строительным блокам bootstrapping: `mul_plain_rescale`, rotation-based `linear_transform`, `sum_slots` и `polynomial_eval`. В отчёт входят время, уровень ciphertext, ошибка и сериализованный размер результата.
 
 `bench_bootstrap_full` измеряет полный refresh-harness в профиле `boot_ckks`: подготовку rotation steps, генерацию ключей, проверяемый runtime, быстрый runtime, время `CoeffToSlot`, `EvalMod`, `SlotToCoeff`, финальную ошибку и статус. Диагональные преобразования выполняются через baby-step/giant-step, поэтому для dense-transform на 16 логических slots требуется 6 rotation keys вместо 15.
+
+`bench_bootstrap_refresh` измеряет публичный путь `Bootstrapper::refresh`: подготовку rotation steps, генерацию ключей, общее время refresh и времена этапов `ModRaise`, `CoeffToSlot`, `eval_mod_normalization`, `EvalMod`, `SlotToCoeff`, `post_refresh_mod_raise`.
 
 `demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
 
@@ -171,7 +174,9 @@ P7(u) = u - 6.579736267393*u^3 + 12.98787880453*u^5 - 12.20811674381*u^7
 
 Рабочий диапазон первой версии: `|u| <= 2^-10`. Ciphertext-версия считает степени `u^2`, `u^3`, `u^5`, `u^7` отдельной схемой, без общего последовательного подъёма степени.
 
-Модуль `m2424::BootstrapPrototype` собирает строительные блоки в refresh-harness. Он генерирует минимальный набор rotation steps для заданного числа slots, применяет диагональные `CoeffToSlot`/`SlotToCoeff`, выполняет нормализацию входа `EvalMod`, вызывает `EvalModPolynomial` и возвращает отчёт по этапам: chain index, scale, max error, runtime и статус. Внутри `DiagonalLinearTransform` используется baby-step/giant-step-разложение, которое уменьшает число CKKS-ротаций при плотных диагональных матрицах. Для повторных запусков кэшируются encoded plaintext-диагонали под конкретные `chain_index` и `scale`; `refresh_harness` оставлен для проверки точности, `refresh_fast` выполняет тот же конвейер без промежуточных decrypt/check, `refresh_cipher_fast` запускает путь от существующего ciphertext через `mod_raise_to_first`, а `refresh_cipher_checked` добавляет проверку по переданному эталонному вектору.
+Модуль `m2424::Bootstrapper` является публичной точкой входа для refresh. `Bootstrapper::refresh_rotation_steps(slots)` возвращает набор ротаций, который надо передать в `SealAdapter::keygen(rotation_steps, true)`. `Bootstrapper::refresh(cipher, slots, tolerance)` запускает путь `ModRaise -> CoeffToSlot -> eval_mod_normalization -> EvalMod -> SlotToCoeff -> post_refresh_mod_raise` и возвращает отчёт по этапам: chain index, scale, max error, runtime и статус. `Bootstrapper::refresh_checked` дополнительно сравнивает этапы с переданным эталонным вектором.
+
+Модуль `m2424::BootstrapPrototype` оставлен как внутренний проверочный harness для разработки bootstrapping-блоков. Внутри `DiagonalLinearTransform` используется baby-step/giant-step-разложение, которое уменьшает число CKKS-ротаций при плотных диагональных матрицах. Для повторных запусков кэшируются encoded plaintext-диагонали под конкретные `chain_index` и `scale`.
 
 Модуль `m2424::abft` содержит checksum-инструменты: `append_checksum`, `checksum`, `verify_appended_checksum`, `verify_checksum_value`.
 
@@ -234,5 +239,6 @@ P7(u) = u - 6.579736267393*u^3 + 12.98787880453*u^5 - 12.20811674381*u^7
 - [x] Подставить математически рассчитанные матрицы `CoeffToSlot` и `SlotToCoeff`.
 - [x] Подставить коэффициенты полинома `EvalMod` из математической модели.
 - [x] Собрать end-to-end refresh-путь поверх готовых строительных блоков.
-- [ ] Перенести refresh-путь из `BootstrapPrototype` в стабильный публичный `Bootstrapper::refresh(cipher)`.
+- [x] Перенести refresh-путь из `BootstrapPrototype` в стабильный публичный `Bootstrapper::refresh(cipher)`.
+- [x] Добавить benchmark публичного refresh-пути.
 - [ ] Добавить сравнение с OpenFHE для тех же строительных блоков и для end-to-end refresh после завершения bootstrapping.

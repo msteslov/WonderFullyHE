@@ -48,15 +48,23 @@ static BootstrapStage make_stage(std::string name,
 
 Bootstrapper::Bootstrapper(SealAdapter& adapter) : adapter_(&adapter) {
     stages_ = {
-        {"ModRaise", BootstrapStageStatus::SpecificationReady, {}, {},
-         "подъём ciphertext к расширенной цепочке модулей описан в модели"},
+        {"ModRaise", BootstrapStageStatus::PrimitiveReady, {}, {},
+         "ciphertext расширяется к первой RNS-базе modulus chain"},
         {"CoeffToSlot", BootstrapStageStatus::PrimitiveReady, {}, {},
-         "линейное преобразование опирается на доступные CKKS-ротации"},
+         "линейное преобразование выполняется через CKKS-ротации и plaintext-диагонали"},
+        {"eval_mod_normalization", BootstrapStageStatus::Ready, {}, {},
+         "амплитуда входа EvalMod приводится к рабочему интервалу полинома"},
         {"EvalMod", BootstrapStageStatus::PrimitiveReady, {}, {},
-         "для вычисления доступны multiply, relinearize и rescale"},
-        {"SlotToCoeff", BootstrapStageStatus::SpecificationReady, {}, {},
-         "обратное линейное преобразование зафиксировано в bootstrapping-модели"}
+         "модульная редукция приближается полиномом степени 7"},
+        {"SlotToCoeff", BootstrapStageStatus::PrimitiveReady, {}, {},
+         "обратное линейное преобразование возвращает coefficient-представление"},
+        {"post_refresh_mod_raise", BootstrapStageStatus::PrimitiveReady, {}, {},
+         "после refresh ciphertext снова поднимается к первой RNS-базе"}
     };
+}
+
+std::vector<int> Bootstrapper::refresh_rotation_steps(std::size_t slots) {
+    return BootstrapPrototype::required_rotation_steps(slots);
 }
 
 BootstrapReport Bootstrapper::analyze_depth(const std::vector<double>& input, std::size_t max_steps) {
@@ -96,7 +104,7 @@ BootstrapReport Bootstrapper::analyze_depth(const std::vector<double>& input, st
 
     report.stages = {
         make_stage("ModRaise",
-                   BootstrapStageStatus::SpecificationReady,
+                   BootstrapStageStatus::PrimitiveReady,
                    report.depth_boundary,
                    report.depth_boundary,
                    "цель этапа: подготовить ciphertext к расширенной цепочке модулей"),
@@ -105,18 +113,62 @@ BootstrapReport Bootstrapper::analyze_depth(const std::vector<double>& input, st
                    report.depth_boundary,
                    report.depth_boundary,
                    "для линейных преобразований доступны ротации CKKS-слотов"),
+        make_stage("eval_mod_normalization",
+                   BootstrapStageStatus::Ready,
+                   report.depth_boundary,
+                   report.depth_boundary,
+                   "коэффициент нормализации выбирается по амплитуде после CoeffToSlot"),
         make_stage("EvalMod",
                    BootstrapStageStatus::PrimitiveReady,
                    report.depth_boundary,
                    report.depth_boundary,
                    "для приближённого modular reduction доступны multiply/relinearize/rescale"),
         make_stage("SlotToCoeff",
-                   BootstrapStageStatus::SpecificationReady,
+                   BootstrapStageStatus::PrimitiveReady,
                    report.depth_boundary,
                    report.depth_boundary,
-                   "этап возвращает данные из slot-представления в coefficient-представление")
+                   "этап возвращает данные из slot-представления в coefficient-представление"),
+        make_stage("post_refresh_mod_raise",
+                   BootstrapStageStatus::PrimitiveReady,
+                   report.depth_boundary,
+                   report.depth_boundary,
+                   "результат refresh поднимается для продолжения вычислений")
     };
     return report;
+}
+
+BootstrapPrototypeReport Bootstrapper::refresh(const Cipher& input, std::size_t slots, double tolerance) {
+    return refresh(input, slots, tolerance, 1.0);
+}
+
+BootstrapPrototypeReport Bootstrapper::refresh(const Cipher& input,
+                                               std::size_t slots,
+                                               double tolerance,
+                                               double normalization_factor) {
+    if (!adapter_) {
+        throw std::runtime_error("Bootstrapper has no SealAdapter");
+    }
+    BootstrapPrototype prototype(*adapter_, slots, tolerance, normalization_factor);
+    return prototype.refresh_cipher_fast(input);
+}
+
+BootstrapPrototypeReport Bootstrapper::refresh_checked(const Cipher& input,
+                                                       const ComplexVector& expected,
+                                                       std::size_t slots,
+                                                       double tolerance) {
+    return refresh_checked(input, expected, slots, tolerance, 1.0);
+}
+
+BootstrapPrototypeReport Bootstrapper::refresh_checked(const Cipher& input,
+                                                       const ComplexVector& expected,
+                                                       std::size_t slots,
+                                                       double tolerance,
+                                                       double normalization_factor) {
+    if (!adapter_) {
+        throw std::runtime_error("Bootstrapper has no SealAdapter");
+    }
+    BootstrapPrototype prototype(*adapter_, slots, tolerance, normalization_factor);
+    return prototype.refresh_cipher_checked(input, expected);
 }
 
 const std::vector<BootstrapStage>& Bootstrapper::pipeline() const noexcept {

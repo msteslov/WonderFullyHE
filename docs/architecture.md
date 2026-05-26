@@ -131,13 +131,14 @@ sum_i a_i * rotate(ct, k_i)
 - `demo_bootstrap_end_to_end` проверяет, что после refresh доступна следующая операция с rescale.
 - `bench_ckks` измеряет время операций, численную ошибку и размеры сериализованных объектов.
 - `bench_bootstrap_parts` измеряет `mul_plain_rescale`, `linear_transform`, `sum_slots` и `polynomial_eval`.
+- `bench_bootstrap_refresh` измеряет публичный путь `Bootstrapper::refresh`.
 - `bench_parallel_throughput` измеряет throughput при параллельной обработке независимых ciphertext.
 - `demo_profile_report` печатает таблицу CKKS-параметров.
 
 ## Следующие шаги реализации
 
-Следующий этап реализации — оформление refresh-пути в стабильный публичный API:
+Следующий этап реализации — расширение проверок и измерений refresh:
 
-1. перенос исполняемого пути из `BootstrapPrototype` в `Bootstrapper::refresh(cipher)`;
-2. расширение проверок для цепочек операций после refresh;
-3. добавление sweep-режима benchmark для разных параметров и размеров входа.
+1. расширение проверок для цепочек операций после refresh;
+2. добавление sweep-режима benchmark для разных параметров и размеров входа;
+3. сравнение refresh-сценариев с OpenFHE после фиксации одинаковых параметров измерения.
