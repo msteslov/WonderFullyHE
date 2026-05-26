@@ -28,6 +28,27 @@ ComplexVector head(ComplexVector values, std::size_t n) {
     return values;
 }
 
+ComplexVector scaled(const ComplexVector& values, double factor) {
+    ComplexVector result;
+    result.reserve(values.size());
+    for (const auto& value : values) {
+        result.push_back(value * factor);
+    }
+    return result;
+}
+
+double normalization_factor_for(const ComplexVector& values) {
+    double max_abs = 0.0;
+    for (const auto& value : values) {
+        max_abs = std::max(max_abs, std::abs(value));
+    }
+    if (max_abs == 0.0) {
+        return 1.0;
+    }
+    constexpr double target = EvalModPolynomial::approximation_bound * 0.5;
+    return max_abs > target ? target / max_abs : 1.0;
+}
+
 BootstrapPrototypeStage make_stage(const std::string& name,
                                    const CipherInfo& before,
                                    const CipherInfo& after,
@@ -71,9 +92,16 @@ double elapsed_ms(Fn&& fn) {
 } // namespace
 
 BootstrapPrototype::BootstrapPrototype(SealAdapter& adapter, std::size_t slots, double tolerance)
+    : BootstrapPrototype(adapter, slots, tolerance, 1.0) {}
+
+BootstrapPrototype::BootstrapPrototype(SealAdapter& adapter,
+                                       std::size_t slots,
+                                       double tolerance,
+                                       double normalization_factor)
     : adapter_(adapter),
       slots_(slots),
       tolerance_(tolerance),
+      normalization_factor_(normalization_factor),
       coeff_to_slot_(DiagonalLinearTransform::from_matrix(canonical_embedding_matrix(slots))),
       slot_to_coeff_(DiagonalLinearTransform::from_matrix(invert_matrix(canonical_embedding_matrix(slots)))) {
     if (slots_ == 0) {
@@ -81,6 +109,9 @@ BootstrapPrototype::BootstrapPrototype(SealAdapter& adapter, std::size_t slots, 
     }
     if (!std::isfinite(tolerance_) || tolerance_ < 0.0) {
         throw std::invalid_argument("tolerance must be a non-negative finite value");
+    }
+    if (!std::isfinite(normalization_factor_) || normalization_factor_ <= 0.0) {
+        throw std::invalid_argument("normalization factor must be a positive finite value");
     }
 }
 
@@ -112,7 +143,12 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_fast(const ComplexVector& i
 }
 
 BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_fast(const Cipher& input) const {
-    return refresh_cipher_impl(input);
+    return refresh_cipher_impl(input, nullptr);
+}
+
+BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_checked(const Cipher& input,
+                                                                    const ComplexVector& expected) const {
+    return refresh_cipher_impl(input, &expected);
 }
 
 BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& input, bool checked) const {
@@ -124,7 +160,6 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
     BootstrapPrototypeReport report;
     report.slots = slots_;
     report.tolerance = tolerance_;
-    report.normalization_factor = 1.0;
     report.checked = checked;
 
     ComplexVector packed(adapter_.slot_count(), Complex{0.0, 0.0});
@@ -135,14 +170,10 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
     auto current = adapter_.encrypt(adapter_.encode_complex(packed));
     report.stages.push_back(make_harness_stage(adapter_.info(current)));
 
-    const auto coeff_expected = coeff_to_slot_.apply_plain(input);
-    double max_coeff_abs = 0.0;
-    for (const auto& value : coeff_expected) {
-        max_coeff_abs = std::max(max_coeff_abs, std::abs(value));
-    }
-    if (max_coeff_abs > EvalModPolynomial::approximation_bound) {
-        throw std::invalid_argument("CoeffToSlot output exceeds EvalMod approximation interval");
-    }
+    const auto coeff_expected_raw = coeff_to_slot_.apply_plain(input);
+    const double normalization_factor = normalization_factor_for(coeff_expected_raw);
+    report.normalization_factor = normalization_factor;
+    const auto coeff_expected = scaled(coeff_expected_raw, normalization_factor);
 
     auto before = adapter_.info(current);
     double stage_ms = elapsed_ms([&] {
@@ -153,20 +184,25 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
     double coeff_error = 0.0;
     if (checked) {
         coeff_actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
-        coeff_error = max_complex_error(coeff_expected, coeff_actual);
+        coeff_error = max_complex_error(coeff_expected_raw, coeff_actual);
     }
     report.stages.push_back(make_stage("coeff_to_slot", before, after,
                                        coeff_error, tolerance_, stage_ms, checked));
 
+    before = after;
+    stage_ms = elapsed_ms([&] {
+        current = adapter_.multiply_decoded_value(current, normalization_factor);
+    });
+    after = adapter_.info(current);
     report.stages.push_back(BootstrapPrototypeStage{
         "eval_mod_normalization",
-        "PASS",
+        checked ? "PASS" : "RUN",
+        before.chain_index,
         after.chain_index,
-        after.chain_index,
-        after.scale,
+        before.scale,
         after.scale,
         0.0,
-        0.0
+        stage_ms
     });
 
     ComplexVector eval_expected;
@@ -206,9 +242,223 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
     }
     report.stages.push_back(make_stage("slot_to_coeff", before, after, result_error, tolerance_, stage_ms, checked));
 
+    if (normalization_factor != 1.0) {
+        before = adapter_.info(current);
+        stage_ms = elapsed_ms([&] {
+            current = adapter_.multiply_decoded_value(current, 1.0 / normalization_factor);
+        });
+        after = adapter_.info(current);
+        if (checked) {
+            result_actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+            preserve_error = max_complex_error(input, result_actual);
+        }
+        report.stages.push_back(BootstrapPrototypeStage{
+            "refresh_denormalization",
+            checked ? (preserve_error <= tolerance_ ? "PASS" : "FAIL") : "RUN",
+            before.chain_index,
+            after.chain_index,
+            before.scale,
+            after.scale,
+            preserve_error,
+            stage_ms
+        });
+    }
+
+    const auto final_info = adapter_.info(current);
     report.stages.push_back(BootstrapPrototypeStage{
         "refresh_result",
         checked ? (preserve_error <= tolerance_ ? "PASS" : "FAIL") : "RUN",
+        final_info.chain_index,
+        final_info.chain_index,
+        final_info.scale,
+        final_info.scale,
+        preserve_error,
+        0.0
+    });
+
+    report.preserve_value_criterion = !checked || preserve_error <= tolerance_;
+    report.restore_level_criterion = final_info.chain_index >= 0;
+    report.result = std::move(current);
+    return report;
+}
+
+BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& input, const ComplexVector* expected) const {
+    if (expected && expected->size() != slots_) {
+        throw std::invalid_argument("expected size must match BootstrapPrototype slots");
+    }
+
+    EvalModPolynomial eval_mod;
+    BootstrapPrototypeReport report;
+    report.slots = slots_;
+    report.tolerance = tolerance_;
+    report.normalization_factor = normalization_factor_;
+    report.checked = expected != nullptr;
+
+    auto before = adapter_.info(input);
+    Cipher current;
+    double stage_ms = elapsed_ms([&] {
+        current = adapter_.mod_raise_to_first(input);
+    });
+    auto after = adapter_.info(current);
+    ComplexVector current_expected;
+    double stage_error = 0.0;
+    if (expected) {
+        current_expected = *expected;
+        const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        stage_error = max_complex_error(current_expected, actual);
+    }
+    report.stages.push_back(BootstrapPrototypeStage{
+        "mod_raise",
+        expected ? (stage_error <= tolerance_ ? "PASS" : "FAIL") : "RUN",
+        before.chain_index,
+        after.chain_index,
+        before.scale,
+        after.scale,
+        stage_error,
+        stage_ms
+    });
+
+    ComplexVector coeff_expected;
+    if (expected) {
+        coeff_expected = coeff_to_slot_.apply_plain(current_expected);
+    }
+    before = adapter_.info(current);
+    stage_ms = elapsed_ms([&] {
+        current = coeff_to_slot_.apply(adapter_, current);
+    });
+    after = adapter_.info(current);
+    stage_error = 0.0;
+    if (expected) {
+        const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        stage_error = max_complex_error(coeff_expected, actual);
+    }
+    report.stages.push_back(make_stage("coeff_to_slot",
+                                       before,
+                                       after,
+                                       stage_error,
+                                       tolerance_,
+                                       stage_ms,
+                                       expected != nullptr));
+
+    if (expected) {
+        coeff_expected = scaled(coeff_expected, normalization_factor_);
+    }
+    before = after;
+    stage_ms = elapsed_ms([&] {
+        current = adapter_.multiply_decoded_value(current, normalization_factor_);
+    });
+    after = adapter_.info(current);
+    stage_error = 0.0;
+    if (expected) {
+        const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        stage_error = max_complex_error(coeff_expected, actual);
+    }
+    report.stages.push_back(BootstrapPrototypeStage{
+        "eval_mod_normalization",
+        expected ? (stage_error <= tolerance_ ? "PASS" : "FAIL") : "RUN",
+        before.chain_index,
+        after.chain_index,
+        before.scale,
+        after.scale,
+        stage_error,
+        stage_ms
+    });
+
+    ComplexVector eval_expected;
+    if (expected) {
+        eval_expected = eval_mod.evaluate_plain(coeff_expected);
+    }
+    before = adapter_.info(current);
+    stage_ms = elapsed_ms([&] {
+        current = eval_mod.evaluate(adapter_, current);
+    });
+    after = adapter_.info(current);
+    stage_error = 0.0;
+    if (expected) {
+        const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        stage_error = max_complex_error(eval_expected, actual);
+    }
+    report.stages.push_back(make_stage("eval_mod",
+                                       before,
+                                       after,
+                                       stage_error,
+                                       tolerance_,
+                                       stage_ms,
+                                       expected != nullptr));
+
+    ComplexVector result_expected;
+    if (expected) {
+        result_expected = slot_to_coeff_.apply_plain(eval_expected);
+    }
+    before = adapter_.info(current);
+    stage_ms = elapsed_ms([&] {
+        current = slot_to_coeff_.apply(adapter_, current);
+    });
+    after = adapter_.info(current);
+    double preserve_error = 0.0;
+    stage_error = 0.0;
+    if (expected) {
+        auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        stage_error = max_complex_error(result_expected, actual);
+        preserve_error = max_complex_error(*expected, actual);
+    }
+    report.stages.push_back(make_stage("slot_to_coeff",
+                                       before,
+                                       after,
+                                       stage_error,
+                                       tolerance_,
+                                       stage_ms,
+                                       expected != nullptr));
+
+    if (normalization_factor_ != 1.0) {
+        if (expected) {
+            result_expected = scaled(result_expected, 1.0 / normalization_factor_);
+        }
+        before = adapter_.info(current);
+        stage_ms = elapsed_ms([&] {
+            current = adapter_.multiply_decoded_value(current, 1.0 / normalization_factor_);
+        });
+        after = adapter_.info(current);
+        stage_error = 0.0;
+        if (expected) {
+            auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+            stage_error = max_complex_error(result_expected, actual);
+            preserve_error = max_complex_error(*expected, actual);
+        }
+        report.stages.push_back(make_stage("refresh_denormalization",
+                                           before,
+                                           after,
+                                           stage_error,
+                                           tolerance_,
+                                           stage_ms,
+                                           expected != nullptr));
+    }
+
+    before = adapter_.info(current);
+    stage_ms = elapsed_ms([&] {
+        current = adapter_.mod_raise_to_first(current);
+    });
+    after = adapter_.info(current);
+    stage_error = 0.0;
+    if (expected) {
+        const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        stage_error = max_complex_error(*expected, actual);
+        preserve_error = stage_error;
+    }
+    report.stages.push_back(BootstrapPrototypeStage{
+        "post_refresh_mod_raise",
+        expected ? (stage_error <= tolerance_ ? "PASS" : "FAIL") : "RUN",
+        before.chain_index,
+        after.chain_index,
+        before.scale,
+        after.scale,
+        stage_error,
+        stage_ms
+    });
+
+    report.stages.push_back(BootstrapPrototypeStage{
+        "refresh_result",
+        expected ? (preserve_error <= tolerance_ ? "PASS" : "FAIL") : "RUN",
         after.chain_index,
         after.chain_index,
         after.scale,
@@ -217,81 +467,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
         0.0
     });
 
-    report.preserve_value_criterion = !checked || preserve_error <= tolerance_;
-    report.restore_level_criterion = after.chain_index >= 0;
-    report.result = std::move(current);
-    return report;
-}
-
-BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& input) const {
-    EvalModPolynomial eval_mod;
-    BootstrapPrototypeReport report;
-    report.slots = slots_;
-    report.tolerance = tolerance_;
-    report.normalization_factor = 1.0;
-    report.checked = false;
-
-    auto before = adapter_.info(input);
-    Cipher current;
-    double stage_ms = elapsed_ms([&] {
-        current = adapter_.mod_raise_to_first(input);
-    });
-    auto after = adapter_.info(current);
-    report.stages.push_back(BootstrapPrototypeStage{
-        "mod_raise",
-        "RUN",
-        before.chain_index,
-        after.chain_index,
-        before.scale,
-        after.scale,
-        0.0,
-        stage_ms
-    });
-
-    before = adapter_.info(current);
-    stage_ms = elapsed_ms([&] {
-        current = coeff_to_slot_.apply(adapter_, current);
-    });
-    after = adapter_.info(current);
-    report.stages.push_back(make_stage("coeff_to_slot", before, after, 0.0, tolerance_, stage_ms, false));
-
-    report.stages.push_back(BootstrapPrototypeStage{
-        "eval_mod_normalization",
-        "RUN",
-        after.chain_index,
-        after.chain_index,
-        after.scale,
-        after.scale,
-        0.0,
-        0.0
-    });
-
-    before = adapter_.info(current);
-    stage_ms = elapsed_ms([&] {
-        current = eval_mod.evaluate(adapter_, current);
-    });
-    after = adapter_.info(current);
-    report.stages.push_back(make_stage("eval_mod", before, after, 0.0, tolerance_, stage_ms, false));
-
-    before = adapter_.info(current);
-    stage_ms = elapsed_ms([&] {
-        current = slot_to_coeff_.apply(adapter_, current);
-    });
-    after = adapter_.info(current);
-    report.stages.push_back(make_stage("slot_to_coeff", before, after, 0.0, tolerance_, stage_ms, false));
-
-    report.stages.push_back(BootstrapPrototypeStage{
-        "refresh_result",
-        "RUN",
-        after.chain_index,
-        after.chain_index,
-        after.scale,
-        after.scale,
-        0.0,
-        0.0
-    });
-
-    report.preserve_value_criterion = false;
+    report.preserve_value_criterion = expected && preserve_error <= tolerance_;
     report.restore_level_criterion = after.chain_index >= 0;
     report.result = std::move(current);
     return report;

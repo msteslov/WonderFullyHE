@@ -27,8 +27,12 @@ int main() {
     auto report = prototype.refresh_cipher_fast(lowered);
 
     std::printf("bootstrap_cipher_path\n");
-    std::printf("profile,slots,tolerance,rotation_keys\n");
-    std::printf("boot_ckks,%zu,%.6e,%zu\n", report.slots, report.tolerance, rotation_steps.size());
+    std::printf("profile,slots,tolerance,normalization_factor,rotation_keys\n");
+    std::printf("boot_ckks,%zu,%.6e,%.6e,%zu\n",
+                report.slots,
+                report.tolerance,
+                report.normalization_factor,
+                rotation_steps.size());
     std::printf("stage,status,chain_before,chain_after,scale_before,scale_after,duration_ms\n");
     for (const auto& stage : report.stages) {
         std::printf("%s,%s,%zu,%zu,%.6e,%.6e,%.6f\n",

@@ -69,6 +69,7 @@ public:
     Plain encode_like(const std::vector<double>&, const Cipher&);
     Plain encode_complex_like(const std::vector<std::complex<double>>&, const Cipher&);
     Plain encode_scalar_like(double, const Cipher&);
+    Plain encode_scalar_at_scale_like(double, double scale, const Cipher&);
     Cipher encrypt(const Plain&);
     Plain decrypt(const Cipher&);
     std::vector<double> decode(const Plain&);
@@ -78,9 +79,11 @@ public:
     Cipher sub(const Cipher&, const Cipher&);
     Cipher add_plain(const Cipher&, const Plain&);
     Cipher sub_plain(const Cipher&, const Plain&);
+    Cipher mul_plain(const Cipher&, const Plain&);
     Cipher mul_plain_rescale(const Cipher&, const Plain&);
     Cipher mul_relin_rescale(const Cipher&, const Cipher&);
     Cipher mod_raise_to_first(const Cipher&);
+    Cipher multiply_decoded_value(const Cipher&, double multiplier);
     Cipher mod_switch_to(const Cipher&, const Cipher&);
     Cipher match_level_and_scale(const Cipher&, const Cipher&);
     Cipher rotate(const Cipher&, int steps);

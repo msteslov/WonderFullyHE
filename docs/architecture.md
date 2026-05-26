@@ -91,7 +91,7 @@ sum_i a_i * rotate(ct, k_i)
 
 - диагностику мультипликативной глубины;
 - отчёт по CKKS bootstrapping-конвейеру;
-- явные этапы: `ModRaise`, `CoeffToSlot`, `EvalMod`, `SlotToCoeff`.
+- явные этапы: `ModRaise`, `CoeffToSlot`, `eval_mod_normalization`, `EvalMod`, `SlotToCoeff`, `post_refresh_mod_raise`;
 - параметры ciphertext на границе глубины: `scale`, `chain_index`, `coeff_modulus_size`, `serialized_bytes`;
 - критерии из модели: `Dec(c') ≈ Dec(c)` и `level(c') > level(c)`.
 
@@ -127,6 +127,8 @@ sum_i a_i * rotate(ct, k_i)
 - `demo_abft` проверяет корректность гомоморфных операций через ABFT-инварианты.
 - `demo_noise_growth` показывает расход глубины и остановку вычисления без bootstrapping.
 - `demo_bootstrap_pipeline` печатает отчёт bootstrapping-модуля.
+- `demo_bootstrap_cipher_path` запускает refresh-путь от существующего ciphertext.
+- `demo_bootstrap_end_to_end` проверяет, что после refresh доступна следующая операция с rescale.
 - `bench_ckks` измеряет время операций, численную ошибку и размеры сериализованных объектов.
 - `bench_bootstrap_parts` измеряет `mul_plain_rescale`, `linear_transform`, `sum_slots` и `polynomial_eval`.
 - `bench_parallel_throughput` измеряет throughput при параллельной обработке независимых ciphertext.
@@ -134,8 +136,8 @@ sum_i a_i * rotate(ct, k_i)
 
 ## Следующие шаги реализации
 
-Следующий этап реализации — развитие вычислительных блоков bootstrapping:
+Следующий этап реализации — оформление refresh-пути в стабильный публичный API:
 
-1. подстановка рассчитанных матриц `CoeffToSlot` и `SlotToCoeff` в `LinearTransform`;
-2. подстановка коэффициентов полинома `EvalMod` в `PolynomialEvaluator`;
-3. сборка `Bootstrapper::refresh(cipher)` и проверка критериев `Dec(c') ≈ Dec(c)`, `level(c') > level(c)` на end-to-end сценарии.
+1. перенос исполняемого пути из `BootstrapPrototype` в `Bootstrapper::refresh(cipher)`;
+2. расширение проверок для цепочек операций после refresh;
+3. добавление sweep-режима benchmark для разных параметров и размеров входа.

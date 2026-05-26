@@ -281,6 +281,17 @@ Plain SealAdapter::encode_scalar_like(double value, const Cipher& cipher) {
     return out;
 }
 
+Plain SealAdapter::encode_scalar_at_scale_like(double value, double scale, const Cipher& cipher) {
+    if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
+    if (!std::isfinite(value)) throw std::invalid_argument("scalar must be finite");
+    if (!std::isfinite(scale) || scale <= 0.0) {
+        throw std::invalid_argument("scale must be a positive finite value");
+    }
+    Plain out;
+    pimpl_->encoder->encode(value, cipher.pimpl_->ct.parms_id(), scale, out.pimpl_->pt);
+    return out;
+}
+
 Cipher SealAdapter::encrypt(const Plain& plain) {
     if (!pimpl_->has_public || !pimpl_->encryptor) throw std::runtime_error("public key not loaded");
     Cipher out;
@@ -334,6 +345,13 @@ Cipher SealAdapter::sub_plain(const Cipher& a, const Plain& b) {
     if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
     Cipher out;
     pimpl_->evaluator->sub_plain(a.pimpl_->ct, b.pimpl_->pt, out.pimpl_->ct);
+    return out;
+}
+
+Cipher SealAdapter::mul_plain(const Cipher& a, const Plain& b) {
+    if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
+    Cipher out;
+    pimpl_->evaluator->multiply_plain(a.pimpl_->ct, b.pimpl_->pt, out.pimpl_->ct);
     return out;
 }
 
@@ -463,6 +481,33 @@ Cipher SealAdapter::mod_raise_to_first(const Cipher& cipher) {
             target_iter, target_modulus_size, target_context_data->small_ntt_tables());
     }
 
+    return out;
+}
+
+Cipher SealAdapter::multiply_decoded_value(const Cipher& cipher, double multiplier) {
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+    if (!std::isfinite(multiplier) || multiplier <= 0.0) {
+        throw std::invalid_argument("decoded value multiplier must be positive and finite");
+    }
+    const auto context_data = pimpl_->context->get_context_data(cipher.pimpl_->ct.parms_id());
+    if (!context_data) {
+        throw std::runtime_error("ciphertext parameters are not valid for this context");
+    }
+
+    Cipher out = cipher;
+    const double old_scale = out.pimpl_->ct.scale();
+    const double new_scale = old_scale / multiplier;
+    if (!std::isfinite(old_scale) || old_scale <= 0.0 || !std::isfinite(new_scale) || new_scale <= 0.0) {
+        throw std::runtime_error("cannot adjust decoded value: invalid ciphertext scale");
+    }
+
+    const double log2_scale = std::log2(new_scale);
+    const int total_bits = context_data->total_coeff_modulus_bit_count();
+    if (log2_scale < 0.0 || log2_scale > static_cast<double>(total_bits - 2)) {
+        throw std::runtime_error("cannot adjust decoded value: resulting scale is outside modulus capacity");
+    }
+
+    out.pimpl_->ct.scale() = new_scale;
     return out;
 }
 

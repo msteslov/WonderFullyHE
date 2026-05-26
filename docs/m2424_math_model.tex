@@ -448,11 +448,18 @@ Ciphertext-критерий:
 
 Этап \(3\). Нормализация:
 \[
-    c_3=\alpha c_2,
+    \alpha=
+    \begin{cases}
+        1, & \max_i |z_i|\leq 2^{-11},\\
+        \dfrac{2^{-11}}{\max_i |z_i|}, & \max_i |z_i|>2^{-11},
+    \end{cases}
     \qquad
-    \alpha=1
+    z=Mx,
 \]
-в текущем refresh-harness.
+\[
+    c_3=\alpha c_2
+\]
+через управляемое изменение CKKS scale без расхода уровня modulus chain.
 
 Этап \(4\). Полиномиальная модульная редукция:
 \[
@@ -464,6 +471,16 @@ Ciphertext-критерий:
     c_5=\operatorname{SlotToCoeff}(c_4).
 \]
 
+Этап \(6\). Обратная нормализация:
+\[
+    c_6=\alpha^{-1}c_5.
+\]
+
+Этап \(7\). Восстановление первой RNS-базы:
+\[
+    c_7=\operatorname{ModRaise}(c_6).
+\]
+
 Итоговый критерий сохранения значения:
 \[
     e_{\max}
@@ -471,9 +488,9 @@ Ciphertext-критерий:
         x,
         \operatorname{head}_m
         \left(
-            \operatorname{Decode}
-            \left(
-                \operatorname{Dec}(c_5)
+                \operatorname{Decode}
+                \left(
+                \operatorname{Dec}(c_7)
             \right)
         \right)
     \right)
@@ -483,7 +500,7 @@ Ciphertext-критерий:
 
 Критерий доступности результата:
 \[
-    \operatorname{level}(c_5)\geq 0.
+    \operatorname{level}(c_7)>\operatorname{level}(c_5).
 \]
 
 \section*{12. Общая схема вычисления}
@@ -520,9 +537,13 @@ c_{\operatorname{checked}}
 \\[4pt]
 \downarrow\
 \begin{array}{c}
+\operatorname{ModRaise}\\
 \operatorname{CoeffToSlot}\\
+\alpha\\
 P_7\\
-\operatorname{SlotToCoeff}
+\operatorname{SlotToCoeff}\\
+\alpha^{-1}\\
+\operatorname{ModRaise}
 \end{array}
 \\[10pt]
 c_{\operatorname{refresh}}

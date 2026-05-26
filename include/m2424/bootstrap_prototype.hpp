@@ -34,6 +34,7 @@ struct BootstrapPrototypeReport {
 class BootstrapPrototype {
 public:
     BootstrapPrototype(SealAdapter& adapter, std::size_t slots, double tolerance);
+    BootstrapPrototype(SealAdapter& adapter, std::size_t slots, double tolerance, double normalization_factor);
 
     static std::vector<int> required_rotation_steps(std::size_t slots);
 
@@ -41,14 +42,16 @@ public:
     BootstrapPrototypeReport refresh_harness(const ComplexVector& input) const;
     BootstrapPrototypeReport refresh_fast(const ComplexVector& input) const;
     BootstrapPrototypeReport refresh_cipher_fast(const Cipher& input) const;
+    BootstrapPrototypeReport refresh_cipher_checked(const Cipher& input, const ComplexVector& expected) const;
 
 private:
     BootstrapPrototypeReport refresh_impl(const ComplexVector& input, bool checked) const;
-    BootstrapPrototypeReport refresh_cipher_impl(const Cipher& input) const;
+    BootstrapPrototypeReport refresh_cipher_impl(const Cipher& input, const ComplexVector* expected) const;
 
     SealAdapter& adapter_;
     std::size_t slots_{};
     double tolerance_{};
+    double normalization_factor_{};
     DiagonalLinearTransform coeff_to_slot_;
     DiagonalLinearTransform slot_to_coeff_;
 };

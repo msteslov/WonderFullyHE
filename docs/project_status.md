@@ -8,8 +8,8 @@ WonderFullyHE — учебно-исследовательский прототи
 - Готовые CKKS-профили в `m2424::profiles`: `fast_demo_ckks`, `basic_ckks`, `balanced_ckks`, `depth_ckks`, `high_precision_ckks`.
 - Операции `encode`, `encrypt`, `decrypt`, `decode`.
 - Гомоморфные операции `add`, `sub`, `mul_relin_rescale`, `rotate`.
-- Plaintext-операции `add_plain`, `sub_plain`, `mul_plain_rescale`.
-- Кодирование plaintext на уровне ciphertext через `encode_like` и `encode_scalar_like`.
+- Plaintext-операции `add_plain`, `sub_plain`, `mul_plain`, `mul_plain_rescale`.
+- Кодирование plaintext на уровне ciphertext через `encode_like`, `encode_scalar_like` и `encode_scalar_at_scale_like`.
 - Генерация только нужных Galois-ключей для заданных rotation steps.
 - Сериализация и загрузка публичного ключа, секретного ключа, Relin/Galois-ключей и ciphertext.
 - Разделённый roundtrip-сценарий: шифрование данных, вычисление без secret key, расшифрование результата.
@@ -22,7 +22,10 @@ WonderFullyHE — учебно-исследовательский прототи
 - Демонстрация защищённой статистической агрегации.
 - Демонстрация оптимизации Galois-ключей: полный набор против ограниченного набора ротаций.
 - Анализ расхода вычислительной глубины до остановки на `x^32`.
-- Bootstrapping-конвейер `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff` с отчётом по `scale`, `chain_index` и размеру ciphertext.
+- Низкоуровневый CKKS `ModRaise` для расширения ciphertext к первой RNS-базе.
+- Bootstrapping-конвейер `ModRaise -> CoeffToSlot -> eval_mod_normalization -> EvalMod -> SlotToCoeff -> post_refresh_mod_raise` с отчётом по `scale`, `chain_index` и размеру ciphertext.
+- Нормализация входа `EvalMod` по амплитуде после `CoeffToSlot`.
+- End-to-end demo, где после refresh выполняется следующая plaintext-операция с rescale.
 - Benchmark времени операций, ошибок и размеров ciphertext/ключей.
 - Benchmark строительных блоков bootstrapping: plaintext multiplication, linear transform, slot summation, polynomial evaluation.
 - Benchmark параллельной обработки независимых ciphertext с разделением setup/runtime.
@@ -32,9 +35,7 @@ WonderFullyHE — учебно-исследовательский прототи
 
 ## В работе
 
-- Подстановка рассчитанных матриц в `CoeffToSlot` и `SlotToCoeff`.
-- Подстановка коэффициентов полинома в `EvalMod`.
-- End-to-end refresh ciphertext с проверками `Dec(c') ~= Dec(c)` и `level(c') > level(c)`.
+- Перенос refresh-пути из `BootstrapPrototype` в стабильный публичный `Bootstrapper::refresh(cipher)`.
 - Расширение ABFT на цепочки операций.
 
 ## Ограничения
