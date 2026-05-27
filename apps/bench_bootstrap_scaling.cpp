@@ -1,4 +1,5 @@
 #include "m2424/diagonal_transform.hpp"
+#include "m2424/bootstrap_scaling.hpp"
 #include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
 
@@ -12,31 +13,10 @@
 
 namespace {
 
-enum class BootstrapPeriodMode {
-    TotalCoeffModulus,
-    LastPrime,
-    DroppedPrimeProduct,
-    ManualPowerOfTwo
-};
-
 struct PeriodCase {
-    BootstrapPeriodMode mode{};
+    m2424::BootstrapPeriodMode mode{};
     double manual_period_log2{};
 };
-
-const char* to_string(BootstrapPeriodMode mode) noexcept {
-    switch (mode) {
-    case BootstrapPeriodMode::TotalCoeffModulus:
-        return "TotalCoeffModulus";
-    case BootstrapPeriodMode::LastPrime:
-        return "LastPrime";
-    case BootstrapPeriodMode::DroppedPrimeProduct:
-        return "DroppedPrimeProduct";
-    case BootstrapPeriodMode::ManualPowerOfTwo:
-        return "ManualPowerOfTwo";
-    }
-    return "unknown";
-}
 
 std::vector<double> make_input(std::size_t slots, double amplitude) {
     std::vector<double> input;
@@ -93,44 +73,23 @@ double normalization_factor_for(const m2424::ComplexVector& values) {
     return max_abs > evalmod_target ? evalmod_target / max_abs : 1.0;
 }
 
-double bootstrap_period_log2(const PeriodCase& period_case,
-                             const m2424::CkksProfile& profile,
-                             const m2424::CipherInfo& before_mod_raise,
-                             const m2424::CipherInfo& after_mod_raise) {
-    switch (period_case.mode) {
-    case BootstrapPeriodMode::TotalCoeffModulus:
-        return after_mod_raise.coeff_modulus_log2 - std::log2(after_mod_raise.scale);
-    case BootstrapPeriodMode::LastPrime: {
-        if (before_mod_raise.coeff_modulus_size >= profile.coeff_modulus_bits.size()) {
-            return static_cast<double>(profile.coeff_modulus_bits.back());
-        }
-        return static_cast<double>(profile.coeff_modulus_bits[before_mod_raise.coeff_modulus_size]);
-    }
-    case BootstrapPeriodMode::DroppedPrimeProduct:
-        return std::max(0.0, after_mod_raise.coeff_modulus_log2 - before_mod_raise.coeff_modulus_log2);
-    case BootstrapPeriodMode::ManualPowerOfTwo:
-        return period_case.manual_period_log2;
-    }
-    return 0.0;
-}
-
 } // namespace
 
 int main() {
     constexpr std::size_t slots = 16;
     constexpr double tolerance = 2e-5;
     const auto profile = m2424::profiles::boot_ckks();
-    const double plain_scale_log2 = std::log2(profile.scale);
 
     const std::vector<double> amplitudes{1e-5, 1e-4, 5e-4, 1e-3, 1e-2, 1e-1};
     const std::vector<std::size_t> level_drops{1, 2};
+    const std::vector<double> plain_scale_log2_values{40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0};
     std::vector<PeriodCase> period_cases{
-        {BootstrapPeriodMode::TotalCoeffModulus, 0.0},
-        {BootstrapPeriodMode::LastPrime, 0.0},
-        {BootstrapPeriodMode::DroppedPrimeProduct, 0.0}
+        {m2424::BootstrapPeriodMode::TotalCoeffModulus, 0.0},
+        {m2424::BootstrapPeriodMode::LastPrime, 0.0},
+        {m2424::BootstrapPeriodMode::DroppedPrimeProduct, 0.0}
     };
     for (double manual : {40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0, 140.0}) {
-        period_cases.push_back({BootstrapPeriodMode::ManualPowerOfTwo, manual});
+        period_cases.push_back({m2424::BootstrapPeriodMode::ManualPowerOfTwo, manual});
     }
 
     auto rotation_steps = coeff_to_slot_rotation_steps(slots);
@@ -139,7 +98,7 @@ int main() {
     auto coeff_to_slot = m2424::DiagonalLinearTransform::from_matrix(
         m2424::canonical_embedding_matrix(slots));
 
-    std::printf("case,period_mode,manual_period_log2,amplitude,chain_before,chain_after,cipher_scale_log2,bootstrap_period_log2,normalization_factor_log2,plain_scale_log2,factor_times_plain_scale_log2,representable,expected_max_abs_after_normalization,actual_max_abs_after_normalization,normalization_error,status\n");
+    std::printf("case,period_mode,manual_period_log2,plain_scale_log2,amplitude,level_drop,chain_before,chain_after,cipher_scale_log2,bootstrap_period_log2,normalization_factor_log2,factor_times_plain_scale_log2,representable,expected_max_abs_after_normalization,actual_max_abs_after_normalization,normalization_error,exception,status\n");
 
     std::size_t case_id = 0;
     for (double amplitude : amplitudes) {
@@ -163,59 +122,68 @@ int main() {
             const double amplitude_factor = normalization_factor_for(before_normalization);
 
             for (const auto& period_case : period_cases) {
-                ++case_id;
-                const auto before_normalization_info = adapter.info(current);
-                const double cipher_scale_log2 = std::log2(before_normalization_info.scale);
-                const double period_log2 = bootstrap_period_log2(
-                    period_case, profile, before_mod_raise, after_mod_raise);
-                const double normalization_factor_log2 = std::log2(amplitude_factor) - period_log2;
-                const double factor_times_plain_scale_log2 =
-                    normalization_factor_log2 + plain_scale_log2;
-                const bool representable = factor_times_plain_scale_log2 >= 0.0;
+                for (double plain_scale_log2 : plain_scale_log2_values) {
+                    ++case_id;
+                    const auto before_normalization_info = adapter.info(current);
+                    const double cipher_scale_log2 = std::log2(before_normalization_info.scale);
+                    const double period_log2 = m2424::bootstrap_period_log2(
+                        period_case.mode,
+                        period_case.manual_period_log2,
+                        profile.coeff_modulus_bits,
+                        before_mod_raise,
+                        after_mod_raise);
+                    const auto scaling = m2424::make_bootstrap_scaling_factors(
+                        amplitude_factor, period_log2, plain_scale_log2);
 
-                double expected_max = 0.0;
-                double actual_max = 0.0;
-                double normalization_error = 0.0;
-                const char* status = "FAIL";
+                    double expected_max = 0.0;
+                    double actual_max = 0.0;
+                    double normalization_error = 0.0;
+                    std::string exception;
+                    const char* status = "FAIL";
 
-                if (!representable) {
-                    status = "SCALAR_NOT_REPRESENTABLE";
-                } else {
-                    try {
-                        const double normalization_factor = std::exp2(normalization_factor_log2);
-                        const auto expected = scaled(before_normalization, normalization_factor);
-                        expected_max = max_abs_value(expected);
-                        const auto plain = adapter.encode_scalar_at_scale_like(
-                            normalization_factor, profile.scale, current);
-                        auto normalized = adapter.mul_plain_rescale(current, plain);
-                        auto actual = head(adapter.decode_complex(adapter.decrypt(normalized)), slots);
-                        actual_max = max_abs_value(actual);
-                        normalization_error = max_complex_error(expected, actual);
-                        status = normalization_error <= tolerance ? "PASS" : "FAIL";
-                    } catch (const std::exception&) {
-                        status = "FAIL";
+                    if (!scaling.representable) {
+                        exception = "SCALAR_NOT_REPRESENTABLE";
+                        status = "SCALAR_NOT_REPRESENTABLE";
+                    } else {
+                        try {
+                            const auto expected = scaled(before_normalization, scaling.factor);
+                            expected_max = max_abs_value(expected);
+                            const auto plain = adapter.encode_scalar_at_scale_like(
+                                scaling.factor, std::exp2(plain_scale_log2), current);
+                            auto normalized = adapter.mul_plain_rescale(current, plain);
+                            auto actual = head(adapter.decode_complex(adapter.decrypt(normalized)), slots);
+                            actual_max = max_abs_value(actual);
+                            normalization_error = max_complex_error(expected, actual);
+                            status = normalization_error <= tolerance ? "PASS" : "FAIL";
+                        } catch (const std::exception& e) {
+                            exception = e.what();
+                            std::replace(exception.begin(), exception.end(), ',', ';');
+                            status = "FAIL";
+                        }
                     }
-                }
 
-                std::printf("%zu,%s,%.0f,%.6e,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%.6e,%.6e,%.6e,%s\n",
-                            case_id,
-                            to_string(period_case.mode),
-                            period_case.mode == BootstrapPeriodMode::ManualPowerOfTwo
-                                ? period_case.manual_period_log2
-                                : 0.0,
-                            amplitude,
-                            before_mod_raise.chain_index,
-                            before_normalization_info.chain_index,
-                            cipher_scale_log2,
-                            period_log2,
-                            normalization_factor_log2,
-                            plain_scale_log2,
-                            factor_times_plain_scale_log2,
-                            representable ? "true" : "false",
-                            expected_max,
-                            actual_max,
-                            normalization_error,
-                            status);
+                    std::printf("%zu,%s,%.0f,%.0f,%.6e,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%s,%.6e,%.6e,%.6e,%s,%s\n",
+                                case_id,
+                                m2424::to_string(period_case.mode),
+                                period_case.mode == m2424::BootstrapPeriodMode::ManualPowerOfTwo
+                                    ? period_case.manual_period_log2
+                                    : 0.0,
+                                plain_scale_log2,
+                                amplitude,
+                                level_drop,
+                                before_mod_raise.chain_index,
+                                before_normalization_info.chain_index,
+                                cipher_scale_log2,
+                                period_log2,
+                                scaling.normalization_factor_log2,
+                                scaling.factor_times_plain_scale_log2,
+                                scaling.representable ? "true" : "false",
+                                expected_max,
+                                actual_max,
+                                normalization_error,
+                                exception.c_str(),
+                                status);
+                }
             }
         }
     }

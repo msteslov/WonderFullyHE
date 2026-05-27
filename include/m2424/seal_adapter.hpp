@@ -95,6 +95,7 @@ public:
     double coeff_modulus_log2(const Cipher&) const;
     double bootstrap_period_log2(const Cipher&) const;
     double bootstrap_period(const Cipher&) const;
+    std::vector<int> coeff_modulus_bits() const;
     std::size_t chain_index(const Cipher&) const;
     std::size_t coeff_modulus_size(const Cipher&) const;
     std::size_t public_key_size() const;

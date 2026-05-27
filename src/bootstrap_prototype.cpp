@@ -204,11 +204,43 @@ void BootstrapPrototype::set_evalmod_degree(EvalModDegree degree) noexcept {
     evalmod_degree_ = degree;
 }
 
+void BootstrapPrototype::set_period_mode(BootstrapPeriodMode mode) noexcept {
+    period_mode_ = mode;
+}
+
+void BootstrapPrototype::set_manual_period_log2(double value) {
+    if (!std::isfinite(value) || value < 0.0) {
+        throw std::invalid_argument("manual period log2 must be a non-negative finite value");
+    }
+    manual_period_log2_ = value;
+}
+
+void BootstrapPrototype::set_plain_scale_log2(double value) {
+    if (!std::isfinite(value) || value <= 0.0) {
+        throw std::invalid_argument("plain scale log2 must be a positive finite value");
+    }
+    plain_scale_log2_ = value;
+}
+
+void BootstrapPrototype::set_post_refresh_mod_raise_enabled(bool enabled) noexcept {
+    post_refresh_mod_raise_enabled_ = enabled;
+}
+
 Cipher BootstrapPrototype::apply_normalization(const Cipher& input, double factor) const {
     if (normalization_mode_ == BootstrapNormalizationMode::ScaleReinterpretation) {
         return adapter_.multiply_decoded_value(input, factor);
     }
-    return adapter_.mul_plain_rescale(input, adapter_.encode_scalar_like(factor, input));
+    if (!std::isfinite(factor) || factor == 0.0) {
+        throw std::invalid_argument("bootstrap normalization factor must be non-zero and finite");
+    }
+    const double factor_log2 = std::log2(std::abs(factor));
+    const double factor_times_plain_scale_log2 = factor_log2 + plain_scale_log2_;
+    if (factor_times_plain_scale_log2 < 0.0) {
+        throw std::runtime_error("bootstrap normalization scalar is not representable");
+    }
+    const auto plain = adapter_.encode_scalar_at_scale_like(
+        factor, std::exp2(plain_scale_log2_), input);
+    return adapter_.mul_plain_rescale(input, plain);
 }
 
 void mark_stage_structural(BootstrapPrototypeStage& stage) {
@@ -243,6 +275,9 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
     report.normalization_mode = normalization_mode_;
     report.denormalization_position = denormalization_position_;
     report.evalmod_degree = evalmod_degree_;
+    report.period_mode = period_mode_;
+    report.manual_period_log2 = manual_period_log2_;
+    report.plain_scale_log2 = plain_scale_log2_;
     report.max_abs_input = max_abs_value(input);
 
     ComplexVector packed(adapter_.slot_count(), Complex{0.0, 0.0});
@@ -257,6 +292,10 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
     const auto coeff_expected_raw = coeff_to_slot_.apply_plain(input);
     const double normalization_factor = normalization_factor_for(coeff_expected_raw);
     report.normalization_factor = normalization_factor;
+    report.normalization_factor_log2 = std::log2(normalization_factor);
+    report.factor_times_plain_scale_log2 = report.normalization_factor_log2 + plain_scale_log2_;
+    report.normalization_scalar_representable = report.factor_times_plain_scale_log2 >= 0.0;
+    report.denormalization_scalar_representable = true;
     report.max_abs_after_coeff_to_slot = max_abs_value(coeff_expected_raw);
     const auto coeff_expected = scaled(coeff_expected_raw, normalization_factor);
     report.max_abs_after_normalization = max_abs_value(coeff_expected);
@@ -318,6 +357,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
 
     if (denormalization_position_ == BootstrapDenormalizationPosition::BeforeSlotToCoeff &&
         normalization_factor != 1.0) {
+        report.denormalization_scalar_representable =
+            std::log2(1.0 / normalization_factor) + plain_scale_log2_ >= 0.0;
         if (checked) {
             eval_expected = scaled(eval_expected, 1.0 / normalization_factor);
         }
@@ -359,6 +400,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
 
     if (denormalization_position_ == BootstrapDenormalizationPosition::AfterSlotToCoeff &&
         normalization_factor != 1.0) {
+        report.denormalization_scalar_representable =
+            std::log2(1.0 / normalization_factor) + plain_scale_log2_ >= 0.0;
         if (checked) {
             result_expected = scaled(result_expected, 1.0 / normalization_factor);
         }
@@ -415,13 +458,16 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
     report.normalization_mode = normalization_mode_;
     report.denormalization_position = denormalization_position_;
     report.evalmod_degree = evalmod_degree_;
+    report.period_mode = period_mode_;
+    report.manual_period_log2 = manual_period_log2_;
+    report.plain_scale_log2 = plain_scale_log2_;
     report.checked = expected != nullptr;
     if (expected) {
         report.max_abs_input = max_abs_value(*expected);
     }
 
     const auto input_info = adapter_.info(input);
-    report.bootstrap_period_log2 = adapter_.bootstrap_period_log2(input);
+    report.bootstrap_period_log2 = 0.0;
     report.bootstrap_period = finite_exp2_or_zero(report.bootstrap_period_log2);
     report.bootstrap_scaling_factor = finite_exp2_or_zero(-report.bootstrap_period_log2);
     if (!expected) {
@@ -433,6 +479,10 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
         current = adapter_.mod_raise_to_first(input);
     });
     auto after = adapter_.info(current);
+    report.bootstrap_period_log2 = bootstrap_period_log2(
+        period_mode_, manual_period_log2_, adapter_.coeff_modulus_bits(), input_info, after);
+    report.bootstrap_period = finite_exp2_or_zero(report.bootstrap_period_log2);
+    report.bootstrap_scaling_factor = finite_exp2_or_zero(-report.bootstrap_period_log2);
     ComplexVector current_expected;
     double stage_error = 0.0;
     if (expected) {
@@ -460,7 +510,6 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
     if (expected) {
         coeff_expected = coeff_to_slot_.apply_plain(current_expected);
         report.max_abs_after_coeff_to_slot = max_abs_value(coeff_expected);
-        report.normalization_factor = normalization_factor_for(coeff_expected) * report.bootstrap_scaling_factor;
     }
     before = adapter_.info(current);
     stage_ms = elapsed_ms([&] {
@@ -484,6 +533,17 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
     }
     report.stages.push_back(coeff_to_slot_stage);
 
+    const double amplitude_normalization_factor = expected
+        ? normalization_factor_for(coeff_expected)
+        : report.normalization_factor;
+    const auto scaling_factors = make_bootstrap_scaling_factors(
+        amplitude_normalization_factor, report.bootstrap_period_log2, plain_scale_log2_);
+    report.normalization_factor = scaling_factors.factor;
+    report.normalization_factor_log2 = scaling_factors.normalization_factor_log2;
+    report.plain_scale_log2 = scaling_factors.plain_scale_log2;
+    report.factor_times_plain_scale_log2 = scaling_factors.factor_times_plain_scale_log2;
+    report.normalization_scalar_representable = scaling_factors.representable;
+    report.denormalization_scalar_representable = true;
     const double effective_normalization_factor = report.normalization_factor;
     if (expected) {
         coeff_expected = scaled(coeff_expected, effective_normalization_factor);
@@ -546,6 +606,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
 
     if (denormalization_position_ == BootstrapDenormalizationPosition::BeforeSlotToCoeff &&
         effective_normalization_factor != 1.0) {
+        report.denormalization_scalar_representable =
+            std::log2(1.0 / effective_normalization_factor) + plain_scale_log2_ >= 0.0;
         if (expected) {
             eval_expected = scaled(eval_expected, 1.0 / effective_normalization_factor);
         }
@@ -601,6 +663,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
 
     if (denormalization_position_ == BootstrapDenormalizationPosition::AfterSlotToCoeff &&
         effective_normalization_factor != 1.0) {
+        report.denormalization_scalar_representable =
+            std::log2(1.0 / effective_normalization_factor) + plain_scale_log2_ >= 0.0;
         if (expected) {
             result_expected = scaled(result_expected, 1.0 / effective_normalization_factor);
         }
@@ -628,46 +692,52 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
         report.stages.push_back(denorm_stage);
     }
 
-    before = adapter_.info(current);
-    stage_ms = elapsed_ms([&] {
-        current = adapter_.mod_raise_to_first(current);
-    });
-    after = adapter_.info(current);
-    stage_error = 0.0;
-    if (expected) {
-        const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
-        stage_error = max_complex_error(*expected, actual);
-        preserve_error = stage_error;
-    }
-    report.stages.push_back(BootstrapPrototypeStage{
-        "post_refresh_mod_raise",
-        expected ? (stage_error <= tolerance_ ? "PASS" : "FAIL") : "RUN",
-        before.chain_index,
-        after.chain_index,
-        before.coeff_modulus_size,
-        after.coeff_modulus_size,
-        before.scale,
-        after.scale,
-        stage_error,
-        stage_ms
-    });
-
+    const auto final_info = adapter_.info(current);
     report.stages.push_back(BootstrapPrototypeStage{
         "refresh_result",
         expected ? (preserve_error <= tolerance_ ? "PASS" : "FAIL") : "RUN",
-        after.chain_index,
-        after.chain_index,
-        after.coeff_modulus_size,
-        after.coeff_modulus_size,
-        after.scale,
-        after.scale,
+        final_info.chain_index,
+        final_info.chain_index,
+        final_info.coeff_modulus_size,
+        final_info.coeff_modulus_size,
+        final_info.scale,
+        final_info.scale,
         preserve_error,
         0.0
     });
 
     report.preserve_value_criterion = expected && preserve_error <= tolerance_;
-    report.restore_level_criterion = after.chain_index > input_info.chain_index;
+    report.restore_level_criterion = final_info.chain_index > input_info.chain_index;
     report.result = std::move(current);
+    if (post_refresh_mod_raise_enabled_) {
+        before = adapter_.info(report.result);
+        Cipher post_refresh_result;
+        stage_ms = elapsed_ms([&] {
+            post_refresh_result = adapter_.mod_raise_to_first(report.result);
+        });
+        after = adapter_.info(post_refresh_result);
+        stage_error = 0.0;
+        if (expected) {
+            const auto actual = head(adapter_.decode_complex(adapter_.decrypt(post_refresh_result)), slots_);
+            stage_error = max_complex_error(*expected, actual);
+        }
+        BootstrapPrototypeStage post_stage{
+            "post_refresh_mod_raise",
+            expected ? "DIAG" : "STRUCTURAL",
+            before.chain_index,
+            after.chain_index,
+            before.coeff_modulus_size,
+            after.coeff_modulus_size,
+            before.scale,
+            after.scale,
+            stage_error,
+            stage_ms
+        };
+        if (!expected) {
+            mark_stage_structural(post_stage);
+        }
+        report.stages.push_back(post_stage);
+    }
     return report;
 }
 

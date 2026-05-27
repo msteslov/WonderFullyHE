@@ -586,6 +586,10 @@ double SealAdapter::bootstrap_period(const Cipher& cipher) const {
     return std::exp2(period_log2);
 }
 
+std::vector<int> SealAdapter::coeff_modulus_bits() const {
+    return pimpl_->profile.coeff_modulus_bits;
+}
+
 std::size_t SealAdapter::chain_index(const Cipher& cipher) const {
     return info(cipher).chain_index;
 }

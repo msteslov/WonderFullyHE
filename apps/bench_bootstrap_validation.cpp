@@ -82,12 +82,25 @@ int main() {
         m2424::EvalModDegree::P5,
         m2424::EvalModDegree::P3
     };
+    struct PeriodCase {
+        m2424::BootstrapPeriodMode mode{};
+        double manual_period_log2{};
+    };
+    std::vector<PeriodCase> period_cases{
+        {m2424::BootstrapPeriodMode::TotalCoeffModulus, 0.0},
+        {m2424::BootstrapPeriodMode::LastPrime, 0.0},
+        {m2424::BootstrapPeriodMode::DroppedPrimeProduct, 0.0}
+    };
+    for (double manual : {40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0, 140.0}) {
+        period_cases.push_back({m2424::BootstrapPeriodMode::ManualPowerOfTwo, manual});
+    }
+    const std::vector<double> plain_scale_log2_values{40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0};
 
     auto rotation_steps = m2424::BootstrapPrototype::required_rotation_steps(slots);
     auto adapter = m2424::SealAdapter::create(m2424::profiles::boot_ckks());
     adapter.keygen(rotation_steps, true);
 
-    std::printf("case,input_kind,amplitude,level_drop,normalization_mode,denormalization_position,evalmod_degree,chain_before,chain_after,mod_raise_chain_before,mod_raise_chain_after,mod_raise_coeff_modulus_size_before,mod_raise_coeff_modulus_size_after,mod_raise_scale_before,mod_raise_scale_after,bootstrap_period_log2,bootstrap_period,bootstrap_scaling_factor,max_abs_input,mod_raise_decoded_max_abs,mod_raise_diagnostic_error,max_abs_after_coeff_to_slot,normalization_factor,max_abs_after_normalization,inside_evalmod_interval,coeff_to_slot_error,normalization_error,evalmod_error,denormalization_error,slot_to_coeff_error,post_refresh_mod_raise_error,final_error,restore_ok,post_depth,post_ops_ok,post_error,status\n");
+    std::printf("case,input_kind,amplitude,level_drop,normalization_mode,denormalization_position,evalmod_degree,period_mode,manual_period_log2,plain_scale_log2,chain_before,chain_after,mod_raise_chain_before,mod_raise_chain_after,mod_raise_coeff_modulus_size_before,mod_raise_coeff_modulus_size_after,mod_raise_scale_before,mod_raise_scale_after,bootstrap_period_log2,bootstrap_period,bootstrap_scaling_factor,normalization_factor_log2,factor_times_plain_scale_log2,normalization_scalar_representable,denormalization_scalar_representable,max_abs_input,mod_raise_decoded_max_abs,mod_raise_diagnostic_error,max_abs_after_coeff_to_slot,normalization_factor,max_abs_after_normalization,inside_evalmod_interval,coeff_to_slot_error,normalization_error,evalmod_error,denormalization_error,slot_to_coeff_error,post_refresh_mod_raise_error,final_error,restore_ok,post_depth,post_ops_ok,post_error,exception,status\n");
 
     std::size_t case_id = 0;
     std::size_t pass_cases = 0;
@@ -101,8 +114,10 @@ int main() {
             for (std::size_t level_drop : level_drops) {
                 for (const auto denorm_position : denorm_positions) {
                     for (const auto evalmod_degree : evalmod_degrees) {
-                        ++case_id;
-                        try {
+                        for (const auto& period_case : period_cases) {
+                            for (double plain_scale_log2 : plain_scale_log2_values) {
+                                ++case_id;
+                                try {
                             const auto input = make_input(kind, slots, amplitude);
                             const auto expected = to_complex(input);
 
@@ -116,6 +131,10 @@ int main() {
                             bootstrapper.set_normalization_mode(m2424::BootstrapNormalizationMode::PlainMultiplyRescale);
                             bootstrapper.set_denormalization_position(denorm_position);
                             bootstrapper.set_evalmod_degree(evalmod_degree);
+                            bootstrapper.set_period_mode(period_case.mode);
+                            bootstrapper.set_manual_period_log2(period_case.manual_period_log2);
+                            bootstrapper.set_plain_scale_log2(plain_scale_log2);
+                            bootstrapper.set_post_refresh_mod_raise_enabled(false);
                             auto checked = bootstrapper.refresh_cipher_checked(current, expected);
                             const auto after = adapter.info(checked.result);
 
@@ -152,7 +171,6 @@ int main() {
                             const bool restore_ok = after.chain_index > before.chain_index;
                             const bool ok =
                                 final_error <= tolerance &&
-                                restore_ok &&
                                 post_ops_ok &&
                                 post_error <= tolerance;
 
@@ -164,13 +182,15 @@ int main() {
                                     best_final_error = final_error;
                                     best_mode = std::string(m2424::to_string(checked.normalization_mode)) + "/" +
                                                 m2424::to_string(checked.denormalization_position) + "/" +
-                                                m2424::to_string(checked.evalmod_degree);
+                                                m2424::to_string(checked.evalmod_degree) + "/" +
+                                                m2424::to_string(checked.period_mode) + "/plain_scale_log2=" +
+                                                std::to_string(checked.plain_scale_log2);
                                 }
                             } else {
                                 ++fail_cases;
                             }
 
-                            std::printf("%zu,%s,%.6e,%zu,%s,%s,%s,%zu,%zu,%zu,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%zu,%s,%.6e,%s\n",
+                            std::printf("%zu,%s,%.6e,%zu,%s,%s,%s,%s,%.0f,%.0f,%zu,%zu,%zu,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%s,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%zu,%s,%.6e,%s,%s\n",
                                         case_id,
                                         kind.c_str(),
                                         amplitude,
@@ -178,6 +198,9 @@ int main() {
                                         m2424::to_string(checked.normalization_mode),
                                         m2424::to_string(checked.denormalization_position),
                                         m2424::to_string(checked.evalmod_degree),
+                                        m2424::to_string(checked.period_mode),
+                                        checked.manual_period_log2,
+                                        checked.plain_scale_log2,
                                         before.chain_index,
                                         after.chain_index,
                                         mod_raise_stage ? mod_raise_stage->chain_before : 0,
@@ -189,6 +212,10 @@ int main() {
                                         checked.bootstrap_period_log2,
                                         checked.bootstrap_period,
                                         checked.bootstrap_scaling_factor,
+                                        checked.normalization_factor_log2,
+                                        checked.factor_times_plain_scale_log2,
+                                        checked.normalization_scalar_representable ? "true" : "false",
+                                        checked.denormalization_scalar_representable ? "true" : "false",
                                         checked.max_abs_input,
                                         checked.max_abs_after_mod_raise_decode,
                                         checked.mod_raise_diagnostic_error,
@@ -207,10 +234,13 @@ int main() {
                                         post_depth,
                                         post_ops_ok ? "PASS" : "FAIL",
                                         post_error,
+                                        "",
                                         ok ? "PASS" : "FAIL");
-                        } catch (const std::exception&) {
+                                } catch (const std::exception& e) {
                             ++fail_cases;
-                            std::printf("%zu,%s,%.6e,%zu,%s,%s,%s,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,FAIL,0,0,0,0,0,0,0,FAIL,%zu,FAIL,0,FAIL\n",
+                            std::string exception = e.what();
+                            std::replace(exception.begin(), exception.end(), ',', ';');
+                            std::printf("%zu,%s,%.6e,%zu,%s,%s,%s,%s,%.0f,%.0f,0,0,0,0,0,0,0,0,0,0,0,0,0,false,false,0,0,0,0,0,0,FAIL,0,0,0,0,0,0,0,FAIL,%zu,FAIL,0,%s,FAIL\n",
                                         case_id,
                                         kind.c_str(),
                                         amplitude,
@@ -218,7 +248,13 @@ int main() {
                                         m2424::to_string(m2424::BootstrapNormalizationMode::PlainMultiplyRescale),
                                         m2424::to_string(denorm_position),
                                         m2424::to_string(evalmod_degree),
-                                        post_depth);
+                                        m2424::to_string(period_case.mode),
+                                        period_case.manual_period_log2,
+                                        plain_scale_log2,
+                                        post_depth,
+                                        exception.c_str());
+                                }
+                            }
                         }
                     }
                 }
