@@ -329,5 +329,6 @@ int main() {
     std::printf("case,stage,period_mode,manual_period_log2,plain_scale_log2,chain_index,scale_log2,coeff_modulus_log2,max_abs,expected_max_abs,max_error,inside_evalmod_interval,normalization_chunks,normalization_levels_consumed,denormalization_chunks,denormalization_levels_consumed,chain_remaining_before_evalmod,chain_remaining_after_evalmod,exception,status\n");
     run_case({"diagnostic_no_period", m2424::BootstrapPeriodMode::NoBootstrapPeriod, 0.0, 50.0});
     run_case({"manual_220_scalar_mechanics", m2424::BootstrapPeriodMode::ManualPowerOfTwo, 220.0, 240.0});
+    run_case({"manual_256_evalmod_ready", m2424::BootstrapPeriodMode::ManualPowerOfTwo, 256.0, 160.0});
     return 0;
 }

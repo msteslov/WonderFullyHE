@@ -94,7 +94,7 @@ int main() {
         {m2424::BootstrapPeriodMode::LastPrime, 0.0},
         {m2424::BootstrapPeriodMode::DroppedPrimeProduct, 0.0}
     };
-    for (double manual : {40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0, 140.0, 220.0, 258.0, 260.0, 300.0}) {
+    for (double manual : {40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0, 140.0, 220.0, 254.0, 256.0, 258.0, 260.0, 300.0}) {
         period_cases.push_back({m2424::BootstrapPeriodMode::ManualPowerOfTwo, manual});
     }
 
