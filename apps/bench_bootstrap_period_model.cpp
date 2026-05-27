@@ -13,6 +13,13 @@
 
 namespace {
 
+struct ProfileCase {
+    const char* name{};
+    m2424::CkksProfile profile{};
+    double min_period_log2{};
+    double max_period_log2{};
+};
+
 std::vector<double> make_input(std::size_t slots, double amplitude) {
     std::vector<double> input;
     input.reserve(slots);
@@ -57,15 +64,13 @@ void sanitize(std::string& text) {
     std::replace(text.begin(), text.end(), ',', ';');
 }
 
-} // namespace
-
-int main() {
+std::size_t run_profile(const ProfileCase& profile_case) {
     constexpr std::size_t slots = 16;
     constexpr double tolerance = 2e-5;
     constexpr double amplitude = 1e-5;
     constexpr std::size_t level_drop = 2;
     constexpr std::size_t required_levels_for_p3 = 3;
-    const auto profile = m2424::profiles::boot_ckks();
+    const auto& profile = profile_case.profile;
 
     auto coeff_to_slot = m2424::DiagonalLinearTransform::from_matrix(
         m2424::canonical_embedding_matrix(slots));
@@ -83,15 +88,22 @@ int main() {
     const auto before_normalization = head(adapter.decode_complex(adapter.decrypt(current)), slots);
     const double before_max_abs = max_abs_value(before_normalization);
 
-    std::printf("period_log2,plain_scale_log2,chain_before,scale_log2_before,coeff_modulus_log2_before,expected_max_abs_after_normalization,actual_max_abs_after_normalization,normalization_error,normalization_chunks,normalization_levels_consumed,chain_remaining_before_evalmod,scale_log2_before_evalmod,coeff_modulus_log2_before_evalmod,scalar_pass,evalmod_ready,levels_ready,evalmod_scale_ready,p3_ready,exception,status\n");
-
     std::size_t pass_count = 0;
     double best_period_log2 = 0.0;
     double best_plain_scale_log2 = 0.0;
     std::size_t best_chain_remaining = 0;
     double best_error = 0.0;
-    for (double period_log2 = 220.0; period_log2 <= 280.0; period_log2 += 2.0) {
+    double best_evalmod_ready_period_log2 = 0.0;
+    double best_evalmod_ready_plain_scale_log2 = 0.0;
+    std::size_t best_evalmod_ready_chain_remaining = 0;
+    double best_evalmod_ready_scale_log2 = 0.0;
+    double best_evalmod_ready_error = 0.0;
+    std::size_t total_cases = 0;
+    for (double period_log2 = profile_case.min_period_log2;
+         period_log2 <= profile_case.max_period_log2;
+         period_log2 += 2.0) {
         for (double plain_scale_log2 : {40.0, 50.0, 60.0, 80.0, 100.0, 120.0, 160.0, 200.0, 220.0, 240.0, 260.0}) {
+            ++total_cases;
             const auto info_before = adapter.info(current);
             const double factor_log2 = -period_log2;
             const double factor = std::exp2(factor_log2);
@@ -129,6 +141,18 @@ int main() {
                 levels_ready = chain_remaining >= required_levels_for_p3;
                 evalmod_scale_ready = scale_log2_before_evalmod <= 60.0;
                 p3_ready = evalmod_ready && levels_ready && evalmod_scale_ready;
+                if (evalmod_ready && levels_ready) {
+                    if (best_evalmod_ready_period_log2 == 0.0 ||
+                        scale_log2_before_evalmod < best_evalmod_ready_scale_log2 ||
+                        (scale_log2_before_evalmod == best_evalmod_ready_scale_log2 &&
+                         chain_remaining > best_evalmod_ready_chain_remaining)) {
+                        best_evalmod_ready_period_log2 = period_log2;
+                        best_evalmod_ready_plain_scale_log2 = plain_scale_log2;
+                        best_evalmod_ready_chain_remaining = chain_remaining;
+                        best_evalmod_ready_scale_log2 = scale_log2_before_evalmod;
+                        best_evalmod_ready_error = normalization_error;
+                    }
+                }
                 status = p3_ready ? "PASS" : "FAIL";
                 if (p3_ready) {
                     ++pass_count;
@@ -146,7 +170,8 @@ int main() {
                 sanitize(exception);
             }
 
-            std::printf("%.0f,%.0f,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%zu,%zu,%zu,%.6e,%.6e,%s,%s,%s,%s,%s,%s,%s\n",
+            std::printf("%s,%.0f,%.0f,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%zu,%zu,%zu,%.6e,%.6e,%s,%s,%s,%s,%s,%s,%s\n",
+                        profile_case.name,
                         period_log2,
                         plain_scale_log2,
                         info_before.chain_index,
@@ -170,14 +195,38 @@ int main() {
         }
     }
 
-    std::printf("summary,total_cases,pass_cases,best_period_log2,best_plain_scale_log2,best_chain_remaining,best_error,before_max_abs\n");
-    std::printf("summary,%d,%zu,%.0f,%.0f,%zu,%.6e,%.6e\n",
-                31 * 11,
+    const char* blocker = "none";
+    if (pass_count == 0) {
+        blocker = best_evalmod_ready_period_log2 > 0.0 ? "evalmod_scale" : "period_or_scalar";
+    }
+
+    std::printf("summary,%s,%zu,%zu,%.0f,%.0f,%zu,%.6e,%.6e,%.0f,%.0f,%zu,%.6e,%.6e,%s\n",
+                profile_case.name,
+                total_cases,
                 pass_count,
                 best_period_log2,
                 best_plain_scale_log2,
                 best_chain_remaining,
                 best_error,
-                before_max_abs);
+                before_max_abs,
+                best_evalmod_ready_period_log2,
+                best_evalmod_ready_plain_scale_log2,
+                best_evalmod_ready_chain_remaining,
+                best_evalmod_ready_scale_log2,
+                best_evalmod_ready_error,
+                blocker);
+    return pass_count;
+}
+
+} // namespace
+
+int main() {
+    std::printf("profile,period_log2,plain_scale_log2,chain_before,scale_log2_before,coeff_modulus_log2_before,expected_max_abs_after_normalization,actual_max_abs_after_normalization,normalization_error,normalization_chunks,normalization_levels_consumed,chain_remaining_before_evalmod,scale_log2_before_evalmod,coeff_modulus_log2_before_evalmod,scalar_pass,evalmod_ready,levels_ready,evalmod_scale_ready,p3_ready,exception,status\n");
+    std::printf("summary_header,profile,total_cases,p3_ready_cases,best_period_log2,best_plain_scale_log2,best_chain_remaining,best_error,before_max_abs,best_evalmod_ready_period_log2,best_evalmod_ready_plain_scale_log2,best_evalmod_ready_chain_remaining,best_evalmod_ready_scale_log2,best_evalmod_ready_error,blocker\n");
+    std::size_t total_pass_count = 0;
+    total_pass_count += run_profile({"boot_ckks", m2424::profiles::boot_ckks(), 220.0, 280.0});
+    total_pass_count += run_profile({"boot_deep_ckks", m2424::profiles::boot_deep_ckks(), 680.0, 800.0});
+    std::printf("summary,all_profiles,total_cases,pass_cases\n");
+    std::printf("summary,all_profiles,%d,%zu\n", (31 + 61) * 11, total_pass_count);
     return 0;
 }
