@@ -172,8 +172,14 @@ bool scaling_gate_has_pass(m2424::SealAdapter& adapter,
                                 no_period_evalmod_ready = true;
                                 continue;
                             }
-                            const bool p3_scale_ready =
-                                chain_remaining >= 3 && scale_log2_before_evalmod <= 60.0;
+                            bool p3_scale_ready = false;
+                            try {
+                                auto squashed = m2424::squash_bootstrap_scale(
+                                    adapter, normalized_application.result, 60.0, 3);
+                                p3_scale_ready = adapter.info(squashed.result).chain_index >= 3;
+                            } catch (...) {
+                                p3_scale_ready = false;
+                            }
                             if (!p3_scale_ready) {
                                 period_evalmod_ready_without_scale = true;
                                 continue;

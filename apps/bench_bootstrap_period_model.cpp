@@ -120,7 +120,11 @@ std::size_t run_profile(const ProfileCase& profile_case) {
             bool evalmod_ready = false;
             bool levels_ready = false;
             bool evalmod_scale_ready = false;
+            bool scale_squash_ready = false;
             bool p3_ready = false;
+            std::size_t scale_squash_levels_consumed = 0;
+            std::size_t chain_remaining_after_scale_squash = 0;
+            double scale_log2_after_scale_squash = 0.0;
             std::string exception;
             const char* status = "FAIL";
 
@@ -140,7 +144,20 @@ std::size_t run_profile(const ProfileCase& profile_case) {
                 evalmod_ready = scalar_pass && expected_max <= m2424::EvalModPolynomial::approximation_bound;
                 levels_ready = chain_remaining >= required_levels_for_p3;
                 evalmod_scale_ready = scale_log2_before_evalmod <= 60.0;
-                p3_ready = evalmod_ready && levels_ready && evalmod_scale_ready;
+                try {
+                    auto squashed = m2424::squash_bootstrap_scale(
+                        adapter, normalized.result, 60.0, required_levels_for_p3);
+                    const auto squashed_info = adapter.info(squashed.result);
+                    scale_squash_levels_consumed = squashed.levels_consumed;
+                    chain_remaining_after_scale_squash = squashed_info.chain_index;
+                    scale_log2_after_scale_squash = std::log2(squashed_info.scale);
+                    scale_squash_ready = true;
+                } catch (...) {
+                    chain_remaining_after_scale_squash = chain_remaining;
+                    scale_log2_after_scale_squash = scale_log2_before_evalmod;
+                }
+                p3_ready = evalmod_ready && scale_squash_ready &&
+                    chain_remaining_after_scale_squash >= required_levels_for_p3;
                 if (evalmod_ready && levels_ready) {
                     if (best_evalmod_ready_period_log2 == 0.0 ||
                         scale_log2_before_evalmod < best_evalmod_ready_scale_log2 ||
@@ -170,7 +187,7 @@ std::size_t run_profile(const ProfileCase& profile_case) {
                 sanitize(exception);
             }
 
-            std::printf("%s,%.0f,%.0f,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%zu,%zu,%zu,%.6e,%.6e,%s,%s,%s,%s,%s,%s,%s\n",
+            std::printf("%s,%.0f,%.0f,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%zu,%zu,%zu,%.6e,%.6e,%zu,%zu,%.6e,%s,%s,%s,%s,%s,%s,%s,%s\n",
                         profile_case.name,
                         period_log2,
                         plain_scale_log2,
@@ -185,10 +202,14 @@ std::size_t run_profile(const ProfileCase& profile_case) {
                         chain_remaining,
                         scale_log2_before_evalmod,
                         coeff_modulus_log2_before_evalmod,
+                        scale_squash_levels_consumed,
+                        chain_remaining_after_scale_squash,
+                        scale_log2_after_scale_squash,
                         scalar_pass ? "true" : "false",
                         evalmod_ready ? "true" : "false",
                         levels_ready ? "true" : "false",
                         evalmod_scale_ready ? "true" : "false",
+                        scale_squash_ready ? "true" : "false",
                         p3_ready ? "true" : "false",
                         exception.c_str(),
                         status);
@@ -221,7 +242,7 @@ std::size_t run_profile(const ProfileCase& profile_case) {
 } // namespace
 
 int main() {
-    std::printf("profile,period_log2,plain_scale_log2,chain_before,scale_log2_before,coeff_modulus_log2_before,expected_max_abs_after_normalization,actual_max_abs_after_normalization,normalization_error,normalization_chunks,normalization_levels_consumed,chain_remaining_before_evalmod,scale_log2_before_evalmod,coeff_modulus_log2_before_evalmod,scalar_pass,evalmod_ready,levels_ready,evalmod_scale_ready,p3_ready,exception,status\n");
+    std::printf("profile,period_log2,plain_scale_log2,chain_before,scale_log2_before,coeff_modulus_log2_before,expected_max_abs_after_normalization,actual_max_abs_after_normalization,normalization_error,normalization_chunks,normalization_levels_consumed,chain_remaining_before_evalmod,scale_log2_before_evalmod,coeff_modulus_log2_before_evalmod,scale_squash_levels_consumed,chain_remaining_after_scale_squash,scale_log2_after_scale_squash,scalar_pass,evalmod_ready,levels_ready,evalmod_scale_ready,scale_squash_ready,p3_ready,exception,status\n");
     std::printf("summary_header,profile,total_cases,p3_ready_cases,best_period_log2,best_plain_scale_log2,best_chain_remaining,best_error,before_max_abs,best_evalmod_ready_period_log2,best_evalmod_ready_plain_scale_log2,best_evalmod_ready_chain_remaining,best_evalmod_ready_scale_log2,best_evalmod_ready_error,blocker\n");
     std::size_t total_pass_count = 0;
     total_pass_count += run_profile({"boot_ckks", m2424::profiles::boot_ckks(), 220.0, 280.0});

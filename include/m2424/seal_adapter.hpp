@@ -83,6 +83,7 @@ public:
     Cipher mul_plain(const Cipher&, const Plain&);
     Cipher mul_plain_rescale(const Cipher&, const Plain&);
     Cipher mul_relin_rescale(const Cipher&, const Cipher&);
+    Cipher rescale_to_next(const Cipher&);
     Cipher mod_raise_to_first(const Cipher&);
     Cipher multiply_decoded_value(const Cipher&, double multiplier);
     Cipher mod_switch_to(const Cipher&, const Cipher&);
