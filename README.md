@@ -66,11 +66,11 @@ cmake --build build -j
 
 `bench_bootstrap_parts` печатает CSV по строительным блокам bootstrapping: `mul_plain_rescale`, rotation-based `linear_transform`, `sum_slots` и `polynomial_eval`. В отчёт входят время, уровень ciphertext, ошибка и сериализованный размер результата.
 
-`bench_bootstrap_scaling` является обязательным gate перед full refresh: он выполняет только `encrypt -> lower level -> ModRaise -> CoeffToSlot -> normalization -> decrypt/check` и проверяет, представим ли normalization scalar при выбранных `period_mode` и `plain_scale_log2`.
+`bench_bootstrap_scaling` является обязательным gate перед full refresh: он выполняет только `encrypt -> lower level -> ModRaise -> CoeffToSlot -> normalization -> decrypt/check` и проверяет, представим ли normalization scalar при выбранных `period_mode` и `plain_scale_log2`. Tiny scalar больше не выполняется одним plaintext multiply: scaling layer раскладывает его на несколько `mul_plain_rescale` шагов по доступной modulus capacity.
 
 `bench_bootstrap_full` и `bench_bootstrap_refresh` оставлены как experimental harness для разработки конвейера. Они не являются доказательством корректного bootstrapping, пока `bench_bootstrap_scaling` блокирует full validation.
 
-`bench_bootstrap_validation` сначала запускает внутренний scaling gate. Если scaling не имеет ни одного `PASS`, benchmark печатает `blocked_by_scaling_gate` и не выполняет `EvalMod`, `SlotToCoeff` и post-refresh continuation.
+`bench_bootstrap_validation` сначала запускает внутренний scaling gate. Если scaling не имеет ни одного `PASS`, benchmark печатает `blocked_by_scaling_gate` и не выполняет `EvalMod`, `SlotToCoeff` и post-refresh continuation. После прохождения gate full validation запускается только на выбранном scaling mode, а не на полном diagnostic sweep.
 
 `demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
 

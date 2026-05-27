@@ -235,12 +235,38 @@ Cipher BootstrapPrototype::apply_normalization(const Cipher& input, double facto
     }
     const double factor_log2 = std::log2(std::abs(factor));
     const double factor_times_plain_scale_log2 = factor_log2 + plain_scale_log2_;
-    if (factor_times_plain_scale_log2 < 0.0) {
+    if (factor_times_plain_scale_log2 >= 0.0) {
+        const auto plain = adapter_.encode_scalar_at_scale_like(
+            factor, std::exp2(plain_scale_log2_), input);
+        return adapter_.mul_plain_rescale(input, plain);
+    }
+    if (factor_log2 >= 0.0) {
         throw std::runtime_error("bootstrap normalization scalar is not representable");
     }
-    const auto plain = adapter_.encode_scalar_at_scale_like(
-        factor, std::exp2(plain_scale_log2_), input);
-    return adapter_.mul_plain_rescale(input, plain);
+
+    constexpr double scale_capacity_margin_log2 = 2.0;
+    auto current = input;
+    double remaining_abs_log2 = -factor_log2;
+    while (remaining_abs_log2 > 1e-9) {
+        const auto info = adapter_.info(current);
+        if (info.chain_index == 0) {
+            throw std::runtime_error("not enough levels for bootstrap scalar decomposition");
+        }
+        const double current_scale_log2 = std::log2(info.scale);
+        const double capacity_log2 =
+            info.coeff_modulus_log2 - current_scale_log2 - scale_capacity_margin_log2;
+        const double chunk_plain_scale_log2 = std::min(plain_scale_log2_, capacity_log2);
+        if (chunk_plain_scale_log2 <= 0.0) {
+            throw std::runtime_error("not enough scale capacity for bootstrap scalar decomposition");
+        }
+        const double chunk_abs_log2 = std::min(remaining_abs_log2, chunk_plain_scale_log2);
+        const double chunk_log2 = -chunk_abs_log2;
+        const auto plain = adapter_.encode_scalar_at_scale_like(
+            std::exp2(chunk_log2), std::exp2(chunk_plain_scale_log2), current);
+        current = adapter_.mul_plain_rescale(current, plain);
+        remaining_abs_log2 -= chunk_abs_log2;
+    }
+    return current;
 }
 
 void mark_stage_structural(BootstrapPrototypeStage& stage) {

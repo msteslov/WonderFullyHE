@@ -24,7 +24,7 @@ WonderFullyHE — учебно-исследовательский прототи
 - Анализ расхода вычислительной глубины до остановки на `x^32`.
 - Низкоуровневый CKKS `ModRaise` для расширения ciphertext к первой RNS-базе.
 - Experimental bootstrapping-конвейер `ModRaise -> CoeffToSlot -> eval_mod_normalization -> EvalMod -> SlotToCoeff` с отчётом по `scale`, `chain_index` и размеру ciphertext.
-- Scaling gate перед full refresh validation. Текущий blocker: после `ModRaise -> CoeffToSlot` амплитуда растёт до порядка `1e80`, поэтому normalization scalar не проходит рабочий gate.
+- Scaling gate перед full refresh validation. Найденный leak был в normalization scalar: после `ModRaise -> CoeffToSlot` tiny scalar нельзя применять одним plaintext multiply. Scaling layer теперь поддерживает decomposition на несколько `mul_plain_rescale` шагов; gate имеет PASS-режимы, а следующий blocker находится в full EvalMod/denormalization path.
 - Experimental API `Bootstrapper::refresh(cipher, slots, tolerance)` и стабильный helper `Bootstrapper::refresh_rotation_steps(slots)`.
 - Нормализация входа `EvalMod` по амплитуде после `CoeffToSlot`.
 - Historical end-to-end demo для refresh; не входит в default CTest, пока scaling gate не проходит.

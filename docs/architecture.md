@@ -95,7 +95,7 @@ sum_i a_i * rotate(ct, k_i)
 - параметры ciphertext на границе глубины: `scale`, `chain_index`, `coeff_modulus_size`, `serialized_bytes`;
 - structural/scaling diagnostics для проверки `ModRaise -> CoeffToSlot` перед full refresh.
 
-Full refresh не считается стабильным API, пока `bench_bootstrap_scaling` не проходит хотя бы в одном режиме. `bench_bootstrap_validation` блокируется на scaling gate и не запускает `EvalMod`, если normalization scalar не представим.
+Full refresh не считается стабильным API, пока `bench_bootstrap_validation` не проходит end-to-end. `bench_bootstrap_scaling` теперь является первым gate: он поддерживает source-period diagnostics и decomposed plaintext scaling для tiny normalization scalar. Если gate не проходит, `bench_bootstrap_validation` не запускает `EvalMod`.
 
 ### profiles
 

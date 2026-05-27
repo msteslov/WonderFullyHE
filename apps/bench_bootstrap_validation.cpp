@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <exception>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -94,6 +95,44 @@ m2424::ComplexVector scaled(const m2424::ComplexVector& values, double factor) {
     return result;
 }
 
+m2424::Cipher apply_scalar_decomposed(m2424::SealAdapter& adapter,
+                                      const m2424::Cipher& input,
+                                      double factor_log2,
+                                      double plain_scale_log2) {
+    constexpr double scale_capacity_margin_log2 = 2.0;
+    if (factor_log2 + plain_scale_log2 >= 0.0) {
+        return adapter.mul_plain_rescale(
+            input,
+            adapter.encode_scalar_at_scale_like(std::exp2(factor_log2), std::exp2(plain_scale_log2), input));
+    }
+    if (factor_log2 >= 0.0) {
+        throw std::runtime_error("positive bootstrap scalar decomposition is not supported");
+    }
+
+    auto current = input;
+    double remaining_abs_log2 = -factor_log2;
+    while (remaining_abs_log2 > 1e-9) {
+        const auto info = adapter.info(current);
+        if (info.chain_index == 0) {
+            throw std::runtime_error("not enough levels for bootstrap scalar decomposition");
+        }
+        const double current_scale_log2 = std::log2(info.scale);
+        const double capacity_log2 =
+            info.coeff_modulus_log2 - current_scale_log2 - scale_capacity_margin_log2;
+        const double chunk_plain_scale_log2 = std::min(plain_scale_log2, capacity_log2);
+        if (chunk_plain_scale_log2 <= 0.0) {
+            throw std::runtime_error("not enough scale capacity for bootstrap scalar decomposition");
+        }
+        const double chunk_abs_log2 = std::min(remaining_abs_log2, chunk_plain_scale_log2);
+        current = adapter.mul_plain_rescale(
+            current,
+            adapter.encode_scalar_at_scale_like(
+                std::exp2(-chunk_abs_log2), std::exp2(chunk_plain_scale_log2), current));
+        remaining_abs_log2 -= chunk_abs_log2;
+    }
+    return current;
+}
+
 double normalization_factor_for(const m2424::ComplexVector& values) {
     constexpr double evalmod_target = 0.0009765625 * 0.5;
     const double max_abs = max_abs_value(values);
@@ -112,7 +151,10 @@ bool scaling_gate_has_pass(m2424::SealAdapter& adapter,
                            const std::vector<std::size_t>& level_drops,
                            const PeriodCases& period_cases,
                            const std::vector<double>& plain_scale_log2_values,
-                           std::string& best_mode) {
+                           std::string& best_mode,
+                           m2424::BootstrapPeriodMode& best_period_mode,
+                           double& best_manual_period_log2,
+                           double& best_plain_scale_log2) {
     auto coeff_to_slot = m2424::DiagonalLinearTransform::from_matrix(
         m2424::canonical_embedding_matrix(slots));
 
@@ -151,12 +193,14 @@ bool scaling_gate_has_pass(m2424::SealAdapter& adapter,
                     }
                     try {
                         const auto expected = scaled(before_normalization, scaling.factor);
-                        const auto plain = adapter.encode_scalar_at_scale_like(
-                            scaling.factor, std::exp2(plain_scale_log2), current);
-                        auto normalized = adapter.mul_plain_rescale(current, plain);
+                        auto normalized = apply_scalar_decomposed(
+                            adapter, current, scaling.normalization_factor_log2, plain_scale_log2);
                         const auto actual = head(adapter.decode_complex(adapter.decrypt(normalized)), slots);
                         const double normalization_error = max_complex_error(expected, actual);
                         if (normalization_error <= tolerance) {
+                            best_period_mode = period_case.mode;
+                            best_manual_period_log2 = period_case.manual_period_log2;
+                            best_plain_scale_log2 = plain_scale_log2;
                             best_mode = std::string(m2424::to_string(period_case.mode)) +
                                 "/manual_period_log2=" + std::to_string(period_case.manual_period_log2) +
                                 "/plain_scale_log2=" + std::to_string(plain_scale_log2) +
@@ -197,14 +241,15 @@ int main() {
     };
     std::vector<PeriodCase> period_cases{
         {m2424::BootstrapPeriodMode::NoBootstrapPeriod, 0.0},
+        {m2424::BootstrapPeriodMode::SourceCoeffModulus, 0.0},
         {m2424::BootstrapPeriodMode::TotalCoeffModulus, 0.0},
         {m2424::BootstrapPeriodMode::LastPrime, 0.0},
         {m2424::BootstrapPeriodMode::DroppedPrimeProduct, 0.0}
     };
-    for (double manual : {40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0, 140.0}) {
+    for (double manual : {40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0, 140.0, 220.0, 258.0, 260.0, 300.0}) {
         period_cases.push_back({m2424::BootstrapPeriodMode::ManualPowerOfTwo, manual});
     }
-    const std::vector<double> plain_scale_log2_values{
+    std::vector<double> plain_scale_log2_values{
         40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0,
         140.0, 160.0, 180.0, 200.0, 240.0, 280.0, 320.0, 400.0, 600.0
     };
@@ -215,6 +260,9 @@ int main() {
     adapter.keygen(rotation_steps, true);
 
     std::string scaling_best_mode;
+    auto scaling_best_period_mode = m2424::BootstrapPeriodMode::NoBootstrapPeriod;
+    double scaling_best_manual_period_log2 = 0.0;
+    double scaling_best_plain_scale_log2 = profile.scale > 0.0 ? std::log2(profile.scale) : 40.0;
     if (!scaling_gate_has_pass(adapter,
                                profile,
                                slots,
@@ -223,11 +271,16 @@ int main() {
                                level_drops,
                                period_cases,
                                plain_scale_log2_values,
-                               scaling_best_mode)) {
+                               scaling_best_mode,
+                               scaling_best_period_mode,
+                               scaling_best_manual_period_log2,
+                               scaling_best_plain_scale_log2)) {
         std::printf("summary,total_cases,pass_cases,fail_cases,max_final_error,max_evalmod_error,best_mode\n");
         std::printf("blocked_by_scaling_gate,0,0,0,0.000000e+00,0.000000e+00,none\n");
         return 0;
     }
+    period_cases = {{scaling_best_period_mode, scaling_best_manual_period_log2}};
+    plain_scale_log2_values = {scaling_best_plain_scale_log2};
 
     std::printf("case,input_kind,amplitude,level_drop,normalization_mode,denormalization_position,evalmod_degree,period_mode,manual_period_log2,plain_scale_log2,chain_before,chain_after,mod_raise_chain_before,mod_raise_chain_after,mod_raise_coeff_modulus_size_before,mod_raise_coeff_modulus_size_after,mod_raise_scale_before,mod_raise_scale_after,bootstrap_period_log2,bootstrap_period,bootstrap_scaling_factor,normalization_factor_log2,factor_times_plain_scale_log2,normalization_scalar_representable,denormalization_scalar_representable,max_abs_input,mod_raise_decoded_max_abs,mod_raise_diagnostic_error,max_abs_after_coeff_to_slot,normalization_factor,max_abs_after_normalization,inside_evalmod_interval,coeff_to_slot_error,normalization_error,evalmod_error,denormalization_error,slot_to_coeff_error,post_refresh_mod_raise_error,final_error,restore_ok,post_depth,post_ops_ok,post_error,exception,status\n");
 
