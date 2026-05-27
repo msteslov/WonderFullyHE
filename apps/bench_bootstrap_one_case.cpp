@@ -15,6 +15,8 @@ namespace {
 
 struct TraceCase {
     const char* label{};
+    const char* profile_name{};
+    m2424::CkksProfile profile{};
     m2424::BootstrapPeriodMode period_mode{};
     double manual_period_log2{};
     double plain_scale_log2{};
@@ -106,8 +108,9 @@ void print_stage(const char* label,
                  std::size_t chain_remaining_after_evalmod,
                  const std::string& exception,
                  const char* status) {
-    std::printf("%s,%s,%s,%.0f,%.0f,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s\n",
+    std::printf("%s,%s,%s,%s,%.0f,%.0f,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s\n",
                 label,
+                config.profile_name,
                 stage,
                 m2424::to_string(config.period_mode),
                 config.period_mode == m2424::BootstrapPeriodMode::ManualPowerOfTwo
@@ -180,7 +183,7 @@ void run_case(const TraceCase& config) {
     constexpr std::size_t slots = 16;
     constexpr double amplitude = 1e-5;
     constexpr std::size_t level_drop = 2;
-    const auto profile = m2424::profiles::boot_ckks();
+    const auto& profile = config.profile;
 
     auto coeff_to_slot = m2424::DiagonalLinearTransform::from_matrix(
         m2424::canonical_embedding_matrix(slots));
@@ -326,9 +329,10 @@ void run_case(const TraceCase& config) {
 } // namespace
 
 int main() {
-    std::printf("case,stage,period_mode,manual_period_log2,plain_scale_log2,chain_index,scale_log2,coeff_modulus_log2,max_abs,expected_max_abs,max_error,inside_evalmod_interval,normalization_chunks,normalization_levels_consumed,denormalization_chunks,denormalization_levels_consumed,chain_remaining_before_evalmod,chain_remaining_after_evalmod,exception,status\n");
-    run_case({"diagnostic_no_period", m2424::BootstrapPeriodMode::NoBootstrapPeriod, 0.0, 50.0});
-    run_case({"manual_220_scalar_mechanics", m2424::BootstrapPeriodMode::ManualPowerOfTwo, 220.0, 240.0});
-    run_case({"manual_256_evalmod_ready", m2424::BootstrapPeriodMode::ManualPowerOfTwo, 256.0, 160.0});
+    std::printf("case,profile,stage,period_mode,manual_period_log2,plain_scale_log2,chain_index,scale_log2,coeff_modulus_log2,max_abs,expected_max_abs,max_error,inside_evalmod_interval,normalization_chunks,normalization_levels_consumed,denormalization_chunks,denormalization_levels_consumed,chain_remaining_before_evalmod,chain_remaining_after_evalmod,exception,status\n");
+    run_case({"diagnostic_no_period", "boot_ckks", m2424::profiles::boot_ckks(), m2424::BootstrapPeriodMode::NoBootstrapPeriod, 0.0, 50.0});
+    run_case({"manual_220_scalar_mechanics", "boot_ckks", m2424::profiles::boot_ckks(), m2424::BootstrapPeriodMode::ManualPowerOfTwo, 220.0, 240.0});
+    run_case({"manual_256_evalmod_ready", "boot_ckks", m2424::profiles::boot_ckks(), m2424::BootstrapPeriodMode::ManualPowerOfTwo, 256.0, 160.0});
+    run_case({"deep_manual_736_p3_probe", "boot_deep_ckks", m2424::profiles::boot_deep_ckks(), m2424::BootstrapPeriodMode::ManualPowerOfTwo, 736.0, 50.0});
     return 0;
 }

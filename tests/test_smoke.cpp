@@ -273,7 +273,15 @@ int main() {
     const auto depth_security = m2424::analyze_security("depth_ckks", depth_profile);
     const auto high_precision_security = m2424::analyze_security("high_precision_ckks", m2424::profiles::high_precision_ckks());
     const auto boot_security = m2424::analyze_security("boot_ckks", m2424::profiles::boot_ckks());
-    const std::vector<m2424::SecurityReport> security_reports{basic_security, balanced_security, depth_security, high_precision_security, boot_security};
+    const auto boot_deep_security = m2424::analyze_security("boot_deep_ckks", m2424::profiles::boot_deep_ckks());
+    const std::vector<m2424::SecurityReport> security_reports{
+        basic_security,
+        balanced_security,
+        depth_security,
+        high_precision_security,
+        boot_security,
+        boot_deep_security
+    };
     const bool security_report_ok = basic_security.total_coeff_modulus_bits == 200
         && basic_security.tc128_limit == 218
         && basic_security.passes_tc128
@@ -299,6 +307,11 @@ int main() {
         && boot_security.passes_tc128
         && !boot_security.passes_tc192
         && boot_security.effective_level == m2424::SecurityLevel::TC128
+        && boot_deep_security.total_coeff_modulus_bits == 880
+        && boot_deep_security.tc128_limit == 881
+        && boot_deep_security.passes_tc128
+        && !boot_deep_security.passes_tc192
+        && boot_deep_security.effective_level == m2424::SecurityLevel::TC128
         && m2424::project_minimum_security(security_reports) == m2424::SecurityLevel::TC128;
     const bool bootstrap_report_ok = bootstrap_report.input.available
         && bootstrap_report.depth_boundary.available
