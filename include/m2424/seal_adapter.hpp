@@ -20,6 +20,7 @@ struct CipherInfo {
     std::size_t chain_index{};
     std::size_t coeff_modulus_size{};
     std::size_t ciphertext_size{};
+    double coeff_modulus_log2{};
 };
 
 using SerializedBuffer = std::vector<std::uint8_t>;
@@ -91,6 +92,9 @@ public:
     std::size_t serialized_size(const Cipher&) const;
     CipherInfo info(const Cipher&) const;
     double scale(const Cipher&) const;
+    double coeff_modulus_log2(const Cipher&) const;
+    double bootstrap_period_log2(const Cipher&) const;
+    double bootstrap_period(const Cipher&) const;
     std::size_t chain_index(const Cipher&) const;
     std::size_t coeff_modulus_size(const Cipher&) const;
     std::size_t public_key_size() const;
