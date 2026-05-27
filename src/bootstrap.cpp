@@ -175,4 +175,8 @@ const std::vector<BootstrapStage>& Bootstrapper::pipeline() const noexcept {
     return stages_;
 }
 
+BootstrapPipelinePlan Bootstrapper::plan(std::size_t slots) const {
+    return make_research_bootstrap_plan(slots);
+}
+
 } // namespace m2424

@@ -179,6 +179,8 @@ P7(u) = u - 6.579736267393*u^3 + 12.98787880453*u^5 - 12.20811674381*u^7
 
 Модуль `m2424::Bootstrapper` пока является experimental точкой входа для refresh. Рабочим regression gate считается `bench_bootstrap_scaling`; full refresh blocked, если normalization scalar не представим после `ModRaise -> CoeffToSlot`.
 
+Модуль `m2424::BootstrapPipelinePlan` задаёт целевую архитектуру bootstrapping: домены значений между стадиями, transform backend (`DenseDiagonal` для текущего research path или `FftLike` для будущего масштабируемого path), scaling strategy и active gate. Это отделяет математический план от временного `BootstrapPrototype`.
+
 Модуль `m2424::BootstrapPrototype` оставлен как внутренний проверочный harness для разработки bootstrapping-блоков. Внутри `DiagonalLinearTransform` используется baby-step/giant-step-разложение, которое уменьшает число CKKS-ротаций при плотных диагональных матрицах. Для повторных запусков кэшируются encoded plaintext-диагонали под конкретные `chain_index` и `scale`.
 
 Модуль `m2424::abft` содержит checksum-инструменты: `append_checksum`, `checksum`, `verify_appended_checksum`, `verify_checksum_value`.

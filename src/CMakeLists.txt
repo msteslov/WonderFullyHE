@@ -2,6 +2,7 @@ add_library(m2424
     accuracy.cpp
     abft.cpp
     bootstrap.cpp
+    bootstrap_plan.cpp
     bootstrap_prototype.cpp
     bootstrap_scaling.cpp
     checked_evaluator.cpp
