@@ -74,7 +74,7 @@ cmake --build build -j
 
 `bench_bootstrap_one_case` печатает узкий trace для одного фиксированного bootstrapping-сценария после scaling gate. В отчёт входят chunks/levels для decomposed normalization и denormalization, `chain_remaining_before_evalmod` и `chain_remaining_after_evalmod`; `NoBootstrapPeriod` используется только как diagnostic baseline.
 
-`bench_bootstrap_period_model` проверяет только period/scaling model без запуска `EvalMod`: scalar correctness, попадание в интервал EvalMod, оставшиеся уровни и scale readiness перед P3. Benchmark сравнивает обычный `boot_ckks` и diagnostic `boot_deep_ckks`; `boot_deep_ckks` нужен только для проверки scale/levels budget и не означает, что full bootstrap готов.
+`bench_bootstrap_period_model` проверяет только period/scaling model без запуска `EvalMod`: scalar correctness, попадание в интервал EvalMod, оставшиеся уровни и scale readiness перед P3. Benchmark сравнивает обычный `boot_ckks` и diagnostic `boot_deep_ckks`; `boot_deep_ckks` нужен только для проверки scale/levels budget и не означает, что full bootstrap готов. `ScaleSquash` использует обычный CKKS rescale, чтобы проверить, хватает ли уровней снизить scale до EvalMod-safe диапазона без изменения значения.
 
 `demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
 

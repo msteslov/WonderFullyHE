@@ -260,6 +260,23 @@ void run_case(const TraceCase& config) {
         return;
     }
 
+    try {
+        auto squashed = m2424::squash_bootstrap_scale(adapter, current, 60.0, 3);
+        current = squashed.result;
+        chain_remaining_before_evalmod = adapter.info(current).chain_index;
+        print_cipher_stage(config.label, "ScaleSquash", config, adapter, current, coeff_expected, slots,
+                           inside_evalmod_interval, normalization_chunks, normalization_levels_consumed,
+                           0, 0, chain_remaining_before_evalmod, 0, "DIAG");
+    } catch (const std::exception& e) {
+        auto exception = std::string(e.what());
+        sanitize(exception);
+        print_stage(config.label, "ScaleSquash", config, adapter.info(current), 0.0,
+                    max_abs_value(coeff_expected), 0.0, inside_evalmod_interval,
+                    normalization_chunks, normalization_levels_consumed, 0, 0,
+                    chain_remaining_before_evalmod, 0, exception, "BLOCKED");
+        return;
+    }
+
     if (!inside_evalmod_interval) {
         print_stage(config.label, "EvalMod", config, adapter.info(current), 0.0,
                     max_abs_value(coeff_expected), 0.0, false,

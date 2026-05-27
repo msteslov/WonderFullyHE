@@ -373,6 +373,13 @@ Cipher SealAdapter::mul_relin_rescale(const Cipher& a, const Cipher& b) {
     return out;
 }
 
+Cipher SealAdapter::rescale_to_next(const Cipher& cipher) {
+    if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
+    Cipher out = cipher;
+    pimpl_->evaluator->rescale_to_next_inplace(out.pimpl_->ct);
+    return out;
+}
+
 Cipher SealAdapter::mod_raise_to_first(const Cipher& cipher) {
     if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
     const auto source_context_data = pimpl_->context->get_context_data(cipher.pimpl_->ct.parms_id());

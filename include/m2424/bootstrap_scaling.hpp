@@ -31,6 +31,11 @@ struct BootstrapScalarApplication {
     std::size_t levels_consumed{};
 };
 
+struct BootstrapScaleSquash {
+    Cipher result;
+    std::size_t levels_consumed{};
+};
+
 const char* to_string(BootstrapPeriodMode mode) noexcept;
 
 double bootstrap_period_log2(BootstrapPeriodMode mode,
@@ -47,5 +52,10 @@ BootstrapScalarApplication apply_bootstrap_scalar_decomposed(SealAdapter& adapte
                                                              const Cipher& input,
                                                              double factor_log2,
                                                              double plain_scale_log2);
+
+BootstrapScaleSquash squash_bootstrap_scale(SealAdapter& adapter,
+                                            const Cipher& input,
+                                            double max_scale_log2,
+                                            std::size_t min_chain_remaining);
 
 } // namespace m2424

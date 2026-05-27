@@ -139,4 +139,28 @@ BootstrapScalarApplication apply_bootstrap_scalar_decomposed(SealAdapter& adapte
     return application;
 }
 
+BootstrapScaleSquash squash_bootstrap_scale(SealAdapter& adapter,
+                                            const Cipher& input,
+                                            double max_scale_log2,
+                                            std::size_t min_chain_remaining) {
+    if (!std::isfinite(max_scale_log2) || max_scale_log2 <= 0.0) {
+        throw std::invalid_argument("max scale log2 must be positive and finite");
+    }
+
+    auto current = input;
+    const auto start_info = adapter.info(current);
+    BootstrapScaleSquash squash;
+    while (std::log2(adapter.info(current).scale) > max_scale_log2) {
+        const auto info = adapter.info(current);
+        if (info.chain_index <= min_chain_remaining) {
+            throw std::runtime_error("not enough levels for bootstrap scale squash");
+        }
+        current = adapter.rescale_to_next(current);
+        ++squash.levels_consumed;
+    }
+    squash.result = current;
+    squash.levels_consumed = start_info.chain_index - adapter.info(current).chain_index;
+    return squash;
+}
+
 } // namespace m2424
