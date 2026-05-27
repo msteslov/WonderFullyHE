@@ -87,6 +87,7 @@ int main() {
         double manual_period_log2{};
     };
     std::vector<PeriodCase> period_cases{
+        {m2424::BootstrapPeriodMode::NoBootstrapPeriod, 0.0},
         {m2424::BootstrapPeriodMode::TotalCoeffModulus, 0.0},
         {m2424::BootstrapPeriodMode::LastPrime, 0.0},
         {m2424::BootstrapPeriodMode::DroppedPrimeProduct, 0.0}
@@ -94,7 +95,10 @@ int main() {
     for (double manual : {40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0, 140.0}) {
         period_cases.push_back({m2424::BootstrapPeriodMode::ManualPowerOfTwo, manual});
     }
-    const std::vector<double> plain_scale_log2_values{40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0};
+    const std::vector<double> plain_scale_log2_values{
+        40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0,
+        140.0, 160.0, 180.0, 200.0, 240.0, 280.0, 320.0, 400.0, 600.0
+    };
 
     auto rotation_steps = m2424::BootstrapPrototype::required_rotation_steps(slots);
     auto adapter = m2424::SealAdapter::create(m2424::profiles::boot_ckks());

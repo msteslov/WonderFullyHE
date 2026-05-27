@@ -82,8 +82,12 @@ int main() {
 
     const std::vector<double> amplitudes{1e-5, 1e-4, 5e-4, 1e-3, 1e-2, 1e-1};
     const std::vector<std::size_t> level_drops{1, 2};
-    const std::vector<double> plain_scale_log2_values{40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0};
+    const std::vector<double> plain_scale_log2_values{
+        40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0,
+        140.0, 160.0, 180.0, 200.0, 240.0, 280.0, 320.0, 400.0, 600.0
+    };
     std::vector<PeriodCase> period_cases{
+        {m2424::BootstrapPeriodMode::NoBootstrapPeriod, 0.0},
         {m2424::BootstrapPeriodMode::TotalCoeffModulus, 0.0},
         {m2424::BootstrapPeriodMode::LastPrime, 0.0},
         {m2424::BootstrapPeriodMode::DroppedPrimeProduct, 0.0}
@@ -98,7 +102,7 @@ int main() {
     auto coeff_to_slot = m2424::DiagonalLinearTransform::from_matrix(
         m2424::canonical_embedding_matrix(slots));
 
-    std::printf("case,period_mode,manual_period_log2,plain_scale_log2,amplitude,level_drop,chain_before,chain_after,cipher_scale_log2,bootstrap_period_log2,normalization_factor_log2,factor_times_plain_scale_log2,representable,expected_max_abs_after_normalization,actual_max_abs_after_normalization,normalization_error,exception,status\n");
+    std::printf("case,period_mode,manual_period_log2,plain_scale_log2,amplitude,level_drop,chain_before,chain_after,cipher_scale_log2,bootstrap_period_log2,amplitude_factor_log2,period_contribution_log2,normalization_factor_log2,factor_times_plain_scale_log2,required_plain_scale_log2,plain_scale_margin_log2,representable,coeff_to_slot_max_abs_before_normalization,expected_max_abs_after_normalization,actual_max_abs_after_normalization,normalization_error,exception,status\n");
 
     std::size_t case_id = 0;
     for (double amplitude : amplitudes) {
@@ -120,6 +124,8 @@ int main() {
                 before_normalization.assign(slots, {0.0, 0.0});
             }
             const double amplitude_factor = normalization_factor_for(before_normalization);
+            const double amplitude_factor_log2 = std::log2(amplitude_factor);
+            const double coeff_to_slot_max_abs = max_abs_value(before_normalization);
 
             for (const auto& period_case : period_cases) {
                 for (double plain_scale_log2 : plain_scale_log2_values) {
@@ -134,6 +140,8 @@ int main() {
                         after_mod_raise);
                     const auto scaling = m2424::make_bootstrap_scaling_factors(
                         amplitude_factor, period_log2, plain_scale_log2);
+                    const double required_plain_scale_log2 = -scaling.normalization_factor_log2;
+                    const double plain_scale_margin_log2 = scaling.factor_times_plain_scale_log2;
 
                     double expected_max = 0.0;
                     double actual_max = 0.0;
@@ -162,7 +170,7 @@ int main() {
                         }
                     }
 
-                    std::printf("%zu,%s,%.0f,%.0f,%.6e,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%s,%.6e,%.6e,%.6e,%s,%s\n",
+                    std::printf("%zu,%s,%.0f,%.0f,%.6e,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%.6e,%.6e,%.6e,%.6e,%s,%s\n",
                                 case_id,
                                 m2424::to_string(period_case.mode),
                                 period_case.mode == m2424::BootstrapPeriodMode::ManualPowerOfTwo
@@ -175,9 +183,14 @@ int main() {
                                 before_normalization_info.chain_index,
                                 cipher_scale_log2,
                                 period_log2,
+                                amplitude_factor_log2,
+                                period_log2,
                                 scaling.normalization_factor_log2,
                                 scaling.factor_times_plain_scale_log2,
+                                required_plain_scale_log2,
+                                plain_scale_margin_log2,
                                 scaling.representable ? "true" : "false",
+                                coeff_to_slot_max_abs,
                                 expected_max,
                                 actual_max,
                                 normalization_error,
