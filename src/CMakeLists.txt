@@ -3,6 +3,7 @@ add_library(m2424
     abft.cpp
     bootstrap.cpp
     bootstrap_prototype.cpp
+    bootstrap_scaling.cpp
     checked_evaluator.cpp
     diagonal_transform.cpp
     eval_mod.cpp

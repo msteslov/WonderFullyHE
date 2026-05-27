@@ -2,6 +2,7 @@
 
 #include "m2424/diagonal_transform.hpp"
 #include "m2424/eval_mod.hpp"
+#include "m2424/bootstrap_scaling.hpp"
 #include "m2424/seal_adapter.hpp"
 
 #include <cstddef>
@@ -40,6 +41,13 @@ struct BootstrapPrototypeReport {
     double bootstrap_period{};
     double bootstrap_period_log2{};
     double bootstrap_scaling_factor{};
+    BootstrapPeriodMode period_mode{BootstrapPeriodMode::TotalCoeffModulus};
+    double manual_period_log2{};
+    double normalization_factor_log2{};
+    double plain_scale_log2{40.0};
+    double factor_times_plain_scale_log2{};
+    bool normalization_scalar_representable{};
+    bool denormalization_scalar_representable{};
     double max_abs_after_mod_raise_decode{};
     double mod_raise_diagnostic_error{};
     BootstrapNormalizationMode normalization_mode{BootstrapNormalizationMode::PlainMultiplyRescale};
@@ -71,6 +79,10 @@ public:
     void set_normalization_mode(BootstrapNormalizationMode mode) noexcept;
     void set_denormalization_position(BootstrapDenormalizationPosition position) noexcept;
     void set_evalmod_degree(EvalModDegree degree) noexcept;
+    void set_period_mode(BootstrapPeriodMode mode) noexcept;
+    void set_manual_period_log2(double value);
+    void set_plain_scale_log2(double value);
+    void set_post_refresh_mod_raise_enabled(bool enabled) noexcept;
 
 private:
     BootstrapPrototypeReport refresh_impl(const ComplexVector& input, bool checked) const;
@@ -84,6 +96,10 @@ private:
     BootstrapNormalizationMode normalization_mode_{BootstrapNormalizationMode::PlainMultiplyRescale};
     BootstrapDenormalizationPosition denormalization_position_{BootstrapDenormalizationPosition::AfterSlotToCoeff};
     EvalModDegree evalmod_degree_{EvalModDegree::P7};
+    BootstrapPeriodMode period_mode_{BootstrapPeriodMode::TotalCoeffModulus};
+    double manual_period_log2_{0.0};
+    double plain_scale_log2_{40.0};
+    bool post_refresh_mod_raise_enabled_{false};
     DiagonalLinearTransform coeff_to_slot_;
     DiagonalLinearTransform slot_to_coeff_;
 };
