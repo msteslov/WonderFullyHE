@@ -117,9 +117,13 @@ bool scaling_gate_has_pass(m2424::SealAdapter& adapter,
                            m2424::BootstrapPeriodMode& best_period_mode,
                            double& best_manual_period_log2,
                            double& best_plain_scale_log2,
-                           bool& no_period_evalmod_ready) {
+                           bool& no_period_evalmod_ready,
+                           bool& period_evalmod_ready_without_scale) {
     auto coeff_to_slot = m2424::DiagonalLinearTransform::from_matrix(
         m2424::canonical_embedding_matrix(slots));
+    bool found_period_mode = false;
+    std::size_t best_chain_remaining = 0;
+    double best_normalization_error = 0.0;
 
     for (double amplitude : amplitudes) {
         for (std::size_t level_drop : level_drops) {
@@ -158,6 +162,9 @@ bool scaling_gate_has_pass(m2424::SealAdapter& adapter,
                         const auto actual = head(adapter.decode_complex(
                             adapter.decrypt(normalized_application.result)), slots);
                         const double normalization_error = max_complex_error(expected, actual);
+                        const auto normalized_info = adapter.info(normalized_application.result);
+                        const std::size_t chain_remaining = normalized_info.chain_index;
+                        const double scale_log2_before_evalmod = std::log2(normalized_info.scale);
                         const bool evalmod_ready = normalization_error <= tolerance &&
                             max_abs_value(expected) <= m2424::EvalModPolynomial::approximation_bound;
                         if (evalmod_ready) {
@@ -165,6 +172,21 @@ bool scaling_gate_has_pass(m2424::SealAdapter& adapter,
                                 no_period_evalmod_ready = true;
                                 continue;
                             }
+                            const bool p3_scale_ready =
+                                chain_remaining >= 3 && scale_log2_before_evalmod <= 60.0;
+                            if (!p3_scale_ready) {
+                                period_evalmod_ready_without_scale = true;
+                                continue;
+                            }
+                            if (found_period_mode &&
+                                (chain_remaining < best_chain_remaining ||
+                                 (chain_remaining == best_chain_remaining &&
+                                  normalization_error >= best_normalization_error))) {
+                                continue;
+                            }
+                            found_period_mode = true;
+                            best_chain_remaining = chain_remaining;
+                            best_normalization_error = normalization_error;
                             best_period_mode = period_case.mode;
                             best_manual_period_log2 = period_case.manual_period_log2;
                             best_plain_scale_log2 = plain_scale_log2;
@@ -172,7 +194,6 @@ bool scaling_gate_has_pass(m2424::SealAdapter& adapter,
                                 "/manual_period_log2=" + std::to_string(period_case.manual_period_log2) +
                                 "/plain_scale_log2=" + std::to_string(plain_scale_log2) +
                                 "/chain_after=" + std::to_string(before_normalization_info.chain_index);
-                            return true;
                         }
                     } catch (...) {
                     }
@@ -180,7 +201,7 @@ bool scaling_gate_has_pass(m2424::SealAdapter& adapter,
             }
         }
     }
-    return false;
+    return found_period_mode;
 }
 
 } // namespace
@@ -213,7 +234,7 @@ int main() {
         {m2424::BootstrapPeriodMode::LastPrime, 0.0},
         {m2424::BootstrapPeriodMode::DroppedPrimeProduct, 0.0}
     };
-    for (double manual : {40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0, 140.0, 220.0, 258.0, 260.0, 300.0}) {
+    for (double manual : {40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 120.0, 140.0, 220.0, 254.0, 256.0, 258.0, 260.0, 300.0}) {
         period_cases.push_back({m2424::BootstrapPeriodMode::ManualPowerOfTwo, manual});
     }
     std::vector<double> plain_scale_log2_values{
@@ -231,6 +252,7 @@ int main() {
     double scaling_best_manual_period_log2 = 0.0;
     double scaling_best_plain_scale_log2 = profile.scale > 0.0 ? std::log2(profile.scale) : 40.0;
     bool no_period_evalmod_ready = false;
+    bool period_evalmod_ready_without_scale = false;
     if (!scaling_gate_has_pass(adapter,
                                profile,
                                slots,
@@ -243,10 +265,13 @@ int main() {
                                scaling_best_period_mode,
                                scaling_best_manual_period_log2,
                                scaling_best_plain_scale_log2,
-                               no_period_evalmod_ready)) {
+                               no_period_evalmod_ready,
+                               period_evalmod_ready_without_scale)) {
         std::printf("summary,total_cases,pass_cases,fail_cases,max_final_error,max_evalmod_error,best_mode\n");
         std::printf("%s,0,0,0,0.000000e+00,0.000000e+00,none\n",
-                    no_period_evalmod_ready
+                    period_evalmod_ready_without_scale
+                        ? "blocked_by_evalmod_scale"
+                        : no_period_evalmod_ready
                         ? "blocked_by_period_model"
                         : "blocked_by_evalmod_ready_scaling");
         return 0;

@@ -111,7 +111,8 @@ BootstrapScalarApplication apply_bootstrap_scalar_decomposed(SealAdapter& adapte
 
     auto current = input;
     double remaining_abs_log2 = -factor_log2;
-    while (remaining_abs_log2 > 1e-9) {
+    constexpr double decomposition_epsilon_log2 = 1e-6;
+    while (remaining_abs_log2 > decomposition_epsilon_log2) {
         const auto info = adapter.info(current);
         if (info.chain_index == 0) {
             throw std::runtime_error("not enough levels for bootstrap scalar decomposition");
@@ -129,7 +130,7 @@ BootstrapScalarApplication apply_bootstrap_scalar_decomposed(SealAdapter& adapte
             current,
             adapter.encode_scalar_at_scale_like(
                 std::exp2(chunk_log2), std::exp2(chunk_plain_scale_log2), current));
-        remaining_abs_log2 -= chunk_abs_log2;
+        remaining_abs_log2 = std::max(0.0, remaining_abs_log2 - chunk_abs_log2);
         ++application.chunks;
     }
 
