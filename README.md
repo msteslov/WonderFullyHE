@@ -70,7 +70,9 @@ cmake --build build -j
 
 `bench_bootstrap_full` и `bench_bootstrap_refresh` оставлены как experimental harness для разработки конвейера. Они не являются доказательством корректного bootstrapping, пока `bench_bootstrap_scaling` блокирует full validation.
 
-`bench_bootstrap_validation` сначала запускает внутренний scaling gate. Если scaling не имеет ни одного `PASS`, benchmark печатает `blocked_by_scaling_gate` и не выполняет `EvalMod`, `SlotToCoeff` и post-refresh continuation. После прохождения gate full validation запускается только на выбранном scaling mode, а не на полном diagnostic sweep.
+`bench_bootstrap_validation` сначала запускает внутренний scaling gate. Если нет real period-mode с `evalmod_ready=true`, benchmark печатает `blocked_by_evalmod_ready_scaling` или `blocked_by_period_model` и не выполняет `EvalMod`, `SlotToCoeff` и post-refresh continuation. После прохождения gate full validation запускается только на выбранном scaling mode, а не на полном diagnostic sweep.
+
+`bench_bootstrap_one_case` печатает узкий trace для одного фиксированного bootstrapping-сценария после scaling gate. В отчёт входят chunks/levels для decomposed normalization и denormalization, `chain_remaining_before_evalmod` и `chain_remaining_after_evalmod`; `NoBootstrapPeriod` используется только как diagnostic baseline.
 
 `demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
 

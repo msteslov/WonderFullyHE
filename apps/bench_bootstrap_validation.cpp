@@ -95,44 +95,6 @@ m2424::ComplexVector scaled(const m2424::ComplexVector& values, double factor) {
     return result;
 }
 
-m2424::Cipher apply_scalar_decomposed(m2424::SealAdapter& adapter,
-                                      const m2424::Cipher& input,
-                                      double factor_log2,
-                                      double plain_scale_log2) {
-    constexpr double scale_capacity_margin_log2 = 2.0;
-    if (factor_log2 + plain_scale_log2 >= 0.0) {
-        return adapter.mul_plain_rescale(
-            input,
-            adapter.encode_scalar_at_scale_like(std::exp2(factor_log2), std::exp2(plain_scale_log2), input));
-    }
-    if (factor_log2 >= 0.0) {
-        throw std::runtime_error("positive bootstrap scalar decomposition is not supported");
-    }
-
-    auto current = input;
-    double remaining_abs_log2 = -factor_log2;
-    while (remaining_abs_log2 > 1e-9) {
-        const auto info = adapter.info(current);
-        if (info.chain_index == 0) {
-            throw std::runtime_error("not enough levels for bootstrap scalar decomposition");
-        }
-        const double current_scale_log2 = std::log2(info.scale);
-        const double capacity_log2 =
-            info.coeff_modulus_log2 - current_scale_log2 - scale_capacity_margin_log2;
-        const double chunk_plain_scale_log2 = std::min(plain_scale_log2, capacity_log2);
-        if (chunk_plain_scale_log2 <= 0.0) {
-            throw std::runtime_error("not enough scale capacity for bootstrap scalar decomposition");
-        }
-        const double chunk_abs_log2 = std::min(remaining_abs_log2, chunk_plain_scale_log2);
-        current = adapter.mul_plain_rescale(
-            current,
-            adapter.encode_scalar_at_scale_like(
-                std::exp2(-chunk_abs_log2), std::exp2(chunk_plain_scale_log2), current));
-        remaining_abs_log2 -= chunk_abs_log2;
-    }
-    return current;
-}
-
 double normalization_factor_for(const m2424::ComplexVector& values) {
     constexpr double evalmod_target = 0.0009765625 * 0.5;
     const double max_abs = max_abs_value(values);
@@ -154,7 +116,8 @@ bool scaling_gate_has_pass(m2424::SealAdapter& adapter,
                            std::string& best_mode,
                            m2424::BootstrapPeriodMode& best_period_mode,
                            double& best_manual_period_log2,
-                           double& best_plain_scale_log2) {
+                           double& best_plain_scale_log2,
+                           bool& no_period_evalmod_ready) {
     auto coeff_to_slot = m2424::DiagonalLinearTransform::from_matrix(
         m2424::canonical_embedding_matrix(slots));
 
@@ -188,16 +151,20 @@ bool scaling_gate_has_pass(m2424::SealAdapter& adapter,
                 for (double plain_scale_log2 : plain_scale_log2_values) {
                     const auto scaling = m2424::make_bootstrap_scaling_factors(
                         amplitude_factor, period_log2, plain_scale_log2);
-                    if (!scaling.representable) {
-                        continue;
-                    }
                     try {
                         const auto expected = scaled(before_normalization, scaling.factor);
-                        auto normalized = apply_scalar_decomposed(
+                        auto normalized_application = m2424::apply_bootstrap_scalar_decomposed(
                             adapter, current, scaling.normalization_factor_log2, plain_scale_log2);
-                        const auto actual = head(adapter.decode_complex(adapter.decrypt(normalized)), slots);
+                        const auto actual = head(adapter.decode_complex(
+                            adapter.decrypt(normalized_application.result)), slots);
                         const double normalization_error = max_complex_error(expected, actual);
-                        if (normalization_error <= tolerance) {
+                        const bool evalmod_ready = normalization_error <= tolerance &&
+                            max_abs_value(expected) <= m2424::EvalModPolynomial::approximation_bound;
+                        if (evalmod_ready) {
+                            if (period_case.mode == m2424::BootstrapPeriodMode::NoBootstrapPeriod) {
+                                no_period_evalmod_ready = true;
+                                continue;
+                            }
                             best_period_mode = period_case.mode;
                             best_manual_period_log2 = period_case.manual_period_log2;
                             best_plain_scale_log2 = plain_scale_log2;
@@ -263,6 +230,7 @@ int main() {
     auto scaling_best_period_mode = m2424::BootstrapPeriodMode::NoBootstrapPeriod;
     double scaling_best_manual_period_log2 = 0.0;
     double scaling_best_plain_scale_log2 = profile.scale > 0.0 ? std::log2(profile.scale) : 40.0;
+    bool no_period_evalmod_ready = false;
     if (!scaling_gate_has_pass(adapter,
                                profile,
                                slots,
@@ -274,9 +242,13 @@ int main() {
                                scaling_best_mode,
                                scaling_best_period_mode,
                                scaling_best_manual_period_log2,
-                               scaling_best_plain_scale_log2)) {
+                               scaling_best_plain_scale_log2,
+                               no_period_evalmod_ready)) {
         std::printf("summary,total_cases,pass_cases,fail_cases,max_final_error,max_evalmod_error,best_mode\n");
-        std::printf("blocked_by_scaling_gate,0,0,0,0.000000e+00,0.000000e+00,none\n");
+        std::printf("%s,0,0,0,0.000000e+00,0.000000e+00,none\n",
+                    no_period_evalmod_ready
+                        ? "blocked_by_period_model"
+                        : "blocked_by_evalmod_ready_scaling");
         return 0;
     }
     period_cases = {{scaling_best_period_mode, scaling_best_manual_period_log2}};

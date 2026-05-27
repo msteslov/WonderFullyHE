@@ -2,6 +2,7 @@
 
 #include "m2424/seal_adapter.hpp"
 
+#include <cstddef>
 #include <vector>
 
 namespace m2424 {
@@ -24,6 +25,12 @@ struct BootstrapScalingFactors {
     double factor{};
 };
 
+struct BootstrapScalarApplication {
+    Cipher result;
+    std::size_t chunks{};
+    std::size_t levels_consumed{};
+};
+
 const char* to_string(BootstrapPeriodMode mode) noexcept;
 
 double bootstrap_period_log2(BootstrapPeriodMode mode,
@@ -35,5 +42,10 @@ double bootstrap_period_log2(BootstrapPeriodMode mode,
 BootstrapScalingFactors make_bootstrap_scaling_factors(double amplitude_factor,
                                                        double bootstrap_period_log2,
                                                        double plain_scale_log2);
+
+BootstrapScalarApplication apply_bootstrap_scalar_decomposed(SealAdapter& adapter,
+                                                             const Cipher& input,
+                                                             double factor_log2,
+                                                             double plain_scale_log2);
 
 } // namespace m2424
