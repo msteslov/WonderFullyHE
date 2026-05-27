@@ -26,6 +26,7 @@ WonderFullyHE — учебно-исследовательский прототи
 - Experimental bootstrapping-конвейер `ModRaise -> CoeffToSlot -> eval_mod_normalization -> EvalMod -> SlotToCoeff` с отчётом по `scale`, `chain_index` и размеру ciphertext.
 - Public architecture layer `BootstrapPipelinePlan`, который отделяет research backend `DenseDiagonal` от целевого scalable backend `FftLike` и фиксирует stage contracts.
 - Scaling gate перед full refresh validation. Найденный leak был в normalization scalar: после `ModRaise -> CoeffToSlot` tiny scalar нельзя применять одним plaintext multiply. Scaling layer теперь поддерживает decomposition на несколько `mul_plain_rescale` шагов; gate имеет PASS-режимы, а следующий blocker находится в full EvalMod/denormalization path.
+- One-case trace отделяет `scalar_pass` от `evalmod_ready`: `NoBootstrapPeriod` является diagnostic baseline, а full validation не запускается без реального period-mode, который одновременно scalar-correct и попадает в интервал EvalMod.
 - Experimental API `Bootstrapper::refresh(cipher, slots, tolerance)` и стабильный helper `Bootstrapper::refresh_rotation_steps(slots)`.
 - Нормализация входа `EvalMod` по амплитуде после `CoeffToSlot`.
 - Historical end-to-end demo для refresh; не входит в default CTest, пока scaling gate не проходит.

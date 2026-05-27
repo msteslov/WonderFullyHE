@@ -1,5 +1,6 @@
 #include "m2424/diagonal_transform.hpp"
 #include "m2424/bootstrap_scaling.hpp"
+#include "m2424/eval_mod.hpp"
 #include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
 
@@ -58,46 +59,6 @@ m2424::ComplexVector scaled(const m2424::ComplexVector& values, double factor) {
     return result;
 }
 
-m2424::Cipher apply_scalar_decomposed(m2424::SealAdapter& adapter,
-                                      const m2424::Cipher& input,
-                                      double factor_log2,
-                                      double plain_scale_log2) {
-    constexpr double scale_capacity_margin_log2 = 2.0;
-    if (factor_log2 + plain_scale_log2 >= 0.0) {
-        return adapter.mul_plain_rescale(
-            input,
-            adapter.encode_scalar_at_scale_like(std::exp2(factor_log2), std::exp2(plain_scale_log2), input));
-    }
-
-    if (factor_log2 >= 0.0) {
-        throw std::runtime_error("positive bootstrap scalar decomposition is not supported");
-    }
-
-    auto current = input;
-    double remaining_abs_log2 = -factor_log2;
-    while (remaining_abs_log2 > 1e-9) {
-        const auto info = adapter.info(current);
-        if (info.chain_index == 0) {
-            throw std::runtime_error("not enough levels for bootstrap scalar decomposition");
-        }
-        const double current_scale_log2 = std::log2(info.scale);
-        const double capacity_log2 =
-            info.coeff_modulus_log2 - current_scale_log2 - scale_capacity_margin_log2;
-        const double chunk_plain_scale_log2 = std::min(plain_scale_log2, capacity_log2);
-        if (chunk_plain_scale_log2 <= 0.0) {
-            throw std::runtime_error("not enough scale capacity for bootstrap scalar decomposition");
-        }
-        const double chunk_abs_log2 = std::min(remaining_abs_log2, chunk_plain_scale_log2);
-        const double chunk_log2 = -chunk_abs_log2;
-        current = adapter.mul_plain_rescale(
-            current,
-            adapter.encode_scalar_at_scale_like(
-                std::exp2(chunk_log2), std::exp2(chunk_plain_scale_log2), current));
-        remaining_abs_log2 -= chunk_abs_log2;
-    }
-    return current;
-}
-
 std::vector<int> coeff_to_slot_rotation_steps(std::size_t slots) {
     auto coeff_to_slot = m2424::DiagonalLinearTransform::from_matrix(
         m2424::canonical_embedding_matrix(slots));
@@ -143,7 +104,7 @@ int main() {
     auto coeff_to_slot = m2424::DiagonalLinearTransform::from_matrix(
         m2424::canonical_embedding_matrix(slots));
 
-    std::printf("case,period_mode,manual_period_log2,plain_scale_log2,amplitude,level_drop,chain_before,chain_after,cipher_scale_log2,bootstrap_period_log2,amplitude_factor_log2,period_contribution_log2,normalization_factor_log2,factor_times_plain_scale_log2,required_plain_scale_log2,plain_scale_margin_log2,representable,coeff_to_slot_max_abs_before_normalization,expected_max_abs_after_normalization,actual_max_abs_after_normalization,normalization_error,exception,status\n");
+    std::printf("case,period_mode,manual_period_log2,plain_scale_log2,amplitude,level_drop,chain_before,chain_after,cipher_scale_log2,bootstrap_period_log2,amplitude_factor_log2,period_contribution_log2,normalization_factor_log2,factor_times_plain_scale_log2,required_plain_scale_log2,plain_scale_margin_log2,representable,coeff_to_slot_max_abs_before_normalization,expected_max_abs_after_normalization,actual_max_abs_after_normalization,normalization_error,normalization_chunks,normalization_levels_consumed,scalar_pass,evalmod_ready,exception,status\n");
 
     std::size_t case_id = 0;
     for (double amplitude : amplitudes) {
@@ -190,20 +151,30 @@ int main() {
                     double expected_max = 0.0;
                     double actual_max = 0.0;
                     double normalization_error = 0.0;
+                    std::size_t normalization_chunks = 0;
+                    std::size_t normalization_levels_consumed = 0;
                     std::string exception;
                     bool scalar_representable = false;
+                    bool scalar_pass = false;
+                    bool evalmod_ready = false;
                     const char* status = "FAIL";
 
                     try {
                         const auto expected = scaled(before_normalization, normalization_factor);
                         expected_max = max_abs_value(expected);
-                        auto normalized = apply_scalar_decomposed(
+                        auto normalized_application = m2424::apply_bootstrap_scalar_decomposed(
                             adapter, current, normalization_factor_log2, plain_scale_log2);
                         scalar_representable = true;
+                        normalization_chunks = normalized_application.chunks;
+                        normalization_levels_consumed = normalized_application.levels_consumed;
+                        auto normalized = normalized_application.result;
                         auto actual = head(adapter.decode_complex(adapter.decrypt(normalized)), slots);
                         actual_max = max_abs_value(actual);
                         normalization_error = max_complex_error(expected, actual);
-                        status = normalization_error <= tolerance ? "PASS" : "FAIL";
+                        scalar_pass = normalization_error <= tolerance;
+                        evalmod_ready = scalar_pass &&
+                            expected_max <= m2424::EvalModPolynomial::approximation_bound;
+                        status = scalar_pass ? "PASS" : "FAIL";
                     } catch (const std::exception& e) {
                         exception = e.what();
                         std::replace(exception.begin(), exception.end(), ',', ';');
@@ -212,7 +183,7 @@ int main() {
                             : "FAIL";
                     }
 
-                    std::printf("%zu,%s,%.0f,%.0f,%.6e,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%.6e,%.6e,%.6e,%.6e,%s,%s\n",
+                    std::printf("%zu,%s,%.0f,%.0f,%.6e,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%.6e,%.6e,%.6e,%.6e,%zu,%zu,%s,%s,%s,%s\n",
                                 case_id,
                                 m2424::to_string(period_case.mode),
                                 period_case.mode == m2424::BootstrapPeriodMode::ManualPowerOfTwo
@@ -236,6 +207,10 @@ int main() {
                                 expected_max,
                                 actual_max,
                                 normalization_error,
+                                normalization_chunks,
+                                normalization_levels_consumed,
+                                scalar_pass ? "true" : "false",
+                                evalmod_ready ? "true" : "false",
                                 exception.c_str(),
                                 status);
                 }

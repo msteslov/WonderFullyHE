@@ -82,4 +82,60 @@ BootstrapScalingFactors make_bootstrap_scaling_factors(double amplitude_factor,
     return factors;
 }
 
+BootstrapScalarApplication apply_bootstrap_scalar_decomposed(SealAdapter& adapter,
+                                                             const Cipher& input,
+                                                             double factor_log2,
+                                                             double plain_scale_log2) {
+    if (!std::isfinite(factor_log2)) {
+        throw std::invalid_argument("bootstrap scalar factor log2 must be finite");
+    }
+    if (!std::isfinite(plain_scale_log2) || plain_scale_log2 <= 0.0) {
+        throw std::invalid_argument("plain scale log2 must be positive and finite");
+    }
+
+    const auto start_info = adapter.info(input);
+    BootstrapScalarApplication application;
+    constexpr double scale_capacity_margin_log2 = 2.0;
+    if (factor_log2 + plain_scale_log2 >= 0.0) {
+        application.result = adapter.mul_plain_rescale(
+            input,
+            adapter.encode_scalar_at_scale_like(std::exp2(factor_log2), std::exp2(plain_scale_log2), input));
+        application.chunks = 1;
+        application.levels_consumed = start_info.chain_index - adapter.info(application.result).chain_index;
+        return application;
+    }
+
+    if (factor_log2 >= 0.0) {
+        throw std::runtime_error("positive bootstrap scalar decomposition is not supported");
+    }
+
+    auto current = input;
+    double remaining_abs_log2 = -factor_log2;
+    while (remaining_abs_log2 > 1e-9) {
+        const auto info = adapter.info(current);
+        if (info.chain_index == 0) {
+            throw std::runtime_error("not enough levels for bootstrap scalar decomposition");
+        }
+        const double current_scale_log2 = std::log2(info.scale);
+        const double capacity_log2 =
+            info.coeff_modulus_log2 - current_scale_log2 - scale_capacity_margin_log2;
+        const double chunk_plain_scale_log2 = std::min(plain_scale_log2, capacity_log2);
+        if (chunk_plain_scale_log2 <= 0.0) {
+            throw std::runtime_error("not enough scale capacity for bootstrap scalar decomposition");
+        }
+        const double chunk_abs_log2 = std::min(remaining_abs_log2, chunk_plain_scale_log2);
+        const double chunk_log2 = -chunk_abs_log2;
+        current = adapter.mul_plain_rescale(
+            current,
+            adapter.encode_scalar_at_scale_like(
+                std::exp2(chunk_log2), std::exp2(chunk_plain_scale_log2), current));
+        remaining_abs_log2 -= chunk_abs_log2;
+        ++application.chunks;
+    }
+
+    application.result = current;
+    application.levels_consumed = start_info.chain_index - adapter.info(application.result).chain_index;
+    return application;
+}
+
 } // namespace m2424
