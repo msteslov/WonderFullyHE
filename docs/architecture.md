@@ -91,11 +91,19 @@ sum_i a_i * rotate(ct, k_i)
 
 - диагностику мультипликативной глубины;
 - отчёт по CKKS bootstrapping-конвейеру;
+- явный `BootstrapPipelinePlan` с доменами значений, backend'ом трансформаций и active gate;
 - явные этапы: `ModRaise`, `CoeffToSlot`, `eval_mod_normalization`, `EvalMod`, `SlotToCoeff`, `post_refresh_mod_raise`;
 - параметры ciphertext на границе глубины: `scale`, `chain_index`, `coeff_modulus_size`, `serialized_bytes`;
 - structural/scaling diagnostics для проверки `ModRaise -> CoeffToSlot` перед full refresh.
 
 Full refresh не считается стабильным API, пока `bench_bootstrap_validation` не проходит end-to-end. `bench_bootstrap_scaling` теперь является первым gate: он поддерживает source-period diagnostics и decomposed plaintext scaling для tiny normalization scalar. Если gate не проходит, `bench_bootstrap_validation` не запускает `EvalMod`.
+
+Архитектурный target разделён на два backend'а:
+
+- `DenseDiagonal`: текущий research backend для малых `slots`, где `CoeffToSlot` и `SlotToCoeff` строятся через полную canonical embedding matrix и diagonal decomposition.
+- `FftLike`: целевой scalable backend для больших `slots`, где transforms должны быть staged FFT-like линейными преобразованиями вместо плотных таблиц.
+
+Контракты стадий фиксируют, что `ModRaise` является structural-only, `Scaling` является первым correctness gate, `EvalMod` проверяется отдельно от transform backend, а `SlotToCoeff` возвращается в correctness path только после прохождения предыдущих gates.
 
 ### profiles
 

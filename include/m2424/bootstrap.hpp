@@ -1,5 +1,6 @@
 #pragma once
 
+#include "m2424/bootstrap_plan.hpp"
 #include "m2424/bootstrap_prototype.hpp"
 #include "m2424/seal_adapter.hpp"
 
@@ -65,6 +66,7 @@ public:
                                              std::size_t slots,
                                              double tolerance,
                                              double normalization_factor);
+    BootstrapPipelinePlan plan(std::size_t slots) const;
     const std::vector<BootstrapStage>& pipeline() const noexcept;
 
 private:
