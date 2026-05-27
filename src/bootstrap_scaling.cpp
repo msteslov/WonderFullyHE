@@ -10,6 +10,8 @@ const char* to_string(BootstrapPeriodMode mode) noexcept {
     switch (mode) {
     case BootstrapPeriodMode::NoBootstrapPeriod:
         return "NoBootstrapPeriod";
+    case BootstrapPeriodMode::SourceCoeffModulus:
+        return "SourceCoeffModulus";
     case BootstrapPeriodMode::TotalCoeffModulus:
         return "TotalCoeffModulus";
     case BootstrapPeriodMode::LastPrime:
@@ -30,6 +32,11 @@ double bootstrap_period_log2(BootstrapPeriodMode mode,
     switch (mode) {
     case BootstrapPeriodMode::NoBootstrapPeriod:
         return 0.0;
+    case BootstrapPeriodMode::SourceCoeffModulus:
+        if (!std::isfinite(before_mod_raise.scale) || before_mod_raise.scale <= 0.0) {
+            throw std::invalid_argument("source ciphertext scale must be positive and finite");
+        }
+        return before_mod_raise.coeff_modulus_log2 - std::log2(before_mod_raise.scale);
     case BootstrapPeriodMode::TotalCoeffModulus:
         return after_mod_raise.coeff_modulus_log2 - std::log2(after_mod_raise.scale);
     case BootstrapPeriodMode::LastPrime: {
@@ -64,7 +71,9 @@ BootstrapScalingFactors make_bootstrap_scaling_factors(double amplitude_factor,
 
     BootstrapScalingFactors factors;
     factors.bootstrap_period_log2 = bootstrap_period_log2;
-    factors.normalization_factor_log2 = std::log2(amplitude_factor) - bootstrap_period_log2;
+    factors.normalization_factor_log2 = bootstrap_period_log2 > 0.0
+        ? -bootstrap_period_log2
+        : std::log2(amplitude_factor);
     factors.plain_scale_log2 = plain_scale_log2;
     factors.factor_times_plain_scale_log2 =
         factors.normalization_factor_log2 + factors.plain_scale_log2;
