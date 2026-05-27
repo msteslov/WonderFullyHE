@@ -87,15 +87,15 @@ sum_i a_i * rotate(ct, k_i)
 
 ### Bootstrapper
 
-`Bootstrapper` является точкой входа для bootstrapping-модуля. Текущая реализация предоставляет:
+`Bootstrapper` является experimental точкой входа для bootstrapping-модуля. Текущая реализация предоставляет:
 
 - диагностику мультипликативной глубины;
 - отчёт по CKKS bootstrapping-конвейеру;
 - явные этапы: `ModRaise`, `CoeffToSlot`, `eval_mod_normalization`, `EvalMod`, `SlotToCoeff`, `post_refresh_mod_raise`;
 - параметры ciphertext на границе глубины: `scale`, `chain_index`, `coeff_modulus_size`, `serialized_bytes`;
-- критерии из модели: `Dec(c') ≈ Dec(c)` и `level(c') > level(c)`.
+- structural/scaling diagnostics для проверки `ModRaise -> CoeffToSlot` перед full refresh.
 
-Модуль отделяет анализ глубины и состояние bootstrapping-конвейера от низкоуровневого адаптера SEAL.
+Full refresh не считается стабильным API, пока `bench_bootstrap_scaling` не проходит хотя бы в одном режиме. `bench_bootstrap_validation` блокируется на scaling gate и не запускает `EvalMod`, если normalization scalar не представим.
 
 ### profiles
 
@@ -127,11 +127,12 @@ sum_i a_i * rotate(ct, k_i)
 - `demo_abft` проверяет корректность гомоморфных операций через ABFT-инварианты.
 - `demo_noise_growth` показывает расход глубины и остановку вычисления без bootstrapping.
 - `demo_bootstrap_pipeline` печатает отчёт bootstrapping-модуля.
-- `demo_bootstrap_cipher_path` запускает refresh-путь от существующего ciphertext.
-- `demo_bootstrap_end_to_end` проверяет, что после refresh доступна следующая операция с rescale.
+- `bench_bootstrap_scaling` проверяет представимость normalization scalar после `ModRaise -> CoeffToSlot`.
+- `demo_bootstrap_cipher_path` запускает experimental refresh-путь от существующего ciphertext.
+- `demo_bootstrap_end_to_end` является historical experimental demo и не входит в default CTest.
 - `bench_ckks` измеряет время операций, численную ошибку и размеры сериализованных объектов.
 - `bench_bootstrap_parts` измеряет `mul_plain_rescale`, `linear_transform`, `sum_slots` и `polynomial_eval`.
-- `bench_bootstrap_refresh` измеряет публичный путь `Bootstrapper::refresh`.
+- `bench_bootstrap_refresh` измеряет experimental путь `Bootstrapper::refresh`.
 - `bench_parallel_throughput` измеряет throughput при параллельной обработке независимых ciphertext.
 - `demo_profile_report` печатает таблицу CKKS-параметров.
 

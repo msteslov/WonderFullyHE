@@ -23,10 +23,11 @@ WonderFullyHE — учебно-исследовательский прототи
 - Демонстрация оптимизации Galois-ключей: полный набор против ограниченного набора ротаций.
 - Анализ расхода вычислительной глубины до остановки на `x^32`.
 - Низкоуровневый CKKS `ModRaise` для расширения ciphertext к первой RNS-базе.
-- Bootstrapping-конвейер `ModRaise -> CoeffToSlot -> eval_mod_normalization -> EvalMod -> SlotToCoeff -> post_refresh_mod_raise` с отчётом по `scale`, `chain_index` и размеру ciphertext.
-- Публичный API `Bootstrapper::refresh(cipher, slots, tolerance)` и `Bootstrapper::refresh_rotation_steps(slots)`.
+- Experimental bootstrapping-конвейер `ModRaise -> CoeffToSlot -> eval_mod_normalization -> EvalMod -> SlotToCoeff` с отчётом по `scale`, `chain_index` и размеру ciphertext.
+- Scaling gate перед full refresh validation. Текущий blocker: после `ModRaise -> CoeffToSlot` амплитуда растёт до порядка `1e80`, поэтому normalization scalar не проходит рабочий gate.
+- Experimental API `Bootstrapper::refresh(cipher, slots, tolerance)` и стабильный helper `Bootstrapper::refresh_rotation_steps(slots)`.
 - Нормализация входа `EvalMod` по амплитуде после `CoeffToSlot`.
-- End-to-end demo, где после refresh выполняется следующая plaintext-операция с rescale.
+- Historical end-to-end demo для refresh; не входит в default CTest, пока scaling gate не проходит.
 - Benchmark публичного refresh-пути.
 - Benchmark времени операций, ошибок и размеров ciphertext/ключей.
 - Benchmark строительных блоков bootstrapping: plaintext multiplication, linear transform, slot summation, polynomial evaluation.

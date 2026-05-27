@@ -66,21 +66,21 @@ cmake --build build -j
 
 `bench_bootstrap_parts` печатает CSV по строительным блокам bootstrapping: `mul_plain_rescale`, rotation-based `linear_transform`, `sum_slots` и `polynomial_eval`. В отчёт входят время, уровень ciphertext, ошибка и сериализованный размер результата.
 
-`bench_bootstrap_full` измеряет полный refresh-harness в профиле `boot_ckks`: подготовку rotation steps, генерацию ключей, проверяемый runtime, быстрый runtime, время `CoeffToSlot`, `EvalMod`, `SlotToCoeff`, финальную ошибку и статус. Диагональные преобразования выполняются над первыми логическими slots с явным wrap-around через положительные и отрицательные ротации.
+`bench_bootstrap_scaling` является обязательным gate перед full refresh: он выполняет только `encrypt -> lower level -> ModRaise -> CoeffToSlot -> normalization -> decrypt/check` и проверяет, представим ли normalization scalar при выбранных `period_mode` и `plain_scale_log2`.
 
-`bench_bootstrap_refresh` измеряет публичный путь `Bootstrapper::refresh`: подготовку rotation steps, генерацию ключей, общее время refresh и времена этапов `ModRaise`, `CoeffToSlot`, `eval_mod_normalization`, `EvalMod`, `SlotToCoeff`, `post_refresh_mod_raise`.
+`bench_bootstrap_full` и `bench_bootstrap_refresh` оставлены как experimental harness для разработки конвейера. Они не являются доказательством корректного bootstrapping, пока `bench_bootstrap_scaling` блокирует full validation.
 
-`bench_bootstrap_validation` выполняет строгую проверку refresh-пути на сетке входов: тип входа, амплитуда, начальный уровень, восстановленный уровень, максимум входа, максимум после `CoeffToSlot`, коэффициент нормализации, попадание в интервал `EvalMod`, ошибка `EvalMod`, финальная ошибка и ошибка после последующих операций.
+`bench_bootstrap_validation` сначала запускает внутренний scaling gate. Если scaling не имеет ни одного `PASS`, benchmark печатает `blocked_by_scaling_gate` и не выполняет `EvalMod`, `SlotToCoeff` и post-refresh continuation.
 
 `demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
 
-`demo_bootstrap_prototype` связывает bootstrapping-блоки в один проверяемый refresh-harness: `mod_raise_harness -> CoeffToSlot -> eval_mod_normalization -> EvalMod -> SlotToCoeff -> refresh_result`. Для каждого этапа печатаются уровень ciphertext, масштаб, максимальная ошибка, runtime и статус относительно tolerance `2e-5`. Коэффициент нормализации вычисляется по максимальной амплитуде после `CoeffToSlot`, чтобы вход `EvalMod` попадал в рабочий интервал полинома.
+`demo_bootstrap_prototype` связывает bootstrapping-блоки в experimental refresh-harness. Текущая архитектура считает корректным только structural/scaling gate; full refresh path не считается рабочим, пока scaling gate не проходит.
 
 `demo_mod_raise` проверяет низкоуровневый CKKS ModRaise: ciphertext после снижения уровня расширяется обратно к первой RNS-базе без расшифрования. В отчёт входят `chain_index`, число коэффициентных модулей, масштаб, ошибка декодирования относительно ciphertext до подъёма и статус.
 
-`demo_bootstrap_cipher_path` запускает ciphertext-only путь `ModRaise -> CoeffToSlot -> eval_mod_normalization -> EvalMod -> SlotToCoeff -> post_refresh_mod_raise` для уже существующего ciphertext. Этот сценарий показывает прохождение конвейера без открытого входного вектора.
+`demo_bootstrap_cipher_path` запускает experimental ciphertext-only путь для исследования состояния ciphertext. Его вывод не является доказательством сохранения значения.
 
-`demo_bootstrap_end_to_end` проверяет исполняемый сценарий продолжения вычислений после refresh: ciphertext сначала переводится на более низкий уровень, затем проходит refresh-путь, после чего над результатом выполняется следующая plaintext-операция с rescale. В статус входит сохранение значения после refresh.
+`demo_bootstrap_end_to_end` оставлен как historical experimental demo и не включён в default CTest, потому что full refresh сейчас заблокирован scaling gate.
 
 `demo_eval_mod_polynomial` проверяет полином `EvalMod` степени 7 на диапазоне `[-2^-10, 2^-10]`: сначала против `sin(2*pi*u)/(2*pi)` на открытых данных, затем на зашифрованном CKKS-векторе в профиле `boot_ckks`.
 
@@ -177,7 +177,7 @@ P7(u) = u - 6.579736267393*u^3 + 12.98787880453*u^5 - 12.20811674381*u^7
 
 Рабочий диапазон первой версии: `|u| <= 2^-10`. Ciphertext-версия считает степени `u^2`, `u^3`, `u^5`, `u^7` отдельной схемой, без общего последовательного подъёма степени.
 
-Модуль `m2424::Bootstrapper` является публичной точкой входа для refresh. `Bootstrapper::refresh_rotation_steps(slots)` возвращает набор ротаций, который надо передать в `SealAdapter::keygen(rotation_steps, true)`. `Bootstrapper::refresh(cipher, slots, tolerance)` запускает путь `ModRaise -> CoeffToSlot -> eval_mod_normalization -> EvalMod -> SlotToCoeff -> post_refresh_mod_raise` и возвращает отчёт по этапам: chain index, scale, max error, runtime и статус. `Bootstrapper::refresh_checked` дополнительно сравнивает этапы с переданным эталонным вектором.
+Модуль `m2424::Bootstrapper` пока является experimental точкой входа для refresh. Рабочим regression gate считается `bench_bootstrap_scaling`; full refresh blocked, если normalization scalar не представим после `ModRaise -> CoeffToSlot`.
 
 Модуль `m2424::BootstrapPrototype` оставлен как внутренний проверочный harness для разработки bootstrapping-блоков. Внутри `DiagonalLinearTransform` используется baby-step/giant-step-разложение, которое уменьшает число CKKS-ротаций при плотных диагональных матрицах. Для повторных запусков кэшируются encoded plaintext-диагонали под конкретные `chain_index` и `scale`.
 
@@ -229,8 +229,9 @@ P7(u) = u - 6.579736267393*u^3 + 12.98787880453*u^5 - 12.20811674381*u^7
 - [x] Добавить сериализацию публичного/секретного/evaluation-ключей и ciphertext.
 - [x] Добавить разделённый roundtrip-сценарий: шифрование, вычисление без secret key, расшифрование результата.
 - [x] Добавить низкоуровневый CKKS `ModRaise` для восстановления первой RNS-базы ciphertext.
-- [x] Добавить нормализацию входа `EvalMod` по реальному коэффициенту амплитуды после `CoeffToSlot`.
-- [x] Добавить ciphertext-only refresh-путь и end-to-end demo продолжения вычислений после refresh.
+- [x] Добавить scaling gate для проверки представимости normalization scalar после `ModRaise -> CoeffToSlot`.
+- [ ] Исправить совместимость `ModRaise -> CoeffToSlot`: текущий scaling gate показывает взрыв амплитуды до порядка `1e80`.
+- [ ] Вернуть full refresh validation только после прохождения scaling gate.
 
 Следующие инженерные задачи:
 
@@ -241,8 +242,8 @@ P7(u) = u - 6.579736267393*u^3 + 12.98787880453*u^5 - 12.20811674381*u^7
 - [x] Разделить контексты выполнения для демонстрации: один контекст генерирует ключи и шифрует данные, вычислительный контекст получает только публичные/evaluation-ключи и ciphertext.
 - [x] Подставить математически рассчитанные матрицы `CoeffToSlot` и `SlotToCoeff`.
 - [x] Подставить коэффициенты полинома `EvalMod` из математической модели.
-- [x] Собрать end-to-end refresh-путь поверх готовых строительных блоков.
-- [x] Перенести refresh-путь из `BootstrapPrototype` в стабильный публичный `Bootstrapper::refresh(cipher)`.
-- [x] Добавить benchmark публичного refresh-пути.
-- [x] Добавить строгий validation-benchmark для проверки сохранения значения, восстановления уровня и последующей глубины.
+- [ ] Собрать end-to-end refresh-путь поверх готовых строительных блоков после прохождения scaling gate.
+- [ ] Перенести refresh-путь из experimental prototype в стабильный публичный API после прохождения scaling gate.
+- [x] Добавить benchmark scaling gate перед full refresh validation.
+- [ ] Добавить строгий validation-benchmark для сохранения значения только после прохождения scaling gate.
 - [ ] Добавить сравнение с OpenFHE для тех же строительных блоков и для end-to-end refresh после завершения bootstrapping.
