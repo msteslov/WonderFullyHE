@@ -7,6 +7,7 @@
 namespace m2424 {
 
 enum class BootstrapPeriodMode {
+    NoBootstrapPeriod,
     TotalCoeffModulus,
     LastPrime,
     DroppedPrimeProduct,

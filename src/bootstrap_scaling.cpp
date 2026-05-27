@@ -8,6 +8,8 @@ namespace m2424 {
 
 const char* to_string(BootstrapPeriodMode mode) noexcept {
     switch (mode) {
+    case BootstrapPeriodMode::NoBootstrapPeriod:
+        return "NoBootstrapPeriod";
     case BootstrapPeriodMode::TotalCoeffModulus:
         return "TotalCoeffModulus";
     case BootstrapPeriodMode::LastPrime:
@@ -26,6 +28,8 @@ double bootstrap_period_log2(BootstrapPeriodMode mode,
                              const CipherInfo& before_mod_raise,
                              const CipherInfo& after_mod_raise) {
     switch (mode) {
+    case BootstrapPeriodMode::NoBootstrapPeriod:
+        return 0.0;
     case BootstrapPeriodMode::TotalCoeffModulus:
         return after_mod_raise.coeff_modulus_log2 - std::log2(after_mod_raise.scale);
     case BootstrapPeriodMode::LastPrime: {
