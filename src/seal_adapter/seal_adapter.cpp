@@ -549,16 +549,41 @@ CipherInfo SealAdapter::info(const Cipher& cipher) const {
     if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
     const auto context_data = pimpl_->context->get_context_data(cipher.pimpl_->ct.parms_id());
     if (!context_data) throw std::runtime_error("ciphertext parameters are not valid for this context");
+    double coeff_modulus_log2 = 0.0;
+    for (const auto& modulus : context_data->parms().coeff_modulus()) {
+        coeff_modulus_log2 += std::log2(static_cast<double>(modulus.value()));
+    }
     return CipherInfo{
         cipher.pimpl_->ct.scale(),
         context_data->chain_index(),
         context_data->parms().coeff_modulus().size(),
-        cipher.pimpl_->ct.size()
+        cipher.pimpl_->ct.size(),
+        coeff_modulus_log2
     };
 }
 
 double SealAdapter::scale(const Cipher& cipher) const {
     return info(cipher).scale;
+}
+
+double SealAdapter::coeff_modulus_log2(const Cipher& cipher) const {
+    return info(cipher).coeff_modulus_log2;
+}
+
+double SealAdapter::bootstrap_period_log2(const Cipher& cipher) const {
+    const auto cipher_info = info(cipher);
+    if (!std::isfinite(cipher_info.scale) || cipher_info.scale <= 0.0) {
+        throw std::runtime_error("ciphertext scale must be positive and finite");
+    }
+    return cipher_info.coeff_modulus_log2 - std::log2(cipher_info.scale);
+}
+
+double SealAdapter::bootstrap_period(const Cipher& cipher) const {
+    const double period_log2 = bootstrap_period_log2(cipher);
+    if (period_log2 > 1023.0) {
+        throw std::runtime_error("bootstrap period exceeds double range");
+    }
+    return std::exp2(period_log2);
 }
 
 std::size_t SealAdapter::chain_index(const Cipher& cipher) const {

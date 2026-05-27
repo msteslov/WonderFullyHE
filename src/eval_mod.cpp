@@ -43,12 +43,24 @@ Cipher add_terms(SealAdapter& adapter, Cipher lhs, Cipher rhs) {
 } // namespace
 
 double EvalModPolynomial::evaluate_plain(double u) const {
+    return evaluate_plain(u, EvalModDegree::P7);
+}
+
+double EvalModPolynomial::evaluate_plain(double u, EvalModDegree degree) const {
     validate_input(u);
     const double u2 = u * u;
     const double u3 = u * u2;
+    double result = a1 * u + a3 * u3;
+    if (degree == EvalModDegree::P3) {
+        return result;
+    }
     const double u5 = u3 * u2;
+    result += a5 * u5;
+    if (degree == EvalModDegree::P5) {
+        return result;
+    }
     const double u7 = u5 * u2;
-    return a1 * u + a3 * u3 + a5 * u5 + a7 * u7;
+    return result + a7 * u7;
 }
 
 std::vector<double> EvalModPolynomial::evaluate_plain(const std::vector<double>& input) const {
@@ -64,12 +76,24 @@ std::vector<double> EvalModPolynomial::evaluate_plain(const std::vector<double>&
 }
 
 Complex EvalModPolynomial::evaluate_plain(Complex u) const {
+    return evaluate_plain(u, EvalModDegree::P7);
+}
+
+Complex EvalModPolynomial::evaluate_plain(Complex u, EvalModDegree degree) const {
     validate_input(u);
     const Complex u2 = u * u;
     const Complex u3 = u * u2;
+    Complex result = a1 * u + a3 * u3;
+    if (degree == EvalModDegree::P3) {
+        return result;
+    }
     const Complex u5 = u3 * u2;
+    result += a5 * u5;
+    if (degree == EvalModDegree::P5) {
+        return result;
+    }
     const Complex u7 = u5 * u2;
-    return a1 * u + a3 * u3 + a5 * u5 + a7 * u7;
+    return result + a7 * u7;
 }
 
 ComplexVector EvalModPolynomial::evaluate_plain(const ComplexVector& input) const {
@@ -102,16 +126,44 @@ std::vector<double> EvalModPolynomial::sine_reference(const std::vector<double>&
 }
 
 Cipher EvalModPolynomial::evaluate(SealAdapter& adapter, const Cipher& input) const {
+    return evaluate(adapter, input, EvalModDegree::P7);
+}
+
+Cipher EvalModPolynomial::evaluate(SealAdapter& adapter, const Cipher& input, EvalModDegree degree) const {
     const Cipher u2 = multiply_same_level(adapter, input, input);
     const Cipher u3 = multiply_same_level(adapter, adapter.mod_switch_to(input, u2), u2);
-    const Cipher u5 = multiply_same_level(adapter, u3, adapter.mod_switch_to(u2, u3));
-    const Cipher u7 = multiply_same_level(adapter, u5, adapter.mod_switch_to(u2, u5));
+    if (degree == EvalModDegree::P3) {
+        Cipher result = weighted_term(adapter, adapter.mod_switch_to(input, u3), a1);
+        result = add_terms(adapter, std::move(result), weighted_term(adapter, u3, a3));
+        return result;
+    }
 
+    const Cipher u5 = multiply_same_level(adapter, u3, adapter.mod_switch_to(u2, u3));
+    if (degree == EvalModDegree::P5) {
+        Cipher result = weighted_term(adapter, adapter.mod_switch_to(input, u5), a1);
+        result = add_terms(adapter, std::move(result), weighted_term(adapter, adapter.mod_switch_to(u3, u5), a3));
+        result = add_terms(adapter, std::move(result), weighted_term(adapter, u5, a5));
+        return result;
+    }
+
+    const Cipher u7 = multiply_same_level(adapter, u5, adapter.mod_switch_to(u2, u5));
     Cipher result = weighted_term(adapter, adapter.mod_switch_to(input, u7), a1);
     result = add_terms(adapter, std::move(result), weighted_term(adapter, adapter.mod_switch_to(u3, u7), a3));
     result = add_terms(adapter, std::move(result), weighted_term(adapter, adapter.mod_switch_to(u5, u7), a5));
     result = add_terms(adapter, std::move(result), weighted_term(adapter, u7, a7));
     return result;
+}
+
+const char* to_string(EvalModDegree degree) noexcept {
+    switch (degree) {
+    case EvalModDegree::P3:
+        return "P3";
+    case EvalModDegree::P5:
+        return "P5";
+    case EvalModDegree::P7:
+        return "P7";
+    }
+    return "unknown";
 }
 
 } // namespace m2424

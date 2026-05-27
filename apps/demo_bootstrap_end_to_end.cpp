@@ -7,6 +7,25 @@
 #include <cstdio>
 #include <vector>
 
+namespace {
+
+const m2424::BootstrapPrototypeStage* find_stage(const m2424::BootstrapPrototypeReport& report,
+                                                 const char* name) {
+    for (const auto& stage : report.stages) {
+        if (stage.name == name) {
+            return &stage;
+        }
+    }
+    return nullptr;
+}
+
+double stage_error(const m2424::BootstrapPrototypeReport& report, const char* name) {
+    const auto* stage = find_stage(report, name);
+    return stage ? stage->max_abs_error : 0.0;
+}
+
+} // namespace
+
 int main() {
     constexpr std::size_t slots = 16;
     constexpr double tolerance = 2e-5;
@@ -63,6 +82,20 @@ int main() {
                 continued_info.scale,
                 consumed_after_refresh ? "PASS" : "FAIL");
     std::printf("criterion,status\n");
+    std::printf("normalization_mode,%s\n", m2424::to_string(refresh_report.normalization_mode));
+    std::printf("denormalization_position,%s\n", m2424::to_string(refresh_report.denormalization_position));
+    std::printf("evalmod_degree,%s\n", m2424::to_string(refresh_report.evalmod_degree));
+    std::printf("bootstrap_period_log2,%.6e\n", refresh_report.bootstrap_period_log2);
+    std::printf("bootstrap_period,%.6e\n", refresh_report.bootstrap_period);
+    std::printf("bootstrap_scaling_factor,%.6e\n", refresh_report.bootstrap_scaling_factor);
+    std::printf("normalization_factor,%.6e\n", refresh_report.normalization_factor);
+    std::printf("mod_raise_decoded_max_abs,%.6e\n", refresh_report.max_abs_after_mod_raise_decode);
+    std::printf("mod_raise_diagnostic_error,%.6e\n", refresh_report.mod_raise_diagnostic_error);
+    std::printf("max_abs_after_coeff_to_slot,%.6e\n", refresh_report.max_abs_after_coeff_to_slot);
+    std::printf("max_abs_after_normalization,%.6e\n", refresh_report.max_abs_after_normalization);
+    std::printf("inside_evalmod_interval,%s\n", refresh_report.inside_evalmod_interval ? "PASS" : "FAIL");
+    std::printf("evalmod_error,%.6e\n", stage_error(refresh_report, "eval_mod"));
+    std::printf("final_error,%.6e\n", stage_error(refresh_report, "refresh_result"));
     std::printf("preserve_value_after_refresh,%s\n", preserve_value ? "PASS" : "FAIL");
     std::printf("max_abs_error_after_refresh,%.6e\n", refreshed_accuracy.max_abs_error);
     std::printf("level_after_refresh_gt_level_before,%s\n", restored_level ? "PASS" : "FAIL");

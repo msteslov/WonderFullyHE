@@ -7,6 +7,12 @@
 
 namespace m2424 {
 
+enum class EvalModDegree {
+    P3,
+    P5,
+    P7
+};
+
 class EvalModPolynomial {
 public:
     static constexpr double approximation_bound = 0.0009765625;
@@ -16,12 +22,17 @@ public:
     static constexpr double a7 = -12.20811674381;
 
     double evaluate_plain(double u) const;
+    double evaluate_plain(double u, EvalModDegree degree) const;
     std::vector<double> evaluate_plain(const std::vector<double>& input) const;
     Complex evaluate_plain(Complex u) const;
+    Complex evaluate_plain(Complex u, EvalModDegree degree) const;
     ComplexVector evaluate_plain(const ComplexVector& input) const;
     double sine_reference(double u) const;
     std::vector<double> sine_reference(const std::vector<double>& input) const;
     Cipher evaluate(SealAdapter& adapter, const Cipher& input) const;
+    Cipher evaluate(SealAdapter& adapter, const Cipher& input, EvalModDegree degree) const;
 };
+
+const char* to_string(EvalModDegree degree) noexcept;
 
 } // namespace m2424
