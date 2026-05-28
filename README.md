@@ -82,7 +82,7 @@ cmake --build build -j
 
 `BootstrapScaleDesign` фиксирует scaling decision как кодовый gate, а не как ручную интерпретацию таблицы: `period_model_blocked`, `scale_strategy_blocked`, `evalmod_capacity_blocked` или `ready_for_evalmod_p3`. Подключать режим в `BootstrapPrototype` можно только после `ready_for_evalmod_p3`.
 
-`bench_bootstrap_profile_budget` проверяет гипотетические modulus-chain layouts без SEAL keygen: security budget, оставшийся modulus под EvalMod, максимум доступного drop и capacity первого EvalMod multiplication. Его задача — отделить “плохо выбран профиль” от “period model несовместим с EvalMod scale budget”.
+`bench_bootstrap_profile_budget` проверяет гипотетические modulus-chain layouts без SEAL keygen: security budget, оставшийся modulus под EvalMod, максимум доступного drop и capacity первого EvalMod multiplication. Его задача — отделить “плохо выбран профиль” от “period model несовместим с EvalMod scale budget”. Для P3 он также печатает `required_period_offset_log2 = start_scale_log2 + target_scale_log2 + margin`; при `target_scale_log2=60` текущий offset `44` математически недостаточен, нужен offset порядка `102`.
 
 `demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
 
