@@ -84,6 +84,8 @@ cmake --build build -j
 
 `BootstrapPeriodFeasibilityWindow` проверяет совместимость magnitude и EvalMod scale capacity до выбора конкретного периода. Для текущего dense/research path `bench_bootstrap_scale_strategy` показывает отрицательное окно: период, достаточный для попадания normalized slots в EvalMod interval, больше максимального периода, при котором P3 ещё имеет scale capacity.
 
+`bench_bootstrap_prescaled_coeff_to_slot` проверяет гипотезу переноса части normalization прямо в plaintext diagonals `CoeffToSlot`. В текущем `DiagonalLinearTransform` диагонали кодируются at ciphertext scale, поэтому prescale порядка `2^-40` уже может стать transparent plaintext; простой matrix prescale не является рабочим scale design.
+
 `bench_bootstrap_profile_budget` проверяет гипотетические modulus-chain layouts без SEAL keygen: security budget, оставшийся modulus под EvalMod, максимум доступного drop и capacity первого EvalMod multiplication. Его задача — отделить “плохо выбран профиль” от “period model несовместим с EvalMod scale budget”. Для P3 он также печатает `required_period_offset_log2 = start_scale_log2 + target_scale_log2 + margin`; при `target_scale_log2=60` текущий offset `44` математически недостаточен, нужен offset порядка `102`.
 
 `demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
