@@ -74,6 +74,8 @@ cmake --build build -j
 
 `bench_bootstrap_one_case` печатает узкий trace для одного фиксированного bootstrapping-сценария после scaling gate. В отчёт входят chunks/levels для decomposed normalization и denormalization, `chain_remaining_before_evalmod` и `chain_remaining_after_evalmod`; `NoBootstrapPeriod` используется только как diagnostic baseline.
 
+`bench_bootstrap_reference_path` является E0 oracle-harness перед подключением full refresh. Для маленьких `slots=4/8/16` он строит CPU/reference path рядом с ciphertext path и печатает stage/domain/level/scale/magnitude/error/blocker. `ModRaise` в нём считается только structural stage; после него correctness проверяется по явным reference-ожиданиям каждого следующего этапа, а не по сохранению исходного значения.
+
 `bench_bootstrap_period_model` проверяет только period/scaling model без запуска `EvalMod`: scalar correctness, попадание в интервал EvalMod, оставшиеся уровни и scale readiness перед P3. Benchmark сравнивает обычный `boot_ckks` и diagnostic `boot_deep_ckks`; `boot_deep_ckks` нужен только для проверки scale/levels budget и не означает, что full bootstrap готов. `ScaleSquash` использует обычный CKKS rescale, чтобы проверить, хватает ли уровней снизить scale до EvalMod-safe диапазона без изменения значения.
 
 `bench_bootstrap_scale_strategy` является быстрым algebraic planner для того же blocker: он считает required modulus drop, доступные levels, минимальные scalar chunks, дополнительные `ScaleSquash` levels и capacity первого EvalMod multiplication до тяжёлого ciphertext-прогона.
