@@ -304,7 +304,7 @@ int main() {
         plain_scale_log2_values = {scaling_best_plain_scale_log2};
     }
 
-    std::printf("case,input_kind,amplitude,level_drop,normalization_mode,denormalization_position,evalmod_degree,period_mode,manual_period_log2,plain_scale_log2,chain_before,chain_after,mod_raise_chain_before,mod_raise_chain_after,mod_raise_coeff_modulus_size_before,mod_raise_coeff_modulus_size_after,mod_raise_scale_before,mod_raise_scale_after,bootstrap_period_log2,bootstrap_period,bootstrap_scaling_factor,normalization_factor_log2,factor_times_plain_scale_log2,normalization_scalar_representable,denormalization_scalar_representable,max_abs_input,mod_raise_decoded_max_abs,mod_raise_diagnostic_error,max_abs_after_coeff_to_slot,normalization_factor,max_abs_after_normalization,inside_evalmod_interval,coeff_to_slot_error,normalization_error,evalmod_error,denormalization_error,slot_to_coeff_error,post_refresh_mod_raise_error,final_error,restore_ok,post_depth,post_ops_ok,post_error,exception,status\n");
+    std::printf("case,input_kind,amplitude,level_drop,normalization_mode,denormalization_position,evalmod_degree,period_mode,manual_period_log2,plain_scale_log2,stc_first_target_chain_index,chain_before,chain_after,mod_raise_chain_before,mod_raise_chain_after,mod_raise_coeff_modulus_size_before,mod_raise_coeff_modulus_size_after,mod_raise_scale_before,mod_raise_scale_after,bootstrap_period_log2,bootstrap_period,bootstrap_scaling_factor,normalization_factor_log2,factor_times_plain_scale_log2,normalization_scalar_representable,denormalization_scalar_representable,max_abs_input,mod_raise_decoded_max_abs,mod_raise_diagnostic_error,max_abs_after_coeff_to_slot,normalization_factor,max_abs_after_normalization,inside_evalmod_interval,coeff_to_slot_error,normalization_error,evalmod_error,denormalization_error,slot_to_coeff_error,post_refresh_mod_raise_error,final_error,restore_ok,post_depth,post_ops_ok,post_error,exception,status\n");
 
     std::size_t case_id = 0;
     std::size_t pass_cases = 0;
@@ -398,7 +398,7 @@ int main() {
                                 ++fail_cases;
                             }
 
-                            std::printf("%zu,%s,%.6e,%zu,%s,%s,%s,%s,%.0f,%.0f,%zu,%zu,%zu,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%s,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%zu,%s,%.6e,%s,%s\n",
+                            std::printf("%zu,%s,%.6e,%zu,%s,%s,%s,%s,%.0f,%.0f,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%s,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%zu,%s,%.6e,%s,%s\n",
                                         case_id,
                                         kind.c_str(),
                                         amplitude,
@@ -409,6 +409,7 @@ int main() {
                                         m2424::to_string(checked.period_mode),
                                         checked.manual_period_log2,
                                         checked.plain_scale_log2,
+                                        checked.stc_first_target_chain_index,
                                         before.chain_index,
                                         after.chain_index,
                                         mod_raise_stage ? mod_raise_stage->chain_before : 0,
@@ -448,7 +449,7 @@ int main() {
                             ++fail_cases;
                             std::string exception = e.what();
                             std::replace(exception.begin(), exception.end(), ',', ';');
-                            std::printf("%zu,%s,%.6e,%zu,%s,%s,%s,%s,%.0f,%.0f,0,0,0,0,0,0,0,0,0,0,0,0,0,false,false,0,0,0,0,0,0,FAIL,0,0,0,0,0,0,0,FAIL,%zu,FAIL,0,%s,FAIL\n",
+                            std::printf("%zu,%s,%.6e,%zu,%s,%s,%s,%s,%.0f,%.0f,0,0,0,0,0,0,0,0,0,0,0,0,0,0,false,false,0,0,0,0,0,0,FAIL,0,0,0,0,0,0,0,FAIL,%zu,FAIL,0,%s,FAIL\n",
                                         case_id,
                                         kind.c_str(),
                                         amplitude,

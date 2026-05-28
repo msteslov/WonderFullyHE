@@ -45,6 +45,7 @@ struct BootstrapPrototypeReport {
     BootstrapPeriodMode period_mode{BootstrapPeriodMode::TotalCoeffModulus};
     BootstrapCircuitOrder circuit_order{BootstrapCircuitOrder::ModRaiseFirst};
     BootstrapTransformBackend transform_backend{BootstrapTransformBackend::DenseDiagonal};
+    std::size_t stc_first_target_chain_index{2};
     double manual_period_log2{};
     double normalization_factor_log2{};
     double plain_scale_log2{40.0};
@@ -88,6 +89,7 @@ public:
     void set_manual_period_log2(double value);
     void set_plain_scale_log2(double value);
     void set_post_refresh_mod_raise_enabled(bool enabled) noexcept;
+    void set_stc_first_target_chain_index(std::size_t value) noexcept;
 
 private:
     BootstrapPrototypeReport refresh_impl(const ComplexVector& input, bool checked) const;
@@ -109,6 +111,7 @@ private:
     double manual_period_log2_{0.0};
     double plain_scale_log2_{40.0};
     bool post_refresh_mod_raise_enabled_{false};
+    std::size_t stc_first_target_chain_index_{2};
     DiagonalLinearTransform coeff_to_slot_;
     DiagonalLinearTransform slot_to_coeff_;
 };

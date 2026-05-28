@@ -244,6 +244,10 @@ void BootstrapPrototype::set_post_refresh_mod_raise_enabled(bool enabled) noexce
     post_refresh_mod_raise_enabled_ = enabled;
 }
 
+void BootstrapPrototype::set_stc_first_target_chain_index(std::size_t value) noexcept {
+    stc_first_target_chain_index_ = value;
+}
+
 Cipher BootstrapPrototype::apply_normalization(const Cipher& input, double factor) const {
     if (normalization_mode_ == BootstrapNormalizationMode::ScaleReinterpretation) {
         return adapter_.unsafe_reinterpret_scale_for_diagnostics(input, factor);
@@ -290,6 +294,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
     report.period_mode = period_mode_;
     report.circuit_order = circuit_order_;
     report.transform_backend = transform_backend_;
+    report.stc_first_target_chain_index = stc_first_target_chain_index_;
     report.manual_period_log2 = manual_period_log2_;
     report.plain_scale_log2 = plain_scale_log2_;
     report.max_abs_input = max_abs_value(input);
@@ -479,6 +484,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
     report.period_mode = period_mode_;
     report.circuit_order = circuit_order_;
     report.transform_backend = transform_backend_;
+    report.stc_first_target_chain_index = stc_first_target_chain_index_;
     report.manual_period_log2 = manual_period_log2_;
     report.plain_scale_log2 = plain_scale_log2_;
     report.checked = expected != nullptr;
@@ -782,6 +788,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     report.period_mode = period_mode_;
     report.circuit_order = circuit_order_;
     report.transform_backend = transform_backend_;
+    report.stc_first_target_chain_index = stc_first_target_chain_index_;
     report.manual_period_log2 = manual_period_log2_;
     report.plain_scale_log2 = plain_scale_log2_;
     report.checked = expected != nullptr;
@@ -801,7 +808,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     double stage_ms = 0.0;
     ComplexVector current_expected = expected ? *expected : ComplexVector{};
 
-    while (adapter_.info(current).chain_index > 2) {
+    while (adapter_.info(current).chain_index > stc_first_target_chain_index_) {
         current = adapter_.mul_plain_rescale(current, adapter_.encode_scalar_like(1.0, current));
     }
     after = adapter_.info(current);
