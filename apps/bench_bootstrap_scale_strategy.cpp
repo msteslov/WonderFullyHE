@@ -89,8 +89,11 @@ void run_profile(const ProfileCase& profile_case) {
                 max_plain_scale_log2,
                 target_scale_log2,
                 min_chain_remaining);
-            const bool p3_ready = evalmod_magnitude_ready && plan.feasible;
-            std::printf("%s,%.0f,%.0f,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%zu,%zu,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%s,%s,%s\n",
+            const auto evalmod_capacity = m2424::plan_evalmod_first_multiply_capacity(
+                active_bits, plan, 2.0);
+            const bool p3_ready = evalmod_magnitude_ready && plan.feasible &&
+                evalmod_capacity.first_multiply_ready;
+            std::printf("%s,%.0f,%.0f,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%zu,%zu,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%s,%s,%s,%s\n",
                         profile_case.name,
                         period_log2,
                         max_plain_scale_log2,
@@ -112,10 +115,13 @@ void run_profile(const ProfileCase& profile_case) {
                         plan.scale_after_scalar_log2,
                         plan.scale_after_squash_log2,
                         plan.target_scale_log2,
+                        evalmod_capacity.remaining_coeff_modulus_log2,
+                        evalmod_capacity.first_product_scale_log2,
                         evalmod_magnitude_ready ? "true" : "false",
                         plan.feasible ? "true" : "false",
+                        evalmod_capacity.first_multiply_ready ? "true" : "false",
                         p3_ready ? "true" : "false",
-                        plan.blocker.c_str());
+                        plan.feasible ? evalmod_capacity.blocker.c_str() : plan.blocker.c_str());
         }
     }
 }
@@ -123,7 +129,7 @@ void run_profile(const ProfileCase& profile_case) {
 } // namespace
 
 int main() {
-    std::printf("profile,period_log2,max_plain_scale_log2,start_chain_index,start_coeff_modulus_size,start_scale_log2,start_coeff_modulus_log2,max_abs_before_normalization,expected_max_abs_after_normalization,max_consumable_levels,scalar_levels_needed,total_levels_needed,scale_squash_levels_needed,chain_remaining_after_strategy,required_drop_log2,available_drop_log2,scale_after_scalar_log2,scale_after_squash_log2,target_scale_log2,evalmod_magnitude_ready,scale_strategy_feasible,p3_ready,blocker\n");
+    std::printf("profile,period_log2,max_plain_scale_log2,start_chain_index,start_coeff_modulus_size,start_scale_log2,start_coeff_modulus_log2,max_abs_before_normalization,expected_max_abs_after_normalization,max_consumable_levels,scalar_levels_needed,total_levels_needed,scale_squash_levels_needed,chain_remaining_after_strategy,required_drop_log2,available_drop_log2,scale_after_scalar_log2,scale_after_squash_log2,target_scale_log2,remaining_coeff_modulus_log2_after_strategy,first_evalmod_product_scale_log2,evalmod_magnitude_ready,scale_strategy_feasible,evalmod_first_multiply_ready,p3_ready,blocker\n");
     run_profile({"boot_ckks", m2424::profiles::boot_ckks(), 220.0, 280.0});
     run_profile({"boot_deep_ckks", m2424::profiles::boot_deep_ckks(), 680.0, 800.0});
     return 0;

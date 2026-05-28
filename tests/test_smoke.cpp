@@ -346,6 +346,12 @@ int main() {
         && feasible_scale_plan.feasible
         && feasible_scale_plan.total_levels_needed == 6
         && feasible_scale_plan.scale_after_squash_log2 <= 60.0;
+    const auto evalmod_capacity_plan = m2424::plan_evalmod_first_multiply_capacity(
+        {60, 40, 40, 40, 40, 40, 40, 40, 40, 40},
+        feasible_scale_plan,
+        2.0);
+    const bool evalmod_capacity_plan_ok = evalmod_capacity_plan.first_multiply_ready
+        && evalmod_capacity_plan.blocker == "none";
 
     const bool arithmetic_ok = std::isfinite(mul_accuracy.max_abs_error) && std::isfinite(mul_accuracy.mean_abs_error) && mul_accuracy.ok
         && close_enough(add_ref, add_out, 1e-5)
@@ -391,7 +397,8 @@ int main() {
         && eval_mod_polynomial_ok()
         && security_report_ok
         && bootstrap_report_ok
-        && scale_strategy_plan_ok;
+        && scale_strategy_plan_ok
+        && evalmod_capacity_plan_ok;
     std::printf("[test_smoke] max=%.6e mean=%.6e arithmetic=%s bootstrap_parts=%s security=%s bootstrap_report=%s => %s\n",
                mul_accuracy.max_abs_error,
                mul_accuracy.mean_abs_error,

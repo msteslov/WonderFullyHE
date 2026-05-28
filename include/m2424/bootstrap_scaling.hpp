@@ -57,6 +57,14 @@ struct BootstrapScaleStrategyPlan {
     std::string blocker;
 };
 
+struct BootstrapEvalModCapacityPlan {
+    double remaining_coeff_modulus_log2{};
+    double first_product_scale_log2{};
+    double margin_log2{};
+    bool first_multiply_ready{};
+    std::string blocker;
+};
+
 const char* to_string(BootstrapPeriodMode mode) noexcept;
 
 double bootstrap_period_log2(BootstrapPeriodMode mode,
@@ -85,5 +93,10 @@ BootstrapScaleStrategyPlan plan_bootstrap_scale_strategy(const std::vector<int>&
                                                          double max_plain_scale_log2,
                                                          double target_scale_log2,
                                                          std::size_t min_chain_remaining);
+
+BootstrapEvalModCapacityPlan plan_evalmod_first_multiply_capacity(
+    const std::vector<int>& active_coeff_modulus_bits,
+    const BootstrapScaleStrategyPlan& scale_plan,
+    double margin_log2);
 
 } // namespace m2424
