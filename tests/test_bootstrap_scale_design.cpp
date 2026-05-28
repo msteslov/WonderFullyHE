@@ -74,6 +74,20 @@ int main() {
                               make_info(40.0, 6, 7, 320.0),
                               1.0e-1,
                               1);
+    const auto impossible_window = m2424::bootstrap_period_feasibility_window(
+        300.0,
+        40.0,
+        60.0,
+        std::exp2(242.0),
+        m2424::EvalModPolynomial::approximation_bound,
+        2.0);
+    const auto possible_window = m2424::bootstrap_period_feasibility_window(
+        360.0,
+        40.0,
+        60.0,
+        std::exp2(242.0),
+        m2424::EvalModPolynomial::approximation_bound,
+        2.0);
 
     const bool ok =
         period_blocked.status == m2424::BootstrapScaleDesignStatus::PeriodModelBlocked
@@ -82,7 +96,11 @@ int main() {
         && ready.status == m2424::BootstrapScaleDesignStatus::ReadyForEvalModP3
         && ready.evalmod_capacity_ok
         && ready.scale_strategy_ok
-        && ready.magnitude_ok;
+        && ready.magnitude_ok
+        && !impossible_window.possible
+        && impossible_window.margin_log2 < 0.0
+        && possible_window.possible
+        && possible_window.margin_log2 >= 0.0;
 
     std::printf("[test_bootstrap_scale_design] status_cases=%s period=%s scale=%s capacity=%s ready=%s\n",
                 ok ? "PASS" : "FAIL",

@@ -72,6 +72,13 @@ void run_profile(const ProfileCase& profile_case) {
     const auto before_normalization = head(adapter.decode_complex(adapter.decrypt(current)), slots);
     const double max_abs_before_normalization = max_abs_value(before_normalization);
     const auto active_bits = active_coeff_modulus_bits(profile, start_info);
+    const auto period_window = m2424::bootstrap_period_feasibility_window(
+        start_info.coeff_modulus_log2,
+        std::log2(start_info.scale),
+        target_scale_log2,
+        max_abs_before_normalization,
+        m2424::EvalModPolynomial::approximation_bound,
+        2.0);
 
     for (double period_log2 = profile_case.min_period_log2;
          period_log2 <= profile_case.max_period_log2;
@@ -105,7 +112,7 @@ void run_profile(const ProfileCase& profile_case) {
                 min_chain_remaining,
                 2.0);
             const bool p3_ready = design.status == m2424::BootstrapScaleDesignStatus::ReadyForEvalModP3;
-            std::printf("%s,%.0f,%.0f,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%zu,%zu,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%s,%s,%s,%s,%s\n",
+            std::printf("%s,%.0f,%.0f,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%zu,%zu,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%s,%s,%s,%s,%s\n",
                         profile_case.name,
                         period_log2,
                         max_plain_scale_log2,
@@ -115,6 +122,10 @@ void run_profile(const ProfileCase& profile_case) {
                         start_info.coeff_modulus_log2,
                         max_abs_before_normalization,
                         expected_max_abs_after_normalization,
+                        period_window.min_period_for_magnitude_log2,
+                        period_window.max_period_for_evalmod_capacity_log2,
+                        period_window.margin_log2,
+                        period_window.possible ? "true" : "false",
                         plan.max_consumable_levels,
                         plan.scalar_levels_needed,
                         plan.total_levels_needed,
@@ -142,7 +153,7 @@ void run_profile(const ProfileCase& profile_case) {
 } // namespace
 
 int main() {
-    std::printf("profile,period_log2,max_plain_scale_log2,start_chain_index,start_coeff_modulus_size,start_scale_log2,start_coeff_modulus_log2,max_abs_before_normalization,expected_max_abs_after_normalization,max_consumable_levels,scalar_levels_needed,total_levels_needed,scale_squash_levels_needed,chain_remaining_after_strategy,required_drop_log2,available_drop_log2,scale_after_scalar_log2,scale_after_squash_log2,target_scale_log2,remaining_coeff_modulus_log2_after_strategy,first_evalmod_product_scale_log2,evalmod_magnitude_ready,scale_strategy_feasible,evalmod_first_multiply_ready,p3_ready,scale_design_status,blocker\n");
+    std::printf("profile,period_log2,max_plain_scale_log2,start_chain_index,start_coeff_modulus_size,start_scale_log2,start_coeff_modulus_log2,max_abs_before_normalization,expected_max_abs_after_normalization,min_period_for_magnitude_log2,max_period_for_evalmod_capacity_log2,period_window_margin_log2,period_window_possible,max_consumable_levels,scalar_levels_needed,total_levels_needed,scale_squash_levels_needed,chain_remaining_after_strategy,required_drop_log2,available_drop_log2,scale_after_scalar_log2,scale_after_squash_log2,target_scale_log2,remaining_coeff_modulus_log2_after_strategy,first_evalmod_product_scale_log2,evalmod_magnitude_ready,scale_strategy_feasible,evalmod_first_multiply_ready,p3_ready,scale_design_status,blocker\n");
     run_profile({"boot_ckks", m2424::profiles::boot_ckks(), 220.0, 280.0});
     run_profile({"boot_deep_ckks", m2424::profiles::boot_deep_ckks(), 680.0, 800.0});
     return 0;
