@@ -849,7 +849,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         current = adapter_.mod_raise_to_first(current);
     });
     after = adapter_.info(current);
-    report.bootstrap_period_log2 = before.coeff_modulus_log2;
+    constexpr double prototype_period_offset_log2 = 3.0;
+    report.bootstrap_period_log2 = before.coeff_modulus_log2 - prototype_period_offset_log2;
     report.bootstrap_period = finite_exp2_or_zero(report.bootstrap_period_log2);
     report.bootstrap_scaling_factor = finite_exp2_or_zero(-report.bootstrap_period_log2);
     report.stages.push_back(BootstrapPrototypeStage{

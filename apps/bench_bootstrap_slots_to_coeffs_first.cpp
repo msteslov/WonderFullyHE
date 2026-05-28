@@ -180,7 +180,8 @@ bool run_case(const char* profile_name,
     const auto slot_expected = coeff_to_slot.apply_plain(coeff_expected);
     current = coeff_to_slot.apply(adapter, current);
     const auto after_coeff_to_slot_actual = head(adapter.decode_complex(adapter.decrypt(current)), slots);
-    const double period_log2 = before_mod_raise.coeff_modulus_log2;
+    constexpr double prototype_period_offset_log2 = 3.0;
+    const double period_log2 = before_mod_raise.coeff_modulus_log2 - prototype_period_offset_log2;
     auto normalized_expected = after_coeff_to_slot_actual;
     for (auto& value : normalized_expected) {
         value *= std::exp2(-period_log2);
