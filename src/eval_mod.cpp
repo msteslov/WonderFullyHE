@@ -1,6 +1,7 @@
 #include "m2424/eval_mod.hpp"
 
 #include <cmath>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -36,7 +37,21 @@ Cipher weighted_term(SealAdapter& adapter, const Cipher& value, double coefficie
 }
 
 Cipher add_terms(SealAdapter& adapter, Cipher lhs, Cipher rhs) {
-    lhs = adapter.match_level_and_scale(lhs, rhs);
+    try {
+        lhs = adapter.match_level_and_scale(lhs, rhs);
+    } catch (const std::exception& e) {
+        const auto lhs_info = adapter.info(lhs);
+        const auto rhs_info = adapter.info(rhs);
+        std::ostringstream out;
+        out << e.what()
+            << "; lhs_chain=" << lhs_info.chain_index
+            << "; rhs_chain=" << rhs_info.chain_index
+            << "; lhs_scale_log2=" << std::log2(lhs_info.scale)
+            << "; rhs_scale_log2=" << std::log2(rhs_info.scale)
+            << "; lhs_coeff_modulus_log2=" << lhs_info.coeff_modulus_log2
+            << "; rhs_coeff_modulus_log2=" << rhs_info.coeff_modulus_log2;
+        throw std::runtime_error(out.str());
+    }
     return adapter.add(lhs, rhs);
 }
 

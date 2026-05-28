@@ -29,6 +29,8 @@ struct BootstrapPrototypeStage {
     std::size_t chain_after{};
     std::size_t coeff_modulus_size_before{};
     std::size_t coeff_modulus_size_after{};
+    double coeff_modulus_log2_before{};
+    double coeff_modulus_log2_after{};
     double scale_before{};
     double scale_after{};
     double max_abs_error{};
@@ -46,6 +48,7 @@ struct BootstrapPrototypeReport {
     BootstrapCircuitOrder circuit_order{BootstrapCircuitOrder::ModRaiseFirst};
     BootstrapTransformBackend transform_backend{BootstrapTransformBackend::DenseDiagonal};
     std::size_t stc_first_target_chain_index{2};
+    double stc_first_period_offset_log2{3.0};
     double manual_period_log2{};
     double normalization_factor_log2{};
     double plain_scale_log2{40.0};
@@ -90,6 +93,7 @@ public:
     void set_plain_scale_log2(double value);
     void set_post_refresh_mod_raise_enabled(bool enabled) noexcept;
     void set_stc_first_target_chain_index(std::size_t value) noexcept;
+    void set_stc_first_period_offset_log2(double value);
 
 private:
     BootstrapPrototypeReport refresh_impl(const ComplexVector& input, bool checked) const;
@@ -112,6 +116,7 @@ private:
     double plain_scale_log2_{40.0};
     bool post_refresh_mod_raise_enabled_{false};
     std::size_t stc_first_target_chain_index_{2};
+    double stc_first_period_offset_log2_{3.0};
     DiagonalLinearTransform coeff_to_slot_;
     DiagonalLinearTransform slot_to_coeff_;
 };

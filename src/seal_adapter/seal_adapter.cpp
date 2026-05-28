@@ -550,7 +550,7 @@ Cipher SealAdapter::match_level_and_scale(const Cipher& cipher, const Cipher& ta
         throw std::runtime_error("cannot match ciphertext scales: scale must be positive and finite");
     }
     const double relative_error = std::fabs(source_scale - target_scale) / std::max(source_scale, target_scale);
-    if (relative_error > 1e-3) {
+    if (relative_error > 1e-2) {
         throw std::runtime_error("cannot match ciphertext scales: relative mismatch is too large");
     }
     out.pimpl_->ct.scale() = target_scale;

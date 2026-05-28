@@ -80,6 +80,8 @@ BootstrapPrototypeStage make_stage(const std::string& name,
         after.chain_index,
         before.coeff_modulus_size,
         after.coeff_modulus_size,
+        before.coeff_modulus_log2,
+        after.coeff_modulus_log2,
         before.scale,
         after.scale,
         max_error,
@@ -95,6 +97,8 @@ BootstrapPrototypeStage make_harness_stage(const CipherInfo& after) {
         after.chain_index,
         after.coeff_modulus_size,
         after.coeff_modulus_size,
+        after.coeff_modulus_log2,
+        after.coeff_modulus_log2,
         after.scale,
         after.scale,
         0.0,
@@ -248,6 +252,13 @@ void BootstrapPrototype::set_stc_first_target_chain_index(std::size_t value) noe
     stc_first_target_chain_index_ = value;
 }
 
+void BootstrapPrototype::set_stc_first_period_offset_log2(double value) {
+    if (!std::isfinite(value)) {
+        throw std::invalid_argument("STC-first period offset log2 must be finite");
+    }
+    stc_first_period_offset_log2_ = value;
+}
+
 Cipher BootstrapPrototype::apply_normalization(const Cipher& input, double factor) const {
     if (normalization_mode_ == BootstrapNormalizationMode::ScaleReinterpretation) {
         return adapter_.unsafe_reinterpret_scale_for_diagnostics(input, factor);
@@ -295,6 +306,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
     report.circuit_order = circuit_order_;
     report.transform_backend = transform_backend_;
     report.stc_first_target_chain_index = stc_first_target_chain_index_;
+    report.stc_first_period_offset_log2 = stc_first_period_offset_log2_;
     report.manual_period_log2 = manual_period_log2_;
     report.plain_scale_log2 = plain_scale_log2_;
     report.max_abs_input = max_abs_value(input);
@@ -347,6 +359,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
         after.chain_index,
         before.coeff_modulus_size,
         after.coeff_modulus_size,
+        before.coeff_modulus_log2,
+        after.coeff_modulus_log2,
         before.scale,
         after.scale,
         0.0,
@@ -452,6 +466,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
         final_info.chain_index,
         final_info.coeff_modulus_size,
         final_info.coeff_modulus_size,
+        final_info.coeff_modulus_log2,
+        final_info.coeff_modulus_log2,
         final_info.scale,
         final_info.scale,
         preserve_error,
@@ -485,6 +501,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
     report.circuit_order = circuit_order_;
     report.transform_backend = transform_backend_;
     report.stc_first_target_chain_index = stc_first_target_chain_index_;
+    report.stc_first_period_offset_log2 = stc_first_period_offset_log2_;
     report.manual_period_log2 = manual_period_log2_;
     report.plain_scale_log2 = plain_scale_log2_;
     report.checked = expected != nullptr;
@@ -726,6 +743,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
         final_info.chain_index,
         final_info.coeff_modulus_size,
         final_info.coeff_modulus_size,
+        final_info.coeff_modulus_log2,
+        final_info.coeff_modulus_log2,
         final_info.scale,
         final_info.scale,
         preserve_error,
@@ -789,6 +808,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     report.circuit_order = circuit_order_;
     report.transform_backend = transform_backend_;
     report.stc_first_target_chain_index = stc_first_target_chain_index_;
+    report.stc_first_period_offset_log2 = stc_first_period_offset_log2_;
     report.manual_period_log2 = manual_period_log2_;
     report.plain_scale_log2 = plain_scale_log2_;
     report.checked = expected != nullptr;
@@ -819,6 +839,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         after.chain_index,
         before.coeff_modulus_size,
         after.coeff_modulus_size,
+        before.coeff_modulus_log2,
+        after.coeff_modulus_log2,
         before.scale,
         after.scale,
         0.0,
@@ -856,8 +878,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         current = adapter_.mod_raise_to_first(current);
     });
     after = adapter_.info(current);
-    constexpr double prototype_period_offset_log2 = 3.0;
-    report.bootstrap_period_log2 = before.coeff_modulus_log2 - prototype_period_offset_log2;
+    report.bootstrap_period_log2 = before.coeff_modulus_log2 - stc_first_period_offset_log2_;
     report.bootstrap_period = finite_exp2_or_zero(report.bootstrap_period_log2);
     report.bootstrap_scaling_factor = finite_exp2_or_zero(-report.bootstrap_period_log2);
     report.stages.push_back(BootstrapPrototypeStage{
@@ -867,6 +888,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         after.chain_index,
         before.coeff_modulus_size,
         after.coeff_modulus_size,
+        before.coeff_modulus_log2,
+        after.coeff_modulus_log2,
         before.scale,
         after.scale,
         0.0,
@@ -977,6 +1000,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         final_info.chain_index,
         final_info.coeff_modulus_size,
         final_info.coeff_modulus_size,
+        final_info.coeff_modulus_log2,
+        final_info.coeff_modulus_log2,
         final_info.scale,
         final_info.scale,
         preserve_error,

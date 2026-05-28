@@ -213,11 +213,16 @@ bool scaling_gate_has_pass(m2424::SealAdapter& adapter,
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     constexpr std::size_t slots = 16;
-    constexpr double tolerance = 2e-5;
+    const double tolerance = 2e-5;
     constexpr bool use_slots_to_coeffs_first_prototype = true;
-    const std::size_t post_depth = use_slots_to_coeffs_first_prototype ? 0 : 2;
+    const bool use_deep_validation = argc > 1 && std::string(argv[1]) == "deep";
+    const std::size_t post_depth = use_deep_validation
+        ? 1
+        : use_slots_to_coeffs_first_prototype ? 0 : 2;
+    const std::size_t stc_first_target_chain_index = use_deep_validation ? 10 : 2;
+    const double stc_first_period_offset_log2 = use_deep_validation ? -2.0 : 3.0;
 
     std::vector<double> amplitudes{1e-5, 1e-4, 5e-4, 1e-3, 1e-2, 1e-1};
     std::vector<std::string> kinds{"sine", "alternating", "ramp"};
@@ -252,6 +257,9 @@ int main() {
 
     if (use_slots_to_coeffs_first_prototype) {
         amplitudes = {1e-5};
+        if (use_deep_validation) {
+            kinds = {"sine"};
+        }
         level_drops = {0};
         denorm_positions = {m2424::BootstrapDenormalizationPosition::BeforeSlotToCoeff};
         evalmod_degrees = {m2424::EvalModDegree::P3};
@@ -259,7 +267,9 @@ int main() {
         plain_scale_log2_values = {40.0};
     }
 
-    const auto profile = m2424::profiles::boot_ckks();
+    const auto profile = use_deep_validation
+        ? m2424::profiles::boot_deep_ckks()
+        : m2424::profiles::boot_ckks();
     auto rotation_steps = use_slots_to_coeffs_first_prototype
         ? m2424::bootstrap_plan_rotation_steps(m2424::make_scalable_bootstrap_plan(slots))
         : m2424::BootstrapPrototype::required_rotation_steps(slots);
@@ -298,13 +308,15 @@ int main() {
         return 0;
     }
     if (use_slots_to_coeffs_first_prototype) {
-        scaling_best_mode = "SlotsToCoeffsFirst/FftLike/P3/plain_scale_log2=40";
+        scaling_best_mode = use_deep_validation
+            ? "SlotsToCoeffsFirst/FftLike/P3/boot_deep_ckks/target_chain=10/plain_scale_log2=40/period_offset_log2=-2"
+            : "SlotsToCoeffsFirst/FftLike/P3/plain_scale_log2=40";
     } else {
         period_cases = {{scaling_best_period_mode, scaling_best_manual_period_log2}};
         plain_scale_log2_values = {scaling_best_plain_scale_log2};
     }
 
-    std::printf("case,input_kind,amplitude,level_drop,normalization_mode,denormalization_position,evalmod_degree,period_mode,manual_period_log2,plain_scale_log2,stc_first_target_chain_index,chain_before,chain_after,mod_raise_chain_before,mod_raise_chain_after,mod_raise_coeff_modulus_size_before,mod_raise_coeff_modulus_size_after,mod_raise_scale_before,mod_raise_scale_after,bootstrap_period_log2,bootstrap_period,bootstrap_scaling_factor,normalization_factor_log2,factor_times_plain_scale_log2,normalization_scalar_representable,denormalization_scalar_representable,max_abs_input,mod_raise_decoded_max_abs,mod_raise_diagnostic_error,max_abs_after_coeff_to_slot,normalization_factor,max_abs_after_normalization,inside_evalmod_interval,coeff_to_slot_error,normalization_error,evalmod_error,denormalization_error,slot_to_coeff_error,post_refresh_mod_raise_error,final_error,restore_ok,post_depth,post_ops_ok,post_error,exception,status\n");
+    std::printf("case,input_kind,amplitude,level_drop,normalization_mode,denormalization_position,evalmod_degree,period_mode,manual_period_log2,plain_scale_log2,stc_first_target_chain_index,stc_first_period_offset_log2,chain_before,chain_after,mod_raise_chain_before,mod_raise_chain_after,mod_raise_coeff_modulus_size_before,mod_raise_coeff_modulus_size_after,mod_raise_scale_before,mod_raise_scale_after,bootstrap_period_log2,bootstrap_period,bootstrap_scaling_factor,normalization_factor_log2,factor_times_plain_scale_log2,normalization_scalar_representable,denormalization_scalar_representable,max_abs_input,mod_raise_decoded_max_abs,mod_raise_diagnostic_error,max_abs_after_coeff_to_slot,normalization_factor,max_abs_after_normalization,inside_evalmod_interval,coeff_to_slot_error,normalization_error,evalmod_error,denormalization_error,slot_to_coeff_error,post_refresh_mod_raise_error,final_error,restore_ok,post_depth,post_ops_ok,post_error,exception,status\n");
 
     std::size_t case_id = 0;
     std::size_t pass_cases = 0;
@@ -342,6 +354,8 @@ int main() {
                             if (use_slots_to_coeffs_first_prototype) {
                                 bootstrapper.set_circuit_order(m2424::BootstrapCircuitOrder::SlotsToCoeffsFirst);
                                 bootstrapper.set_transform_backend(m2424::BootstrapTransformBackend::FftLike);
+                                bootstrapper.set_stc_first_target_chain_index(stc_first_target_chain_index);
+                                bootstrapper.set_stc_first_period_offset_log2(stc_first_period_offset_log2);
                             }
                             auto checked = bootstrapper.refresh_cipher_checked(current, expected);
                             const auto after = adapter.info(checked.result);
@@ -376,9 +390,14 @@ int main() {
                             const double slot_to_coeff_error = stage_error(checked, "slot_to_coeff");
                             const double post_refresh_mod_raise_error = stage_error(checked, "post_refresh_mod_raise");
                             const double final_error = stage_error(checked, "refresh_result");
-                            const bool restore_ok = after.chain_index > before.chain_index;
+                            const bool restore_ok = use_slots_to_coeffs_first_prototype
+                                ? after.chain_index >= post_depth
+                                : after.chain_index > before.chain_index;
+                            const bool chain_after_refresh_ok =
+                                !use_deep_validation || after.chain_index >= 1;
                             const bool ok =
                                 final_error <= tolerance &&
+                                chain_after_refresh_ok &&
                                 post_ops_ok &&
                                 post_error <= tolerance;
 
@@ -398,7 +417,7 @@ int main() {
                                 ++fail_cases;
                             }
 
-                            std::printf("%zu,%s,%.6e,%zu,%s,%s,%s,%s,%.0f,%.0f,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%s,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%zu,%s,%.6e,%s,%s\n",
+                            std::printf("%zu,%s,%.6e,%zu,%s,%s,%s,%s,%.0f,%.0f,%zu,%.0f,%zu,%zu,%zu,%zu,%zu,%zu,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%s,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%s,%zu,%s,%.6e,%s,%s\n",
                                         case_id,
                                         kind.c_str(),
                                         amplitude,
@@ -410,6 +429,7 @@ int main() {
                                         checked.manual_period_log2,
                                         checked.plain_scale_log2,
                                         checked.stc_first_target_chain_index,
+                                        checked.stc_first_period_offset_log2,
                                         before.chain_index,
                                         after.chain_index,
                                         mod_raise_stage ? mod_raise_stage->chain_before : 0,
@@ -449,7 +469,7 @@ int main() {
                             ++fail_cases;
                             std::string exception = e.what();
                             std::replace(exception.begin(), exception.end(), ',', ';');
-                            std::printf("%zu,%s,%.6e,%zu,%s,%s,%s,%s,%.0f,%.0f,0,0,0,0,0,0,0,0,0,0,0,0,0,0,false,false,0,0,0,0,0,0,FAIL,0,0,0,0,0,0,0,FAIL,%zu,FAIL,0,%s,FAIL\n",
+                            std::printf("%zu,%s,%.6e,%zu,%s,%s,%s,%s,%.0f,%.0f,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,false,false,0,0,0,0,0,0,FAIL,0,0,0,0,0,0,0,FAIL,%zu,FAIL,0,%s,FAIL\n",
                                         case_id,
                                         kind.c_str(),
                                         amplitude,
