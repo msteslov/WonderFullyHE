@@ -35,6 +35,13 @@ enum class BootstrapPipelineGate {
     FullRefresh
 };
 
+enum class BootstrapScaleDesignStatus {
+    PeriodModelBlocked,
+    ScaleStrategyBlocked,
+    EvalModCapacityBlocked,
+    ReadyForEvalModP3
+};
+
 struct BootstrapStageSpec {
     std::string name;
     BootstrapValueDomain input_domain{};
@@ -57,13 +64,46 @@ struct BootstrapPipelinePlan {
     std::vector<BootstrapStageSpec> stages;
 };
 
+struct BootstrapScaleDesign {
+    BootstrapPeriodMode period_mode{BootstrapPeriodMode::ManualPowerOfTwo};
+    BootstrapScalingStrategy normalization_strategy{BootstrapScalingStrategy::DecomposedPlainMultiplyRescale};
+    EvalModDegree evalmod_degree{EvalModDegree::P3};
+    double manual_period_log2{};
+    double period_log2{};
+    double plain_scale_log2{};
+    double target_scale_log2{};
+    std::size_t required_levels{};
+    std::size_t chain_remaining_after_strategy{};
+    bool magnitude_ok{};
+    bool scale_strategy_ok{};
+    bool evalmod_capacity_ok{};
+    BootstrapScaleDesignStatus status{BootstrapScaleDesignStatus::ScaleStrategyBlocked};
+    std::string blocker;
+    BootstrapScaleStrategyPlan scale_plan;
+    BootstrapEvalModCapacityPlan evalmod_capacity;
+};
+
 const char* to_string(BootstrapValueDomain domain) noexcept;
 const char* to_string(BootstrapTransformBackend backend) noexcept;
 const char* to_string(BootstrapScalingStrategy strategy) noexcept;
 const char* to_string(BootstrapPipelineGate gate) noexcept;
+const char* to_string(BootstrapScaleDesignStatus status) noexcept;
 
 BootstrapPipelinePlan make_research_bootstrap_plan(std::size_t slots);
 BootstrapPipelinePlan make_scalable_bootstrap_plan(std::size_t slots);
 std::vector<int> bootstrap_plan_rotation_steps(const BootstrapPipelinePlan& plan);
+
+BootstrapScaleDesign make_bootstrap_scale_design(BootstrapPeriodMode period_mode,
+                                                 double manual_period_log2,
+                                                 double period_log2,
+                                                 BootstrapScalingStrategy normalization_strategy,
+                                                 double plain_scale_log2,
+                                                 double target_scale_log2,
+                                                 EvalModDegree evalmod_degree,
+                                                 const std::vector<int>& active_coeff_modulus_bits,
+                                                 const CipherInfo& start_info,
+                                                 double max_abs_before_normalization,
+                                                 std::size_t min_chain_remaining,
+                                                 double evalmod_capacity_margin_log2);
 
 } // namespace m2424
