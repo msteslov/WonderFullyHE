@@ -78,6 +78,8 @@ cmake --build build -j
 
 `bench_bootstrap_scale_strategy` является быстрым algebraic planner для того же blocker: он считает required modulus drop, доступные levels, минимальные scalar chunks, дополнительные `ScaleSquash` levels и capacity первого EvalMod multiplication до тяжёлого ciphertext-прогона.
 
+`bench_bootstrap_profile_budget` проверяет гипотетические modulus-chain layouts без SEAL keygen: security budget, оставшийся modulus под EvalMod, максимум доступного drop и capacity первого EvalMod multiplication. Его задача — отделить “плохо выбран профиль” от “period model несовместим с EvalMod scale budget”.
+
 `demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
 
 `demo_bootstrap_prototype` связывает bootstrapping-блоки в experimental refresh-harness. Текущая архитектура считает корректным только structural/scaling gate; full refresh path не считается рабочим, пока scaling gate не проходит.
