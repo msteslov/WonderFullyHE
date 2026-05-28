@@ -249,4 +249,45 @@ BootstrapScaleDesign make_bootstrap_scale_design(BootstrapPeriodMode period_mode
     return design;
 }
 
+BootstrapPeriodFeasibilityWindow bootstrap_period_feasibility_window(
+    double active_modulus_log2,
+    double start_scale_log2,
+    double target_scale_log2,
+    double max_abs_before_normalization,
+    double evalmod_bound,
+    double evalmod_capacity_margin_log2) {
+    if (!std::isfinite(active_modulus_log2)) {
+        throw std::invalid_argument("active modulus log2 must be finite");
+    }
+    if (!std::isfinite(start_scale_log2) || start_scale_log2 <= 0.0) {
+        throw std::invalid_argument("start scale log2 must be positive and finite");
+    }
+    if (!std::isfinite(target_scale_log2) || target_scale_log2 <= 0.0) {
+        throw std::invalid_argument("target scale log2 must be positive and finite");
+    }
+    if (!std::isfinite(max_abs_before_normalization) || max_abs_before_normalization < 0.0) {
+        throw std::invalid_argument("max_abs_before_normalization must be finite and non-negative");
+    }
+    if (!std::isfinite(evalmod_bound) || evalmod_bound <= 0.0) {
+        throw std::invalid_argument("evalmod bound must be positive and finite");
+    }
+    if (!std::isfinite(evalmod_capacity_margin_log2) || evalmod_capacity_margin_log2 < 0.0) {
+        throw std::invalid_argument("evalmod capacity margin log2 must be finite and non-negative");
+    }
+
+    BootstrapPeriodFeasibilityWindow window;
+    if (max_abs_before_normalization == 0.0) {
+        window.min_period_for_magnitude_log2 = 0.0;
+    } else {
+        window.min_period_for_magnitude_log2 =
+            std::max(0.0, std::log2(max_abs_before_normalization / evalmod_bound));
+    }
+    window.max_period_for_evalmod_capacity_log2 =
+        active_modulus_log2 - start_scale_log2 - target_scale_log2 - evalmod_capacity_margin_log2;
+    window.margin_log2 =
+        window.max_period_for_evalmod_capacity_log2 - window.min_period_for_magnitude_log2;
+    window.possible = window.margin_log2 >= 0.0;
+    return window;
+}
+
 } // namespace m2424

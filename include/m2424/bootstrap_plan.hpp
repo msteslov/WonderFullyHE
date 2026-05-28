@@ -83,6 +83,13 @@ struct BootstrapScaleDesign {
     BootstrapEvalModCapacityPlan evalmod_capacity;
 };
 
+struct BootstrapPeriodFeasibilityWindow {
+    double min_period_for_magnitude_log2{};
+    double max_period_for_evalmod_capacity_log2{};
+    double margin_log2{};
+    bool possible{};
+};
+
 const char* to_string(BootstrapValueDomain domain) noexcept;
 const char* to_string(BootstrapTransformBackend backend) noexcept;
 const char* to_string(BootstrapScalingStrategy strategy) noexcept;
@@ -105,5 +112,13 @@ BootstrapScaleDesign make_bootstrap_scale_design(BootstrapPeriodMode period_mode
                                                  double max_abs_before_normalization,
                                                  std::size_t min_chain_remaining,
                                                  double evalmod_capacity_margin_log2);
+
+BootstrapPeriodFeasibilityWindow bootstrap_period_feasibility_window(
+    double active_modulus_log2,
+    double start_scale_log2,
+    double target_scale_log2,
+    double max_abs_before_normalization,
+    double evalmod_bound,
+    double evalmod_capacity_margin_log2);
 
 } // namespace m2424
