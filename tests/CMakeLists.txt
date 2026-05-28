@@ -10,6 +10,11 @@ add_executable(test_adapter_failures test_adapter_failures.cpp)
 target_compile_features(test_adapter_failures PRIVATE cxx_std_17)
 target_link_libraries(test_adapter_failures PRIVATE m2424)
 
+add_executable(test_bootstrap_scale_design test_bootstrap_scale_design.cpp)
+target_compile_features(test_bootstrap_scale_design PRIVATE cxx_std_17)
+target_link_libraries(test_bootstrap_scale_design PRIVATE m2424)
+
 add_test(NAME test_smoke COMMAND test_smoke)
 add_test(NAME test_accuracy COMMAND test_accuracy)
 add_test(NAME test_adapter_failures COMMAND test_adapter_failures)
+add_test(NAME test_bootstrap_scale_design COMMAND test_bootstrap_scale_design)
