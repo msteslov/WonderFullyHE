@@ -163,4 +163,94 @@ BootstrapScaleSquash squash_bootstrap_scale(SealAdapter& adapter,
     return squash;
 }
 
+BootstrapScaleStrategyPlan plan_bootstrap_scale_strategy(const std::vector<int>& active_coeff_modulus_bits,
+                                                         const CipherInfo& start_info,
+                                                         double factor_log2,
+                                                         double max_plain_scale_log2,
+                                                         double target_scale_log2,
+                                                         std::size_t min_chain_remaining) {
+    if (!std::isfinite(factor_log2)) {
+        throw std::invalid_argument("bootstrap scalar factor log2 must be finite");
+    }
+    if (!std::isfinite(max_plain_scale_log2) || max_plain_scale_log2 <= 0.0) {
+        throw std::invalid_argument("max plain scale log2 must be positive and finite");
+    }
+    if (!std::isfinite(target_scale_log2) || target_scale_log2 <= 0.0) {
+        throw std::invalid_argument("target scale log2 must be positive and finite");
+    }
+    if (!std::isfinite(start_info.scale) || start_info.scale <= 0.0) {
+        throw std::invalid_argument("start ciphertext scale must be positive and finite");
+    }
+
+    BootstrapScaleStrategyPlan plan;
+    plan.factor_abs_log2 = factor_log2 < 0.0 ? -factor_log2 : factor_log2;
+    plan.start_scale_log2 = std::log2(start_info.scale);
+    plan.target_scale_log2 = target_scale_log2;
+    plan.max_plain_scale_log2 = max_plain_scale_log2;
+    plan.start_chain_index = start_info.chain_index;
+    plan.min_chain_remaining = min_chain_remaining;
+    plan.scalar_representable = plan.factor_abs_log2 <=
+        max_plain_scale_log2 * static_cast<double>(start_info.chain_index);
+
+    if (start_info.chain_index < min_chain_remaining) {
+        plan.blocker = "insufficient_start_chain";
+        return plan;
+    }
+    plan.max_consumable_levels = start_info.chain_index - min_chain_remaining;
+
+    if (plan.factor_abs_log2 == 0.0) {
+        plan.scalar_levels_needed = 0;
+    } else {
+        plan.scalar_levels_needed = static_cast<std::size_t>(
+            std::ceil(plan.factor_abs_log2 / max_plain_scale_log2));
+    }
+
+    plan.required_drop_log2 = std::max(0.0, plan.start_scale_log2 + plan.factor_abs_log2 - target_scale_log2);
+    const std::size_t available_drop_levels =
+        std::min(plan.max_consumable_levels, active_coeff_modulus_bits.size());
+    for (std::size_t i = 0; i < available_drop_levels; ++i) {
+        plan.available_drop_log2 += static_cast<double>(active_coeff_modulus_bits[active_coeff_modulus_bits.size() - 1 - i]);
+    }
+
+    double cumulative_drop = 0.0;
+    std::size_t levels_for_target = 0;
+    while (levels_for_target < available_drop_levels && cumulative_drop < plan.required_drop_log2) {
+        cumulative_drop += static_cast<double>(
+            active_coeff_modulus_bits[active_coeff_modulus_bits.size() - 1 - levels_for_target]);
+        ++levels_for_target;
+    }
+    plan.total_levels_needed = std::max(plan.scalar_levels_needed, levels_for_target);
+    if (plan.total_levels_needed >= plan.scalar_levels_needed) {
+        plan.scale_squash_levels_needed = plan.total_levels_needed - plan.scalar_levels_needed;
+    }
+
+    double scalar_drop = 0.0;
+    const std::size_t scalar_drop_levels = std::min(plan.scalar_levels_needed, active_coeff_modulus_bits.size());
+    for (std::size_t i = 0; i < scalar_drop_levels; ++i) {
+        scalar_drop += static_cast<double>(active_coeff_modulus_bits[active_coeff_modulus_bits.size() - 1 - i]);
+    }
+    plan.scale_after_scalar_log2 = plan.start_scale_log2 + plan.factor_abs_log2 - scalar_drop;
+
+    double total_drop = 0.0;
+    const std::size_t total_drop_levels = std::min(plan.total_levels_needed, active_coeff_modulus_bits.size());
+    for (std::size_t i = 0; i < total_drop_levels; ++i) {
+        total_drop += static_cast<double>(active_coeff_modulus_bits[active_coeff_modulus_bits.size() - 1 - i]);
+    }
+    plan.scale_after_squash_log2 = plan.start_scale_log2 + plan.factor_abs_log2 - total_drop;
+
+    if (!plan.scalar_representable) {
+        plan.blocker = "scalar_not_representable";
+    } else if (plan.scalar_levels_needed > plan.max_consumable_levels) {
+        plan.blocker = "not_enough_levels_for_scalar";
+    } else if (plan.required_drop_log2 > plan.available_drop_log2) {
+        plan.blocker = "not_enough_levels_for_scale";
+    } else if (plan.total_levels_needed > plan.max_consumable_levels) {
+        plan.blocker = "not_enough_levels_for_scalar_and_scale";
+    } else {
+        plan.feasible = true;
+        plan.blocker = "none";
+    }
+    return plan;
+}
+
 } // namespace m2424

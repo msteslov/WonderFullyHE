@@ -76,6 +76,8 @@ cmake --build build -j
 
 `bench_bootstrap_period_model` проверяет только period/scaling model без запуска `EvalMod`: scalar correctness, попадание в интервал EvalMod, оставшиеся уровни и scale readiness перед P3. Benchmark сравнивает обычный `boot_ckks` и diagnostic `boot_deep_ckks`; `boot_deep_ckks` нужен только для проверки scale/levels budget и не означает, что full bootstrap готов. `ScaleSquash` использует обычный CKKS rescale, чтобы проверить, хватает ли уровней снизить scale до EvalMod-safe диапазона без изменения значения.
 
+`bench_bootstrap_scale_strategy` является быстрым algebraic planner для того же blocker: он считает required modulus drop, доступные levels, минимальные scalar chunks и дополнительные `ScaleSquash` levels до тяжёлого ciphertext-прогона.
+
 `demo_bootstrap_diagonals` строит комплексную матрицу канонического вложения, переводит её в диагональное разложение `sum diag_k * Rot_k(x)` и проверяет это разложение на CPU и на зашифрованном CKKS-векторе. Это первый исполняемый шаг к `CoeffToSlot`/`SlotToCoeff`.
 
 `demo_bootstrap_prototype` связывает bootstrapping-блоки в experimental refresh-harness. Текущая архитектура считает корректным только structural/scaling gate; full refresh path не считается рабочим, пока scaling gate не проходит.

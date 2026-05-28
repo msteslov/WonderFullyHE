@@ -7,6 +7,7 @@
 #include "m2424/abft.hpp"
 #include "m2424/accuracy.hpp"
 #include "m2424/bootstrap.hpp"
+#include "m2424/bootstrap_scaling.hpp"
 #include "m2424/checked_evaluator.hpp"
 #include "m2424/diagonal_transform.hpp"
 #include "m2424/eval_mod.hpp"
@@ -324,6 +325,27 @@ int main() {
         && has_stage(bootstrap_report, "CoeffToSlot")
         && has_stage(bootstrap_report, "EvalMod")
         && has_stage(bootstrap_report, "SlotToCoeff");
+    const auto impossible_scale_plan = m2424::plan_bootstrap_scale_strategy(
+        {60, 40, 40, 40, 40, 40, 40},
+        m2424::CipherInfo{std::pow(2.0, 40), 6, 7, 2, 300.0},
+        -256.0,
+        100.0,
+        60.0,
+        3);
+    const auto feasible_scale_plan = m2424::plan_bootstrap_scale_strategy(
+        {60, 40, 40, 40, 40, 40, 40, 40, 40, 40},
+        m2424::CipherInfo{std::pow(2.0, 40), 9, 10, 2, 420.0},
+        -256.0,
+        50.0,
+        60.0,
+        3);
+    const bool scale_strategy_plan_ok = !impossible_scale_plan.feasible
+        && impossible_scale_plan.blocker == "not_enough_levels_for_scale"
+        && impossible_scale_plan.required_drop_log2 == 236.0
+        && impossible_scale_plan.available_drop_log2 == 120.0
+        && feasible_scale_plan.feasible
+        && feasible_scale_plan.total_levels_needed == 6
+        && feasible_scale_plan.scale_after_squash_log2 <= 60.0;
 
     const bool arithmetic_ok = std::isfinite(mul_accuracy.max_abs_error) && std::isfinite(mul_accuracy.mean_abs_error) && mul_accuracy.ok
         && close_enough(add_ref, add_out, 1e-5)
@@ -368,7 +390,8 @@ int main() {
         && diagonal_transform_plan_ok()
         && eval_mod_polynomial_ok()
         && security_report_ok
-        && bootstrap_report_ok;
+        && bootstrap_report_ok
+        && scale_strategy_plan_ok;
     std::printf("[test_smoke] max=%.6e mean=%.6e arithmetic=%s bootstrap_parts=%s security=%s bootstrap_report=%s => %s\n",
                mul_accuracy.max_abs_error,
                mul_accuracy.mean_abs_error,
