@@ -228,7 +228,7 @@ void BootstrapPrototype::set_post_refresh_mod_raise_enabled(bool enabled) noexce
 
 Cipher BootstrapPrototype::apply_normalization(const Cipher& input, double factor) const {
     if (normalization_mode_ == BootstrapNormalizationMode::ScaleReinterpretation) {
-        return adapter_.multiply_decoded_value(input, factor);
+        return adapter_.unsafe_reinterpret_scale_for_diagnostics(input, factor);
     }
     if (!std::isfinite(factor) || factor == 0.0) {
         throw std::invalid_argument("bootstrap normalization factor must be non-zero and finite");

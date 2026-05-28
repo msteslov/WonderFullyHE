@@ -68,6 +68,7 @@ int main() {
 
     std::printf("threads,tasks,payload_size,setup_ms,runtime_ms,throughput_tasks_per_sec,max_abs_error,mean_abs_error,status\n");
 
+    bool all_ok = true;
     for (std::size_t thread_count : thread_counts) {
         const std::size_t worker_count = std::min(thread_count, task_count);
         std::vector<std::unique_ptr<WorkerState>> workers;
@@ -141,7 +142,8 @@ int main() {
                     max_abs_error,
                     mean_abs_error,
                     ok ? "PASS" : "FAIL");
+        all_ok = all_ok && ok;
     }
 
-    return 0;
+    return all_ok ? 0 : 1;
 }

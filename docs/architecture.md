@@ -129,6 +129,7 @@ Full refresh не считается стабильным API, пока `bench_b
 
 ## Демонстрационные приложения
 
+- Default CTest содержит только инвариантные tests: `test_smoke`, `test_accuracy`, `test_adapter_failures`. Demos и benchmarks не входят в default CTest и запускаются явно.
 - `demo_secure_stats` показывает защищённую агрегацию: сумму и среднее над зашифрованными данными.
 - `demo_client_compute_roundtrip` показывает передачу сериализованных ключей/ciphertext между отдельными контекстами выполнения.
 - `demo_galois_key_optimization` сравнивает полный и ограниченный набор Galois-ключей для ротаций.

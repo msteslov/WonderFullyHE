@@ -491,7 +491,7 @@ Cipher SealAdapter::mod_raise_to_first(const Cipher& cipher) {
     return out;
 }
 
-Cipher SealAdapter::multiply_decoded_value(const Cipher& cipher, double multiplier) {
+Cipher SealAdapter::unsafe_reinterpret_scale_for_diagnostics(const Cipher& cipher, double multiplier) {
     if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
     if (!std::isfinite(multiplier) || multiplier <= 0.0) {
         throw std::invalid_argument("decoded value multiplier must be positive and finite");
@@ -516,6 +516,10 @@ Cipher SealAdapter::multiply_decoded_value(const Cipher& cipher, double multipli
 
     out.pimpl_->ct.scale() = new_scale;
     return out;
+}
+
+Cipher SealAdapter::multiply_decoded_value(const Cipher& cipher, double multiplier) {
+    return unsafe_reinterpret_scale_for_diagnostics(cipher, multiplier);
 }
 
 Cipher SealAdapter::mod_switch_to(const Cipher& cipher, const Cipher& target) {

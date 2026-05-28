@@ -104,7 +104,11 @@ cmake --build build -j
 
 ## Тесты
 
-`test_smoke` — покрывает encode → encrypt → mul_relin_rescale → decrypt, add/sub/rotate, plaintext-операции, сериализацию ключей/ciphertext, checked evaluator, linear transform, polynomial evaluator, `sum_slots`, ABFT checksum, ошибки без нужных ключей, базовую валидацию профиля и security report.
+Default CTest запускает только тесты-инварианты. Demos и benchmarks собираются как executables, но не входят в default CTest: их нужно запускать явно, когда нужны CSV/измерения.
+
+- `test_smoke` покрывает encode → encrypt → mul_relin_rescale → decrypt, add/sub/rotate, plaintext-операции, сериализацию ключей/ciphertext, checked evaluator, linear transform, polynomial evaluator, `sum_slots`, ABFT checksum, базовую валидацию профиля и security report.
+- `test_accuracy` проверяет finite/NaN/Inf handling, worst-index и расширенные error metrics.
+- `test_adapter_failures` проверяет negative API cases: некорректные inputs, отсутствие ключей, пустые/corrupt buffers и unsafe scale reinterpretation preconditions.
 
 ```bash
 cmake -S . -B build -DBUILD_TESTING=ON

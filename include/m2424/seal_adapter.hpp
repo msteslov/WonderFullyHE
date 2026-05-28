@@ -85,6 +85,8 @@ public:
     Cipher mul_relin_rescale(const Cipher&, const Cipher&);
     Cipher rescale_to_next(const Cipher&);
     Cipher mod_raise_to_first(const Cipher&);
+    Cipher unsafe_reinterpret_scale_for_diagnostics(const Cipher&, double decoded_value_multiplier);
+    [[deprecated("use unsafe_reinterpret_scale_for_diagnostics; this is not a homomorphic multiply")]]
     Cipher multiply_decoded_value(const Cipher&, double multiplier);
     Cipher mod_switch_to(const Cipher&, const Cipher&);
     Cipher match_level_and_scale(const Cipher&, const Cipher&);
