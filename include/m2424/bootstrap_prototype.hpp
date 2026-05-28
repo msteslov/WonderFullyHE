@@ -2,6 +2,7 @@
 
 #include "m2424/diagonal_transform.hpp"
 #include "m2424/eval_mod.hpp"
+#include "m2424/bootstrap_dft.hpp"
 #include "m2424/bootstrap_scaling.hpp"
 #include "m2424/seal_adapter.hpp"
 
@@ -42,6 +43,8 @@ struct BootstrapPrototypeReport {
     double bootstrap_period_log2{};
     double bootstrap_scaling_factor{};
     BootstrapPeriodMode period_mode{BootstrapPeriodMode::TotalCoeffModulus};
+    BootstrapCircuitOrder circuit_order{BootstrapCircuitOrder::ModRaiseFirst};
+    BootstrapTransformBackend transform_backend{BootstrapTransformBackend::DenseDiagonal};
     double manual_period_log2{};
     double normalization_factor_log2{};
     double plain_scale_log2{40.0};
@@ -80,6 +83,8 @@ public:
     void set_denormalization_position(BootstrapDenormalizationPosition position) noexcept;
     void set_evalmod_degree(EvalModDegree degree) noexcept;
     void set_period_mode(BootstrapPeriodMode mode) noexcept;
+    void set_circuit_order(BootstrapCircuitOrder order) noexcept;
+    void set_transform_backend(BootstrapTransformBackend backend) noexcept;
     void set_manual_period_log2(double value);
     void set_plain_scale_log2(double value);
     void set_post_refresh_mod_raise_enabled(bool enabled) noexcept;
@@ -97,6 +102,8 @@ private:
     BootstrapDenormalizationPosition denormalization_position_{BootstrapDenormalizationPosition::AfterSlotToCoeff};
     EvalModDegree evalmod_degree_{EvalModDegree::P7};
     BootstrapPeriodMode period_mode_{BootstrapPeriodMode::TotalCoeffModulus};
+    BootstrapCircuitOrder circuit_order_{BootstrapCircuitOrder::ModRaiseFirst};
+    BootstrapTransformBackend transform_backend_{BootstrapTransformBackend::DenseDiagonal};
     double manual_period_log2_{0.0};
     double plain_scale_log2_{40.0};
     bool post_refresh_mod_raise_enabled_{false};

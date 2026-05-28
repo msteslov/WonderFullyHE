@@ -273,6 +273,19 @@ Plain SealAdapter::encode_complex_like(const std::vector<std::complex<double>>& 
     return out;
 }
 
+Plain SealAdapter::encode_complex_at_scale_like(const std::vector<std::complex<double>>& vals,
+                                                double scale,
+                                                const Cipher& cipher) {
+    if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
+    validate_complex_values(vals, pimpl_->slot_count, pimpl_->profile.slots);
+    if (!std::isfinite(scale) || scale <= 0.0) {
+        throw std::invalid_argument("scale must be a positive finite value");
+    }
+    Plain out;
+    pimpl_->encoder->encode(vals, cipher.pimpl_->ct.parms_id(), scale, out.pimpl_->pt);
+    return out;
+}
+
 Plain SealAdapter::encode_scalar_like(double value, const Cipher& cipher) {
     if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
     if (!std::isfinite(value)) throw std::invalid_argument("scalar must be finite");

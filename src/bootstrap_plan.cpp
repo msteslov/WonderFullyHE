@@ -25,16 +25,6 @@ const char* to_string(BootstrapValueDomain domain) noexcept {
     return "unknown";
 }
 
-const char* to_string(BootstrapTransformBackend backend) noexcept {
-    switch (backend) {
-    case BootstrapTransformBackend::DenseDiagonal:
-        return "DenseDiagonal";
-    case BootstrapTransformBackend::FftLike:
-        return "FftLike";
-    }
-    return "unknown";
-}
-
 const char* to_string(BootstrapScalingStrategy strategy) noexcept {
     switch (strategy) {
     case BootstrapScalingStrategy::PlainMultiplyRescale:
@@ -146,6 +136,7 @@ BootstrapPipelinePlan make_research_bootstrap_plan(std::size_t slots) {
     validate_slots(slots);
     BootstrapPipelinePlan plan;
     plan.slots = slots;
+    plan.circuit_order = BootstrapCircuitOrder::ModRaiseFirst;
     plan.transform_backend = BootstrapTransformBackend::DenseDiagonal;
     plan.scaling_strategy = BootstrapScalingStrategy::DecomposedPlainMultiplyRescale;
     plan.period_mode = BootstrapPeriodMode::ManualPowerOfTwo;
@@ -160,6 +151,7 @@ BootstrapPipelinePlan make_research_bootstrap_plan(std::size_t slots) {
 BootstrapPipelinePlan make_scalable_bootstrap_plan(std::size_t slots) {
     validate_slots(slots);
     auto plan = make_research_bootstrap_plan(slots);
+    plan.circuit_order = BootstrapCircuitOrder::SlotsToCoeffsFirst;
     plan.transform_backend = BootstrapTransformBackend::FftLike;
     plan.active_gate = BootstrapPipelineGate::Scaling;
     return plan;
@@ -170,7 +162,18 @@ std::vector<int> bootstrap_plan_rotation_steps(const BootstrapPipelinePlan& plan
     if (plan.transform_backend == BootstrapTransformBackend::DenseDiagonal) {
         return BootstrapPrototype::required_rotation_steps(plan.slots);
     }
-    throw std::logic_error("FFT-like bootstrap transform backend is specified but not implemented yet");
+    auto coeff_to_slot = make_bootstrap_dft_plan(plan.slots,
+                                                 BootstrapDftType::HomomorphicDecode,
+                                                 plan.plain_scale_log2);
+    auto slot_to_coeff = make_bootstrap_dft_plan(plan.slots,
+                                                 BootstrapDftType::HomomorphicEncode,
+                                                 plan.plain_scale_log2);
+    auto steps = coeff_to_slot.rotation_steps();
+    auto inverse_steps = slot_to_coeff.rotation_steps();
+    steps.insert(steps.end(), inverse_steps.begin(), inverse_steps.end());
+    std::sort(steps.begin(), steps.end());
+    steps.erase(std::unique(steps.begin(), steps.end()), steps.end());
+    return steps;
 }
 
 BootstrapScaleDesign make_bootstrap_scale_design(BootstrapPeriodMode period_mode,

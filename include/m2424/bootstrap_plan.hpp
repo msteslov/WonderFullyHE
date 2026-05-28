@@ -1,5 +1,6 @@
 #pragma once
 
+#include "m2424/bootstrap_dft.hpp"
 #include "m2424/bootstrap_scaling.hpp"
 #include "m2424/eval_mod.hpp"
 
@@ -16,11 +17,6 @@ enum class BootstrapValueDomain {
     NormalizedSlot,
     ModularReducedSlot,
     RefreshedCoefficient
-};
-
-enum class BootstrapTransformBackend {
-    DenseDiagonal,
-    FftLike
 };
 
 enum class BootstrapScalingStrategy {
@@ -54,6 +50,7 @@ struct BootstrapStageSpec {
 
 struct BootstrapPipelinePlan {
     std::size_t slots{};
+    BootstrapCircuitOrder circuit_order{BootstrapCircuitOrder::ModRaiseFirst};
     BootstrapTransformBackend transform_backend{BootstrapTransformBackend::DenseDiagonal};
     BootstrapScalingStrategy scaling_strategy{BootstrapScalingStrategy::DecomposedPlainMultiplyRescale};
     BootstrapPeriodMode period_mode{BootstrapPeriodMode::ManualPowerOfTwo};

@@ -29,6 +29,7 @@ public:
     std::vector<int> rotation_steps() const;
     ComplexVector apply_plain(const ComplexVector& input) const;
     Cipher apply(SealAdapter& adapter, const Cipher& input) const;
+    Cipher apply_at_plain_scale(SealAdapter& adapter, const Cipher& input, double plain_scale) const;
 
 private:
     std::vector<DiagonalTerm> terms_;

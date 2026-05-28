@@ -69,6 +69,7 @@ public:
     Plain encode_complex(const std::vector<std::complex<double>>&);
     Plain encode_like(const std::vector<double>&, const Cipher&);
     Plain encode_complex_like(const std::vector<std::complex<double>>&, const Cipher&);
+    Plain encode_complex_at_scale_like(const std::vector<std::complex<double>>&, double scale, const Cipher&);
     Plain encode_scalar_like(double, const Cipher&);
     Plain encode_scalar_at_scale_like(double, double scale, const Cipher&);
     Cipher encrypt(const Plain&);

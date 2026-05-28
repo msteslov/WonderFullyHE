@@ -59,6 +59,18 @@ std::string cache_key(const SealAdapter& adapter, const Cipher& input, std::size
     return out.str();
 }
 
+std::string cache_key_at_scale(const SealAdapter& adapter,
+                               const Cipher& input,
+                               std::size_t dimension,
+                               double plain_scale) {
+    const auto info = adapter.info(input);
+    std::ostringstream out;
+    out.precision(17);
+    out << adapter.slot_count() << ':' << dimension << ':' << info.chain_index << ':'
+        << info.scale << ':' << plain_scale;
+    return out.str();
+}
+
 bool logical_mask_for_rotation(const DiagonalTerm& term,
                                int rotation_step,
                                std::size_t slot_count,
@@ -199,6 +211,50 @@ Cipher DiagonalLinearTransform::apply(SealAdapter& adapter, const Cipher& input)
             const int wrapped_rotation = term.rotation - static_cast<int>(dimension_);
             if (logical_mask_for_rotation(term, wrapped_rotation, adapter.slot_count(), mask)) {
                 encoded.push_back(adapter.encode_complex_like(mask, input));
+            }
+        }
+        cache_it = encoded_diagonal_cache_.emplace(encoded_key, std::move(encoded)).first;
+    }
+    const auto& encoded_diagonals = cache_it->second;
+
+    std::vector<Cipher> terms;
+    terms.reserve(encoded_diagonals.size());
+    std::size_t encoded_index = 0;
+    for (const auto& term : terms_) {
+        ComplexVector mask;
+        if (logical_mask_for_rotation(term, term.rotation, adapter.slot_count(), mask)) {
+            const Cipher rotated = term.rotation == 0 ? input : adapter.rotate(input, term.rotation);
+            terms.push_back(adapter.mul_plain_rescale(rotated, encoded_diagonals[encoded_index++]));
+        }
+        const int wrapped_rotation = term.rotation - static_cast<int>(dimension_);
+        if (logical_mask_for_rotation(term, wrapped_rotation, adapter.slot_count(), mask)) {
+            const Cipher rotated = wrapped_rotation == 0 ? input : adapter.rotate(input, wrapped_rotation);
+            terms.push_back(adapter.mul_plain_rescale(rotated, encoded_diagonals[encoded_index++]));
+        }
+    }
+
+    return pairwise_add(adapter, std::move(terms));
+}
+
+Cipher DiagonalLinearTransform::apply_at_plain_scale(SealAdapter& adapter,
+                                                     const Cipher& input,
+                                                     double plain_scale) const {
+    if (!std::isfinite(plain_scale) || plain_scale <= 0.0) {
+        throw std::invalid_argument("diagonal transform plaintext scale must be positive and finite");
+    }
+    const std::string encoded_key = cache_key_at_scale(adapter, input, dimension_, plain_scale);
+    auto cache_it = encoded_diagonal_cache_.find(encoded_key);
+    if (cache_it == encoded_diagonal_cache_.end()) {
+        std::vector<Plain> encoded;
+        encoded.reserve(2 * terms_.size());
+        for (const auto& term : terms_) {
+            ComplexVector mask;
+            if (logical_mask_for_rotation(term, term.rotation, adapter.slot_count(), mask)) {
+                encoded.push_back(adapter.encode_complex_at_scale_like(mask, plain_scale, input));
+            }
+            const int wrapped_rotation = term.rotation - static_cast<int>(dimension_);
+            if (logical_mask_for_rotation(term, wrapped_rotation, adapter.slot_count(), mask)) {
+                encoded.push_back(adapter.encode_complex_at_scale_like(mask, plain_scale, input));
             }
         }
         cache_it = encoded_diagonal_cache_.emplace(encoded_key, std::move(encoded)).first;

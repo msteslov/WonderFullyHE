@@ -208,6 +208,14 @@ void BootstrapPrototype::set_period_mode(BootstrapPeriodMode mode) noexcept {
     period_mode_ = mode;
 }
 
+void BootstrapPrototype::set_circuit_order(BootstrapCircuitOrder order) noexcept {
+    circuit_order_ = order;
+}
+
+void BootstrapPrototype::set_transform_backend(BootstrapTransformBackend backend) noexcept {
+    transform_backend_ = backend;
+}
+
 void BootstrapPrototype::set_manual_period_log2(double value) {
     if (!std::isfinite(value) || value < 0.0) {
         throw std::invalid_argument("manual period log2 must be a non-negative finite value");
@@ -270,6 +278,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
     report.denormalization_position = denormalization_position_;
     report.evalmod_degree = evalmod_degree_;
     report.period_mode = period_mode_;
+    report.circuit_order = circuit_order_;
+    report.transform_backend = transform_backend_;
     report.manual_period_log2 = manual_period_log2_;
     report.plain_scale_log2 = plain_scale_log2_;
     report.max_abs_input = max_abs_value(input);
@@ -453,6 +463,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
     report.denormalization_position = denormalization_position_;
     report.evalmod_degree = evalmod_degree_;
     report.period_mode = period_mode_;
+    report.circuit_order = circuit_order_;
+    report.transform_backend = transform_backend_;
     report.manual_period_log2 = manual_period_log2_;
     report.plain_scale_log2 = plain_scale_log2_;
     report.checked = expected != nullptr;
