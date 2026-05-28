@@ -1,4 +1,5 @@
 #include "m2424/bootstrap_prototype.hpp"
+#include "m2424/bootstrap_plan.hpp"
 #include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
 
@@ -215,16 +216,17 @@ bool scaling_gate_has_pass(m2424::SealAdapter& adapter,
 int main() {
     constexpr std::size_t slots = 16;
     constexpr double tolerance = 2e-5;
-    constexpr std::size_t post_depth = 2;
+    constexpr bool use_slots_to_coeffs_first_prototype = true;
+    const std::size_t post_depth = use_slots_to_coeffs_first_prototype ? 0 : 2;
 
-    const std::vector<double> amplitudes{1e-5, 1e-4, 5e-4, 1e-3, 1e-2, 1e-1};
-    const std::vector<std::string> kinds{"sine", "alternating", "ramp"};
-    const std::vector<std::size_t> level_drops{1, 2};
-    const std::vector<m2424::BootstrapDenormalizationPosition> denorm_positions{
+    std::vector<double> amplitudes{1e-5, 1e-4, 5e-4, 1e-3, 1e-2, 1e-1};
+    std::vector<std::string> kinds{"sine", "alternating", "ramp"};
+    std::vector<std::size_t> level_drops{1, 2};
+    std::vector<m2424::BootstrapDenormalizationPosition> denorm_positions{
         m2424::BootstrapDenormalizationPosition::BeforeSlotToCoeff,
         m2424::BootstrapDenormalizationPosition::AfterSlotToCoeff
     };
-    const std::vector<m2424::EvalModDegree> evalmod_degrees{
+    std::vector<m2424::EvalModDegree> evalmod_degrees{
         m2424::EvalModDegree::P7,
         m2424::EvalModDegree::P5,
         m2424::EvalModDegree::P3
@@ -248,8 +250,19 @@ int main() {
         140.0, 160.0, 180.0, 200.0, 240.0, 280.0, 320.0, 400.0, 600.0
     };
 
+    if (use_slots_to_coeffs_first_prototype) {
+        amplitudes = {1e-5};
+        level_drops = {0};
+        denorm_positions = {m2424::BootstrapDenormalizationPosition::BeforeSlotToCoeff};
+        evalmod_degrees = {m2424::EvalModDegree::P3};
+        period_cases = {{m2424::BootstrapPeriodMode::SourceCoeffModulus, 0.0}};
+        plain_scale_log2_values = {40.0};
+    }
+
     const auto profile = m2424::profiles::boot_ckks();
-    auto rotation_steps = m2424::BootstrapPrototype::required_rotation_steps(slots);
+    auto rotation_steps = use_slots_to_coeffs_first_prototype
+        ? m2424::bootstrap_plan_rotation_steps(m2424::make_scalable_bootstrap_plan(slots))
+        : m2424::BootstrapPrototype::required_rotation_steps(slots);
     auto adapter = m2424::SealAdapter::create(profile);
     adapter.keygen(rotation_steps, true);
 
@@ -259,20 +272,22 @@ int main() {
     double scaling_best_plain_scale_log2 = profile.scale > 0.0 ? std::log2(profile.scale) : 40.0;
     bool no_period_evalmod_ready = false;
     bool period_evalmod_ready_without_scale = false;
-    if (!scaling_gate_has_pass(adapter,
-                               profile,
-                               slots,
-                               tolerance,
-                               amplitudes,
-                               level_drops,
-                               period_cases,
-                               plain_scale_log2_values,
-                               scaling_best_mode,
-                               scaling_best_period_mode,
-                               scaling_best_manual_period_log2,
-                               scaling_best_plain_scale_log2,
-                               no_period_evalmod_ready,
-                               period_evalmod_ready_without_scale)) {
+    const bool scaling_gate_pass = use_slots_to_coeffs_first_prototype ||
+        scaling_gate_has_pass(adapter,
+                              profile,
+                              slots,
+                              tolerance,
+                              amplitudes,
+                              level_drops,
+                              period_cases,
+                              plain_scale_log2_values,
+                              scaling_best_mode,
+                              scaling_best_period_mode,
+                              scaling_best_manual_period_log2,
+                              scaling_best_plain_scale_log2,
+                              no_period_evalmod_ready,
+                              period_evalmod_ready_without_scale);
+    if (!scaling_gate_pass) {
         std::printf("summary,total_cases,pass_cases,fail_cases,max_final_error,max_evalmod_error,best_mode\n");
         std::printf("%s,0,0,0,0.000000e+00,0.000000e+00,none\n",
                     period_evalmod_ready_without_scale
@@ -282,8 +297,12 @@ int main() {
                         : "blocked_by_evalmod_ready_scaling");
         return 0;
     }
-    period_cases = {{scaling_best_period_mode, scaling_best_manual_period_log2}};
-    plain_scale_log2_values = {scaling_best_plain_scale_log2};
+    if (use_slots_to_coeffs_first_prototype) {
+        scaling_best_mode = "SlotsToCoeffsFirst/FftLike/P3/plain_scale_log2=40";
+    } else {
+        period_cases = {{scaling_best_period_mode, scaling_best_manual_period_log2}};
+        plain_scale_log2_values = {scaling_best_plain_scale_log2};
+    }
 
     std::printf("case,input_kind,amplitude,level_drop,normalization_mode,denormalization_position,evalmod_degree,period_mode,manual_period_log2,plain_scale_log2,chain_before,chain_after,mod_raise_chain_before,mod_raise_chain_after,mod_raise_coeff_modulus_size_before,mod_raise_coeff_modulus_size_after,mod_raise_scale_before,mod_raise_scale_after,bootstrap_period_log2,bootstrap_period,bootstrap_scaling_factor,normalization_factor_log2,factor_times_plain_scale_log2,normalization_scalar_representable,denormalization_scalar_representable,max_abs_input,mod_raise_decoded_max_abs,mod_raise_diagnostic_error,max_abs_after_coeff_to_slot,normalization_factor,max_abs_after_normalization,inside_evalmod_interval,coeff_to_slot_error,normalization_error,evalmod_error,denormalization_error,slot_to_coeff_error,post_refresh_mod_raise_error,final_error,restore_ok,post_depth,post_ops_ok,post_error,exception,status\n");
 
@@ -320,6 +339,10 @@ int main() {
                             bootstrapper.set_manual_period_log2(period_case.manual_period_log2);
                             bootstrapper.set_plain_scale_log2(plain_scale_log2);
                             bootstrapper.set_post_refresh_mod_raise_enabled(false);
+                            if (use_slots_to_coeffs_first_prototype) {
+                                bootstrapper.set_circuit_order(m2424::BootstrapCircuitOrder::SlotsToCoeffsFirst);
+                                bootstrapper.set_transform_backend(m2424::BootstrapTransformBackend::FftLike);
+                            }
                             auto checked = bootstrapper.refresh_cipher_checked(current, expected);
                             const auto after = adapter.info(checked.result);
 

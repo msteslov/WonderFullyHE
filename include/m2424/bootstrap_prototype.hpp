@@ -92,6 +92,8 @@ public:
 private:
     BootstrapPrototypeReport refresh_impl(const ComplexVector& input, bool checked) const;
     BootstrapPrototypeReport refresh_cipher_impl(const Cipher& input, const ComplexVector* expected) const;
+    BootstrapPrototypeReport refresh_cipher_slots_to_coeffs_first_impl(const Cipher& input,
+                                                                        const ComplexVector* expected) const;
     Cipher apply_normalization(const Cipher& input, double factor) const;
 
     SealAdapter& adapter_;
