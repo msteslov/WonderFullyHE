@@ -253,4 +253,35 @@ BootstrapScaleStrategyPlan plan_bootstrap_scale_strategy(const std::vector<int>&
     return plan;
 }
 
+BootstrapEvalModCapacityPlan plan_evalmod_first_multiply_capacity(
+    const std::vector<int>& active_coeff_modulus_bits,
+    const BootstrapScaleStrategyPlan& scale_plan,
+    double margin_log2) {
+    if (!std::isfinite(margin_log2) || margin_log2 < 0.0) {
+        throw std::invalid_argument("EvalMod capacity margin must be finite and non-negative");
+    }
+
+    BootstrapEvalModCapacityPlan plan;
+    plan.margin_log2 = margin_log2;
+    plan.first_product_scale_log2 = 2.0 * scale_plan.scale_after_squash_log2;
+
+    if (!scale_plan.feasible) {
+        plan.blocker = "scale_strategy_not_feasible";
+        return plan;
+    }
+    if (scale_plan.total_levels_needed > active_coeff_modulus_bits.size()) {
+        plan.blocker = "not_enough_active_moduli";
+        return plan;
+    }
+
+    const std::size_t remaining_moduli = active_coeff_modulus_bits.size() - scale_plan.total_levels_needed;
+    for (std::size_t i = 0; i < remaining_moduli; ++i) {
+        plan.remaining_coeff_modulus_log2 += static_cast<double>(active_coeff_modulus_bits[i]);
+    }
+    plan.first_multiply_ready =
+        plan.first_product_scale_log2 + margin_log2 <= plan.remaining_coeff_modulus_log2;
+    plan.blocker = plan.first_multiply_ready ? "none" : "first_evalmod_multiply_scale";
+    return plan;
+}
+
 } // namespace m2424
