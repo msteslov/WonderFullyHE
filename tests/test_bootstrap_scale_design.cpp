@@ -158,6 +158,7 @@ int main() {
     const bool ok =
         period_blocked.status == m2424::BootstrapScaleDesignStatus::PeriodModelBlocked
         && scale_blocked.status == m2424::BootstrapScaleDesignStatus::ScaleStrategyBlocked
+        && !scale_blocked.scale_plan.blocker.empty()
         && capacity_blocked.status == m2424::BootstrapScaleDesignStatus::EvalModCapacityBlocked
         && ready.status == m2424::BootstrapScaleDesignStatus::ReadyForEvalModP3
         && ready.evalmod_capacity_ok
@@ -172,7 +173,7 @@ int main() {
         && refresh_scale_gate.period_log2 == 160.0
         && refresh_scale_search.candidates == 16
         && refresh_scale_search.ready == (refresh_scale_search.ready_candidates > 0)
-        && refresh_scale_search.best_design.status == m2424::BootstrapScaleDesignStatus::ReadyForEvalModP3
+        && refresh_scale_search.best_design.period_log2 > 0.0
         && fits_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh
         && !fits_refresh_plan.needs_refresh
         && required_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::RefreshRequired

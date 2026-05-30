@@ -241,10 +241,13 @@ BootstrapScaleStrategyPlan plan_bootstrap_scale_strategy(const std::vector<int>&
     if (!plan.scalar_representable) {
         plan.blocker = "scalar_not_representable";
     } else if (plan.scalar_levels_needed > plan.max_consumable_levels) {
+        plan.missing_scalar_levels = plan.scalar_levels_needed - plan.max_consumable_levels;
         plan.blocker = "not_enough_levels_for_scalar";
     } else if (plan.required_drop_log2 > plan.available_drop_log2) {
+        plan.missing_drop_log2 = plan.required_drop_log2 - plan.available_drop_log2;
         plan.blocker = "not_enough_levels_for_scale";
     } else if (plan.total_levels_needed > plan.max_consumable_levels) {
+        plan.missing_total_levels = plan.total_levels_needed - plan.max_consumable_levels;
         plan.blocker = "not_enough_levels_for_scalar_and_scale";
     } else {
         plan.feasible = true;

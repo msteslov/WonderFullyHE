@@ -50,8 +50,11 @@ struct BootstrapScaleStrategyPlan {
     std::size_t scale_squash_levels_needed{};
     double required_drop_log2{};
     double available_drop_log2{};
+    double missing_drop_log2{};
     double scale_after_scalar_log2{};
     double scale_after_squash_log2{};
+    std::size_t missing_scalar_levels{};
+    std::size_t missing_total_levels{};
     bool scalar_representable{};
     bool feasible{};
     std::string blocker;

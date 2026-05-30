@@ -231,7 +231,7 @@ Chebyshev/minimax-полиномы стоит использовать как of
 
 `plan_bootstrap_refresh_scale_gate` проверяет уже собранные stage facts для prototype-refresh: period, active modulus bits, normalization levels и capacity первого `EvalMod` multiplication.
 
-`search_bootstrap_refresh_scale_gate` перебирает допустимые `period_mode`, manual period, plaintext scale и target scale, возвращая лучший feasible design или ближайший blocker. Это diagnostic layer для выбора следующего scale-management шага без слепого запуска full refresh.
+`search_bootstrap_refresh_scale_gate` перебирает допустимые `period_mode`, manual period, plaintext scale и target scale, возвращая лучший feasible design или ближайший blocker. Scale diagnostics включают `missing_drop_log2`, `missing_scalar_levels` и `missing_total_levels`, чтобы выбирать следующий scale-management шаг без слепого запуска full refresh.
 
 Модуль `m2424::BootstrapPrototype` оставлен как внутренний проверочный harness. Текущий `CoeffToSlot/SlotToCoeff` строится через dense diagonal transform и годится как reference для маленьких `slots`; production path должен перейти на настоящий factorized FFT-like backend с sparse layers, BSGS/hoisting и ограниченным набором rotation keys.
 
