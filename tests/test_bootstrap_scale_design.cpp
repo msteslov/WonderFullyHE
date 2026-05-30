@@ -104,6 +104,20 @@ int main() {
         make_info(40.0, 3, 4, 200.0),
         1.0e-5
     });
+    const auto refresh_scale_search = m2424::search_bootstrap_refresh_scale_gate({
+        profile,
+        make_info(40.0, 1, 2, 100.0),
+        make_info(40.0, 3, 4, 200.0),
+        make_info(40.0, 3, 4, 200.0),
+        1.0e-5,
+        {
+            m2424::BootstrapPeriodMode::TotalCoeffModulus,
+            m2424::BootstrapPeriodMode::ManualPowerOfTwo
+        },
+        {20.0, 40.0, 160.0},
+        {40.0, 80.0},
+        {40.0, 60.0}
+    });
 
     m2424::CkksOperationBudget small_budget;
     small_budget.ciphertext_muls = 2;
@@ -156,6 +170,9 @@ int main() {
         && active_bits == std::vector<int>({60, 40, 40})
         && refresh_scale_gate.status == m2424::BootstrapScaleDesignStatus::ScaleStrategyBlocked
         && refresh_scale_gate.period_log2 == 160.0
+        && refresh_scale_search.candidates == 16
+        && refresh_scale_search.ready == (refresh_scale_search.ready_candidates > 0)
+        && refresh_scale_search.best_design.status == m2424::BootstrapScaleDesignStatus::ReadyForEvalModP3
         && fits_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh
         && !fits_refresh_plan.needs_refresh
         && required_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::RefreshRequired

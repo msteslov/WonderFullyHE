@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <stdexcept>
+#include <utility>
 
 namespace m2424 {
 
@@ -385,6 +387,111 @@ BootstrapScaleDesign plan_bootstrap_refresh_scale_gate(const BootstrapRefreshSca
         request.max_abs_before_normalization,
         request.min_chain_remaining,
         request.evalmod_capacity_margin_log2);
+}
+
+BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
+    const BootstrapRefreshScaleGateSearchRequest& request) {
+    if (request.period_modes.empty()) {
+        throw std::invalid_argument("bootstrap scale gate search period modes must not be empty");
+    }
+    if (request.plain_scale_log2_values.empty()) {
+        throw std::invalid_argument("bootstrap scale gate search plain scale values must not be empty");
+    }
+    if (request.target_scale_log2_values.empty()) {
+        throw std::invalid_argument("bootstrap scale gate search target scale values must not be empty");
+    }
+
+    const auto active_bits = active_coeff_modulus_bits(request.profile, request.slot_domain_info);
+    BootstrapRefreshScaleGateSearchResult result;
+    double best_score = -std::numeric_limits<double>::infinity();
+
+    const auto consider = [&](BootstrapPeriodMode period_mode,
+                              double manual_period_log2,
+                              double period_log2,
+                              double plain_scale_log2,
+                              double target_scale_log2) {
+        auto design = make_bootstrap_scale_design(
+            period_mode,
+            manual_period_log2,
+            period_log2,
+            request.normalization_strategy,
+            plain_scale_log2,
+            target_scale_log2,
+            request.evalmod_degree,
+            active_bits,
+            request.slot_domain_info,
+            request.max_abs_before_normalization,
+            request.min_chain_remaining,
+            request.evalmod_capacity_margin_log2);
+        ++result.candidates;
+
+        const bool ready = design.status == BootstrapScaleDesignStatus::ReadyForEvalModP3;
+        if (ready) {
+            ++result.ready_candidates;
+        }
+
+        double score = 0.0;
+        if (ready) {
+            score += 1'000'000.0;
+            score += static_cast<double>(design.chain_remaining_after_strategy) * 1'000.0;
+            score += design.evalmod_capacity.margin_log2;
+            score -= std::abs(design.target_scale_log2 - 40.0);
+            score -= 0.01 * design.plain_scale_log2;
+        } else {
+            score += design.magnitude_ok ? 10'000.0 : 0.0;
+            score += design.scale_strategy_ok ? 1'000.0 : 0.0;
+            score += design.evalmod_capacity_ok ? 100.0 : 0.0;
+            score -= static_cast<double>(design.required_levels) * 10.0;
+            score += static_cast<double>(design.chain_remaining_after_strategy);
+            score -= 0.01 * design.plain_scale_log2;
+        }
+
+        if (result.candidates == 1 || score > best_score) {
+            best_score = score;
+            result.best_design = std::move(design);
+            result.ready = ready;
+        } else if (ready) {
+            result.ready = true;
+        }
+    };
+
+    for (BootstrapPeriodMode period_mode : request.period_modes) {
+        if (period_mode == BootstrapPeriodMode::ManualPowerOfTwo) {
+            if (request.manual_period_log2_values.empty()) {
+                throw std::invalid_argument("manual period search requires manual period values");
+            }
+            for (double manual_period_log2 : request.manual_period_log2_values) {
+                for (double plain_scale_log2 : request.plain_scale_log2_values) {
+                    for (double target_scale_log2 : request.target_scale_log2_values) {
+                        consider(period_mode,
+                                 manual_period_log2,
+                                 manual_period_log2,
+                                 plain_scale_log2,
+                                 target_scale_log2);
+                    }
+                }
+            }
+            continue;
+        }
+
+        const double period_log2 = bootstrap_period_log2(
+            period_mode,
+            0.0,
+            request.profile.coeff_modulus_bits,
+            request.before_mod_raise,
+            request.after_mod_raise);
+        for (double plain_scale_log2 : request.plain_scale_log2_values) {
+            for (double target_scale_log2 : request.target_scale_log2_values) {
+                consider(period_mode,
+                         0.0,
+                         period_log2,
+                         plain_scale_log2,
+                         target_scale_log2);
+            }
+        }
+    }
+
+    return result;
 }
 
 } // namespace m2424

@@ -130,6 +130,29 @@ struct BootstrapRefreshScaleGateRequest {
     double evalmod_capacity_margin_log2{2.0};
 };
 
+struct BootstrapRefreshScaleGateSearchRequest {
+    CkksProfile profile;
+    CipherInfo before_mod_raise;
+    CipherInfo after_mod_raise;
+    CipherInfo slot_domain_info;
+    double max_abs_before_normalization{};
+    std::vector<BootstrapPeriodMode> period_modes{BootstrapPeriodMode::TotalCoeffModulus};
+    std::vector<double> manual_period_log2_values;
+    std::vector<double> plain_scale_log2_values{40.0, 50.0, 60.0, 80.0, 100.0, 120.0, 160.0, 200.0, 240.0};
+    std::vector<double> target_scale_log2_values{30.0, 40.0, 50.0, 60.0};
+    BootstrapScalingStrategy normalization_strategy{BootstrapScalingStrategy::DecomposedPlainMultiplyRescale};
+    EvalModDegree evalmod_degree{EvalModDegree::P3};
+    std::size_t min_chain_remaining{};
+    double evalmod_capacity_margin_log2{2.0};
+};
+
+struct BootstrapRefreshScaleGateSearchResult {
+    BootstrapScaleDesign best_design;
+    std::size_t candidates{};
+    std::size_t ready_candidates{};
+    bool ready{};
+};
+
 const char* to_string(BootstrapValueDomain domain) noexcept;
 const char* to_string(BootstrapTransformBackend backend) noexcept;
 const char* to_string(BootstrapScalingStrategy strategy) noexcept;
@@ -165,5 +188,7 @@ BootstrapPeriodFeasibilityWindow bootstrap_period_feasibility_window(
 
 BootstrapRefreshPlanningResult plan_bootstrap_refresh(const BootstrapRefreshPlanningRequest& request);
 BootstrapScaleDesign plan_bootstrap_refresh_scale_gate(const BootstrapRefreshScaleGateRequest& request);
+BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
+    const BootstrapRefreshScaleGateSearchRequest& request);
 
 } // namespace m2424

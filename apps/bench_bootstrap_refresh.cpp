@@ -119,21 +119,34 @@ int main() {
         const auto slot_domain_info = adapter.info(slot_domain);
         const double max_abs_before_normalization =
             max_abs_value(head(adapter.decode_complex(adapter.decrypt(slot_domain)), slots));
-        const auto scale_design = m2424::plan_bootstrap_refresh_scale_gate({
+        const auto scale_search = m2424::search_bootstrap_refresh_scale_gate({
             profile,
             before,
             after_mod_raise,
             slot_domain_info,
-            max_abs_before_normalization
+            max_abs_before_normalization,
+            {
+                m2424::BootstrapPeriodMode::TotalCoeffModulus,
+                m2424::BootstrapPeriodMode::SourceCoeffModulus,
+                m2424::BootstrapPeriodMode::DroppedPrimeProduct,
+                m2424::BootstrapPeriodMode::LastPrime,
+                m2424::BootstrapPeriodMode::ManualPowerOfTwo
+            },
+            {200.0, 220.0, 240.0, 260.0, 280.0, 300.0, 320.0, 340.0}
         });
+        const auto& scale_design = scale_search.best_design;
 
-        std::printf("scale_gate,status,period_log2,max_abs_before_normalization,required_levels,chain_remaining_after_strategy,blocker\n");
-        std::printf("experimental_refresh,%s,%.6e,%.6e,%zu,%zu,%s\n",
+        std::printf("scale_gate,status,period_log2,plain_scale_log2,target_scale_log2,max_abs_before_normalization,required_levels,chain_remaining_after_strategy,candidates,ready_candidates,blocker\n");
+        std::printf("experimental_refresh,%s,%.6e,%.6e,%.6e,%.6e,%zu,%zu,%zu,%zu,%s\n",
                     m2424::to_string(scale_design.status),
                     scale_design.period_log2,
+                    scale_design.plain_scale_log2,
+                    scale_design.target_scale_log2,
                     max_abs_before_normalization,
                     scale_design.required_levels,
                     scale_design.chain_remaining_after_strategy,
+                    scale_search.candidates,
+                    scale_search.ready_candidates,
                     csv_safe(scale_design.blocker).c_str());
 
         if (scale_design.status != m2424::BootstrapScaleDesignStatus::ReadyForEvalModP3) {
@@ -154,8 +167,8 @@ int main() {
             return 0;
         }
     } catch (const std::exception& error) {
-        std::printf("scale_gate,status,period_log2,max_abs_before_normalization,required_levels,chain_remaining_after_strategy,blocker\n");
-        std::printf("experimental_refresh,preflight_exception,0.000000e+00,0.000000e+00,0,0,%s\n",
+        std::printf("scale_gate,status,period_log2,plain_scale_log2,target_scale_log2,max_abs_before_normalization,required_levels,chain_remaining_after_strategy,candidates,ready_candidates,blocker\n");
+        std::printf("experimental_refresh,preflight_exception,0.000000e+00,0.000000e+00,0.000000e+00,0.000000e+00,0,0,0,0,%s\n",
                     csv_safe(error.what()).c_str());
         std::printf("summary,profile,slots,tolerance,rotation_keys,plan_ms,keygen_ms,refresh_ms,chain_before,chain_after,scale_before,scale_after,normalization_factor,status\n");
         std::printf("refresh,boot_ckks,%zu,%.6e,%zu,%.6f,%.6f,%.6f,%zu,%zu,%.6e,%.6e,%.6e,blocked_by_scale_gate_exception\n",

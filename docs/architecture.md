@@ -118,6 +118,8 @@ Full refresh не считается стабильным API, пока `bench_b
 
 `plan_bootstrap_refresh_scale_gate` является вторым gate для prototype-refresh: принимает факты после `ModRaise -> CoeffToSlot`, считает period/scaling design и блокирует запуск, если normalization scalar, остаток levels или capacity первого `EvalMod` multiplication не проходят.
 
+`search_bootstrap_refresh_scale_gate` добавляет controlled sweep по period/plain-scale/target-scale и возвращает лучший design. Его задача - показать, существует ли feasible scale-management case при текущем profile/path, и если нет, какой blocker ближайший.
+
 Для `EvalMod` default-полиномом остаётся `P3`, пока нормализованный вход удовлетворяет `|u| <= 2^-10`. На этом интервале математическая ошибка аппроксимации около `1e-14`, поэтому для target `1e-9` bottleneck находится в CKKS scale/noise и линейных трансформах, а не в степени полинома.
 
 ### Parameter planning
