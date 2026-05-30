@@ -1,10 +1,15 @@
 #include "m2424/bootstrap.hpp"
+#include "m2424/diagonal_transform.hpp"
+#include "m2424/eval_mod.hpp"
 #include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <exception>
+#include <string>
 #include <vector>
 
 namespace {
@@ -27,19 +32,45 @@ std::vector<double> make_input(std::size_t slots, double amplitude) {
     return input;
 }
 
+m2424::ComplexVector head(m2424::ComplexVector values, std::size_t n) {
+    values.resize(std::min(values.size(), n));
+    return values;
+}
+
+double max_abs_value(const m2424::ComplexVector& values) {
+    double result = 0.0;
+    for (const auto& value : values) {
+        result = std::max(result, std::abs(value));
+    }
+    return result;
+}
+
+std::vector<int> active_coeff_modulus_bits(const m2424::CkksProfile& profile,
+                                           const m2424::CipherInfo& info) {
+    const std::size_t active_size = std::min(info.coeff_modulus_size, profile.coeff_modulus_bits.size());
+    return {profile.coeff_modulus_bits.begin(),
+            profile.coeff_modulus_bits.begin() + static_cast<std::ptrdiff_t>(active_size)};
+}
+
+std::string csv_safe(std::string value) {
+    std::replace(value.begin(), value.end(), ',', ';');
+    return value;
+}
+
 } // namespace
 
 int main() {
     constexpr std::size_t slots = 16;
     constexpr double tolerance = 2e-5;
     constexpr double amplitude = 1e-5;
+    const auto profile = m2424::profiles::boot_ckks();
 
     std::vector<int> rotation_steps;
     const double plan_ms = elapsed_ms([&] {
         rotation_steps = m2424::Bootstrapper::refresh_rotation_steps(slots);
     });
 
-    auto adapter = m2424::SealAdapter::create(m2424::profiles::boot_ckks());
+    auto adapter = m2424::SealAdapter::create(profile);
     const double keygen_ms = elapsed_ms([&] {
         adapter.keygen(rotation_steps, true);
     });
@@ -47,14 +78,144 @@ int main() {
     const auto input = make_input(slots, amplitude);
     auto encrypted = adapter.encrypt(adapter.encode(input));
     auto lowered = adapter.mul_plain_rescale(encrypted, adapter.encode_scalar_like(1.0, encrypted));
+    const auto before = adapter.info(lowered);
 
     m2424::Bootstrapper bootstrapper(adapter);
-    m2424::BootstrapPrototypeReport report;
-    const double refresh_ms = elapsed_ms([&] {
-        report = bootstrapper.refresh(lowered, slots, tolerance);
-    });
 
-    const auto before = adapter.info(lowered);
+    m2424::CkksOperationBudget continuation_budget;
+    continuation_budget.ciphertext_muls = before.chain_index + 1;
+    const auto refresh_plan = bootstrapper.plan_refresh_for_budget(lowered,
+                                                                   continuation_budget,
+                                                                   1e-9,
+                                                                   adapter.slot_count());
+
+    std::printf("planner,status,required_levels,available_levels,needs_refresh,planned_work_bits,estimated_abs_error_bound,blocker\n");
+    std::printf("refresh_gate,%s,%zu,%zu,%s,%d,%.6e,%s\n",
+                m2424::to_string(refresh_plan.status),
+                refresh_plan.required_compute_levels,
+                refresh_plan.available_compute_levels,
+                refresh_plan.needs_refresh ? "true" : "false",
+                refresh_plan.parameter_plan.selected_work_bits,
+                refresh_plan.parameter_plan.estimated_abs_error_bound,
+                refresh_plan.blocker.c_str());
+
+    if (refresh_plan.status != m2424::BootstrapRefreshPlanningStatus::RefreshRequired) {
+        std::printf("summary,profile,slots,tolerance,rotation_keys,plan_ms,keygen_ms,refresh_ms,chain_before,chain_after,scale_before,scale_after,normalization_factor,status\n");
+        std::printf("refresh,boot_ckks,%zu,%.6e,%zu,%.6f,%.6f,%.6f,%zu,%zu,%.6e,%.6e,%.6e,%s\n",
+                    slots,
+                    tolerance,
+                    rotation_steps.size(),
+                    plan_ms,
+                    keygen_ms,
+                    0.0,
+                    before.chain_index,
+                    before.chain_index,
+                    before.scale,
+                    before.scale,
+                    1.0,
+                    m2424::to_string(refresh_plan.status));
+        return 0;
+    }
+
+    try {
+        auto raised = adapter.mod_raise_to_first(lowered);
+        const auto after_mod_raise = adapter.info(raised);
+        auto coeff_to_slot = m2424::DiagonalLinearTransform::from_matrix(
+            m2424::canonical_embedding_matrix(slots));
+        auto slot_domain = coeff_to_slot.apply(adapter, raised);
+        const auto slot_domain_info = adapter.info(slot_domain);
+        const double max_abs_before_normalization =
+            max_abs_value(head(adapter.decode_complex(adapter.decrypt(slot_domain)), slots));
+        const double period_log2 = m2424::bootstrap_period_log2(
+            m2424::BootstrapPeriodMode::TotalCoeffModulus,
+            0.0,
+            profile.coeff_modulus_bits,
+            before,
+            after_mod_raise);
+        const auto scale_design = m2424::make_bootstrap_scale_design(
+            m2424::BootstrapPeriodMode::TotalCoeffModulus,
+            0.0,
+            period_log2,
+            m2424::BootstrapScalingStrategy::DecomposedPlainMultiplyRescale,
+            40.0,
+            60.0,
+            m2424::EvalModDegree::P3,
+            active_coeff_modulus_bits(profile, slot_domain_info),
+            slot_domain_info,
+            max_abs_before_normalization,
+            0,
+            2.0);
+
+        std::printf("scale_gate,status,period_log2,max_abs_before_normalization,required_levels,chain_remaining_after_strategy,blocker\n");
+        std::printf("experimental_refresh,%s,%.6e,%.6e,%zu,%zu,%s\n",
+                    m2424::to_string(scale_design.status),
+                    scale_design.period_log2,
+                    max_abs_before_normalization,
+                    scale_design.required_levels,
+                    scale_design.chain_remaining_after_strategy,
+                    csv_safe(scale_design.blocker).c_str());
+
+        if (scale_design.status != m2424::BootstrapScaleDesignStatus::ReadyForEvalModP3) {
+            std::printf("summary,profile,slots,tolerance,rotation_keys,plan_ms,keygen_ms,refresh_ms,chain_before,chain_after,scale_before,scale_after,normalization_factor,status\n");
+            std::printf("refresh,boot_ckks,%zu,%.6e,%zu,%.6f,%.6f,%.6f,%zu,%zu,%.6e,%.6e,%.6e,blocked_by_scale_gate:%s\n",
+                        slots,
+                        tolerance,
+                        rotation_steps.size(),
+                        plan_ms,
+                        keygen_ms,
+                        0.0,
+                        before.chain_index,
+                        before.chain_index,
+                        before.scale,
+                        before.scale,
+                        1.0,
+                        m2424::to_string(scale_design.status));
+            return 0;
+        }
+    } catch (const std::exception& error) {
+        std::printf("scale_gate,status,period_log2,max_abs_before_normalization,required_levels,chain_remaining_after_strategy,blocker\n");
+        std::printf("experimental_refresh,preflight_exception,0.000000e+00,0.000000e+00,0,0,%s\n",
+                    csv_safe(error.what()).c_str());
+        std::printf("summary,profile,slots,tolerance,rotation_keys,plan_ms,keygen_ms,refresh_ms,chain_before,chain_after,scale_before,scale_after,normalization_factor,status\n");
+        std::printf("refresh,boot_ckks,%zu,%.6e,%zu,%.6f,%.6f,%.6f,%zu,%zu,%.6e,%.6e,%.6e,blocked_by_scale_gate_exception\n",
+                    slots,
+                    tolerance,
+                    rotation_steps.size(),
+                    plan_ms,
+                    keygen_ms,
+                    0.0,
+                    before.chain_index,
+                    before.chain_index,
+                    before.scale,
+                    before.scale,
+                    1.0);
+        return 0;
+    }
+
+    m2424::BootstrapPrototypeReport report;
+    double refresh_ms{};
+    try {
+        refresh_ms = elapsed_ms([&] {
+            report = bootstrapper.refresh(lowered, slots, tolerance);
+        });
+    } catch (const std::exception& error) {
+        std::printf("summary,profile,slots,tolerance,rotation_keys,plan_ms,keygen_ms,refresh_ms,chain_before,chain_after,scale_before,scale_after,normalization_factor,status\n");
+        std::printf("refresh,boot_ckks,%zu,%.6e,%zu,%.6f,%.6f,%.6f,%zu,%zu,%.6e,%.6e,%.6e,exception:%s\n",
+                    slots,
+                    tolerance,
+                    rotation_steps.size(),
+                    plan_ms,
+                    keygen_ms,
+                    0.0,
+                    before.chain_index,
+                    before.chain_index,
+                    before.scale,
+                    before.scale,
+                    1.0,
+                    error.what());
+        return 1;
+    }
+
     const auto after = adapter.info(report.result);
 
     std::printf("summary,profile,slots,tolerance,rotation_keys,plan_ms,keygen_ms,refresh_ms,chain_before,chain_after,scale_before,scale_after,normalization_factor,status\n");

@@ -77,7 +77,7 @@ cmake --build build -j
 
 `bench_bootstrap_scaling` является обязательным gate перед full refresh: он выполняет только `encrypt -> lower level -> ModRaise -> CoeffToSlot -> normalization -> decrypt/check` и проверяет, представим ли normalization scalar при выбранных `period_mode` и `plain_scale_log2`. Tiny scalar больше не выполняется одним plaintext multiply: scaling layer раскладывает его на несколько `mul_plain_rescale` шагов по доступной modulus capacity.
 
-`bench_bootstrap_full` и `bench_bootstrap_refresh` оставлены как experimental harness для разработки конвейера. Они не являются доказательством корректного bootstrapping, пока `bench_bootstrap_scaling` блокирует full validation.
+`bench_bootstrap_full` и `bench_bootstrap_refresh` оставлены как experimental harness для разработки конвейера. `bench_bootstrap_refresh` сначала печатает operation-budget gate, затем scale gate, и не запускает experimental refresh, если следующий блок помещается без refresh или текущий prototype-refresh заблокирован. Эти harness не являются доказательством корректного bootstrapping, пока `bench_bootstrap_scaling` блокирует full validation.
 
 `bench_bootstrap_validation` сначала запускает внутренний scaling gate. Если нет real period-mode с `evalmod_ready=true`, benchmark печатает `blocked_by_evalmod_ready_scaling` или `blocked_by_period_model` и не выполняет `EvalMod`, `SlotToCoeff` и post-refresh continuation. После прохождения gate full validation запускается только на выбранном scaling mode, а не на полном diagnostic sweep.
 

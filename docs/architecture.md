@@ -183,7 +183,7 @@ poly_modulus_degree = минимальный N, проходящий security
 - `bench_chain_accuracy` калибрует связь между chain length, `scale_log2`, рабочей битностью и точностью.
 - `bench_parameter_planner` проверяет выбранные planner-ом профили на реальном SEAL-прогоне.
 - `bench_bootstrap_parts` измеряет `mul_plain_rescale`, `linear_transform`, `sum_slots` и `polynomial_eval`.
-- `bench_bootstrap_refresh` измеряет experimental путь `Bootstrapper::refresh`.
+- `bench_bootstrap_refresh` сначала проверяет `Bootstrapper::plan_refresh_for_budget`, затем локальный scale gate для текущего prototype-refresh. Experimental refresh запускается только если следующий блок требует refresh и scale gate готов к `EvalMod`; иначе benchmark печатает blocker и завершается без падения.
 - `bench_parallel_throughput` измеряет throughput при параллельной обработке независимых ciphertext.
 - `demo_profile_report` печатает таблицу CKKS-параметров.
 
