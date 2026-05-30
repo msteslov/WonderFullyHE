@@ -48,19 +48,35 @@ void test_checked_evaluator_tracking() {
     auto cipher = adapter.encrypt(adapter.encode(input));
     m2424::CheckedEvaluator checked(adapter, payload_size, 1e-5);
 
+    auto shift_plain = adapter.encode_like(std::vector<double>(payload_size, 0.01), cipher);
+    std::vector<double> add_plain_expected;
+    add_plain_expected.reserve(payload_size);
+    for (double value : input) {
+        add_plain_expected.push_back(value + 0.01);
+    }
+    auto add_plain_result = checked.add_plain(cipher, shift_plain, add_plain_expected);
+
     std::vector<double> add_expected;
     add_expected.reserve(payload_size);
-    for (double value : input) {
+    for (double value : add_plain_expected) {
         add_expected.push_back(value + value);
     }
-    auto add_result = checked.add(cipher, cipher, add_expected);
+    auto add_result = checked.add(add_plain_result.cipher, add_plain_result.cipher, add_expected);
+
+    auto scalar_plain = adapter.encode_scalar_like(1.25, add_result.cipher);
+    std::vector<double> mul_plain_expected;
+    mul_plain_expected.reserve(payload_size);
+    for (double value : add_expected) {
+        mul_plain_expected.push_back(1.25 * value);
+    }
+    auto mul_plain_result = checked.mul_plain_rescale(add_result.cipher, scalar_plain, mul_plain_expected);
 
     std::vector<double> mul_expected;
     mul_expected.reserve(payload_size);
-    for (double value : add_expected) {
+    for (double value : mul_plain_expected) {
         mul_expected.push_back(value * value);
     }
-    auto mul_result = checked.mul(add_result.cipher, add_result.cipher, mul_expected);
+    auto mul_result = checked.mul(mul_plain_result.cipher, mul_plain_result.cipher, mul_expected);
 
     std::vector<double> rotate_expected;
     rotate_expected.reserve(payload_size);
@@ -75,9 +91,10 @@ void test_checked_evaluator_tracking() {
 
     const auto& budget = checked.operation_budget();
     require(budget.additions == 4, "tracked additions mismatch");
+    require(budget.plaintext_additions == 1, "tracked plaintext additions mismatch");
     require(budget.ciphertext_muls == 1, "tracked ciphertext mul mismatch");
+    require(budget.plaintext_mul_rescales == 1, "tracked plaintext mul mismatch");
     require(budget.rotations == 4, "tracked rotations mismatch");
-    require(budget.plaintext_mul_rescales == 0, "tracked plaintext mul mismatch");
 
     m2424::CkksPlanningRequest request;
     request.target_error = 1e-9;
@@ -86,14 +103,14 @@ void test_checked_evaluator_tracking() {
     request.use_operation_budget = true;
     request.operation_budget = budget;
     const auto plan = m2424::plan_ckks_parameters(request);
-    require(plan.selected_work_levels == 1, "tracked budget level plan mismatch");
+    require(plan.selected_work_levels == 2, "tracked budget level plan mismatch");
     require(plan.passes_target_error, "tracked budget should pass target");
 
     const auto refresh_plan = checked.plan_refresh_for_tracked_budget(
         adapter.info(sum_result.cipher),
         1e-9,
         4096);
-    require(refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh,
+    require(refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::RefreshRequired,
             "checked evaluator refresh planning mismatch");
 }
 

@@ -26,7 +26,11 @@ public:
 
     CheckedResult add(const Cipher& lhs, const Cipher& rhs, const std::vector<double>& expected);
     CheckedResult sub(const Cipher& lhs, const Cipher& rhs, const std::vector<double>& expected);
+    CheckedResult add_plain(const Cipher& lhs, const Plain& rhs, const std::vector<double>& expected);
+    CheckedResult sub_plain(const Cipher& lhs, const Plain& rhs, const std::vector<double>& expected);
     CheckedResult mul(const Cipher& lhs, const Cipher& rhs, const std::vector<double>& expected);
+    CheckedResult mul_plain_rescale(const Cipher& lhs, const Plain& rhs, const std::vector<double>& expected);
+    CheckedResult rescale_to_next(const Cipher& input, const std::vector<double>& expected);
     CheckedResult rotate(const Cipher& input, int steps, const std::vector<double>& expected);
     CheckedResult sum_slots(const Cipher& input, std::size_t slot_count, const std::vector<double>& expected);
     CheckedResult linear_transform(const Cipher& input, const LinearTransform& transform,
