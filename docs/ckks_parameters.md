@@ -157,7 +157,7 @@ security_bits
     -> poly_modulus_degree, coeff_modulus_bits, scale
 ```
 
-Тогда готовые профили останутся удобными пресетами, а не основным способом подбора параметров.
+Для реального pipeline вместо грубого `ops_profile` нужно передавать `CkksOperationBudget` с количеством `add/sub`, plaintext ops, ciphertext multiplications, plaintext-rescale шагов, explicit rescale, mod-switch, rotations, linear transforms и EvalMod/refresh стадий. Тогда готовые профили останутся удобными пресетами, а не основным способом подбора параметров.
 
 ## Эксперимент с глубиной
 
@@ -172,6 +172,8 @@ x -> x^2 -> x^4 -> x^8 -> x^16
 Этот эксперимент задаёт базовую точку для bootstrapping-модуля: после исчерпания уровней дальнейшее ciphertext-ciphertext умножение требует обновления ciphertext.
 
 `bench_chain_accuracy` отделяет влияние длины chain от влияния масштаба. Контролируемый sweep показал: при фиксированном `scale` и одинаковых рабочих модулях увеличение chain почти не меняет ошибку фиксированной глубины; оно только позволяет выполнить больше последовательных `mul + rescale`.
+
+`bench_parameter_planner` проверяет выбранные planner-ом профили на реальном SEAL-прогоне и печатает одновременно `estimated_abs_error_bound` и measured `max_abs_error`.
 
 ## Проверка параметров
 

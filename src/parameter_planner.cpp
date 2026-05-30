@@ -1,5 +1,6 @@
 #include "m2424/parameter_planner.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <stdexcept>
@@ -112,6 +113,29 @@ int calibrated_loss_bits(PlanningOperationProfile profile) {
     return 14;
 }
 
+int calibrated_loss_bits(const CkksOperationBudget& budget) {
+    int loss = 8;
+    loss += static_cast<int>((budget.additions + 7) / 8);
+    loss += static_cast<int>((budget.plaintext_additions + 7) / 8);
+    loss += static_cast<int>(3 * budget.ciphertext_muls);
+    loss += static_cast<int>(2 * budget.plaintext_mul_rescales);
+    loss += static_cast<int>(2 * budget.rescale_to_next);
+    loss += static_cast<int>((budget.mod_switches + 3) / 4);
+    loss += static_cast<int>((budget.rotations + 1) / 2);
+    loss += static_cast<int>(6 * budget.linear_transforms);
+    loss += static_cast<int>(10 * budget.evalmod_p3);
+    loss += static_cast<int>(24 * budget.bootstrap_refreshes);
+    return loss;
+}
+
+std::size_t estimated_level_budget(const CkksOperationBudget& budget) {
+    return budget.ciphertext_muls
+        + budget.plaintext_mul_rescales
+        + budget.rescale_to_next
+        + budget.linear_transforms
+        + 3 * budget.evalmod_p3;
+}
+
 CkksPlanningResult plan_ckks_parameters(const CkksPlanningRequest& request) {
     if (request.multiplicative_depth == 0) {
         throw std::invalid_argument("multiplicative_depth must be positive");
@@ -121,7 +145,9 @@ CkksPlanningResult plan_ckks_parameters(const CkksPlanningRequest& request) {
     const int result_bits = required_result_bits(request.target_error);
     const int loss_bits = request.calibrated_loss_bits_override >= 0
         ? request.calibrated_loss_bits_override
-        : calibrated_loss_bits(request.operation_profile);
+        : request.use_operation_budget
+            ? calibrated_loss_bits(request.operation_budget)
+            : calibrated_loss_bits(request.operation_profile);
     if (loss_bits < 0) {
         throw std::invalid_argument("calibrated loss bits must be non-negative");
     }
@@ -133,22 +159,36 @@ CkksPlanningResult plan_ckks_parameters(const CkksPlanningRequest& request) {
     if (work_bits > 60) {
         throw std::invalid_argument("requested target requires work_bits > 60; increase strategy is unsupported");
     }
+    const int estimated_precision_bits = work_bits - loss_bits;
+    const double estimated_abs_error_bound = std::exp2(-static_cast<double>(estimated_precision_bits));
+    const bool passes_target_error = estimated_abs_error_bound <= request.target_error;
+
+    const std::size_t work_levels = request.use_operation_budget
+        ? std::max(request.multiplicative_depth, estimated_level_budget(request.operation_budget))
+        : request.multiplicative_depth;
+    if (work_levels == 0) {
+        throw std::invalid_argument("estimated work levels must be positive");
+    }
 
     const std::size_t min_degree = min_poly_degree_for_slots(request.slots);
     for (std::size_t degree : {4096UL, 8192UL, 16384UL, 32768UL}) {
         if (degree < min_degree) {
             continue;
         }
-        auto profile = make_profile(degree, work_bits, request.multiplicative_depth, request.slots);
+        auto profile = make_profile(degree, work_bits, work_levels, request.slots);
         auto security = analyze_security("planned_ckks", profile);
         if (passes_requested_security(security, requested_security)) {
             return CkksPlanningResult{
                 profile,
+                request.target_error,
                 result_bits,
                 loss_bits,
                 work_bits,
                 work_bits,
-                request.multiplicative_depth,
+                estimated_precision_bits,
+                estimated_abs_error_bound,
+                passes_target_error,
+                work_levels,
                 security
             };
         }
@@ -163,6 +203,9 @@ std::string planning_result_summary(const CkksPlanningResult& result) {
         << ",calibrated_loss_bits=" << result.calibrated_loss_bits
         << ",work_bits=" << result.selected_work_bits
         << ",scale_log2=" << result.selected_scale_log2
+        << ",estimated_precision_bits=" << result.estimated_precision_bits
+        << ",estimated_abs_error_bound=" << result.estimated_abs_error_bound
+        << ",passes_target_error=" << (result.passes_target_error ? "true" : "false")
         << ",work_levels=" << result.selected_work_levels
         << ",poly_modulus_degree=" << result.profile.poly_modulus_degree
         << ",slots=" << result.profile.slots

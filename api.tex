@@ -105,6 +105,28 @@ WonderFullyHE реализует библиотечный слой для защ
 практический быстрый режим выбирает рабочие модули около 45 бит и
 \(\log_2(\Delta)\approx45\).
 
+Для нетривиальных программ планировщик должен получать не только
+глубину, но и бюджет операций:
+\[
+    B_{\mathsf{ops}} =
+    (n_{\mathsf{add}}, n_{\mathsf{ptadd}}, n_{\mathsf{ctmul}},
+     n_{\mathsf{ptmul}}, n_{\mathsf{rescale}}, n_{\mathsf{modswitch}},
+     n_{\mathsf{rot}}, n_{\mathsf{linear}}, n_{\mathsf{evalmod}},
+     n_{\mathsf{refresh}}).
+\]
+Именно этот бюджет определяет как потери точности, так и число рабочих
+уровней chain. Грубый \(\mathsf{ops}\)-профиль используется только как
+fallback для простых сценариев.
+
+Результат планирования также содержит оценку:
+\[
+    E_{\mathsf{planned}} = 2^{-b_{\mathsf{work}} + b_{\mathsf{loss}}},
+\]
+и флаг прохождения:
+\[
+    E_{\mathsf{planned}} \leq \varepsilon.
+\]
+
 \section*{Адаптер над Microsoft SEAL}
 
 Создание контекста:
@@ -571,6 +593,8 @@ Microsoft SEAL:
 \texttt{bench\_ckks} & Измерение времени, ошибки и размеров ciphertext/ключей. \\
 \hline
 \texttt{bench\_chain\_accuracy} & Калибровка влияния chain length, scale и рабочей битности на точность. \\
+\hline
+\texttt{bench\_parameter\_planner} & Проверка выбранного планировщиком профиля на SEAL-прогоне. \\
 \hline
 \texttt{bench\_bootstrap\_parts} & Измерение plaintext-умножения, линейного преобразования, суммы слотов и полинома. \\
 \hline

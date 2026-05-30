@@ -122,6 +122,8 @@ ops_profile
 security_bits
 ```
 
+Для нетривиальных программ planner должен получать явный `CkksOperationBudget`: число `add/sub`, plaintext ops, ciphertext multiplications, plaintext-rescale шагов, explicit rescale, mod-switch, rotations, linear transforms, EvalMod P3 и refresh-операций. Coarse `ops_profile` остаётся fallback для простых сценариев и быстрых demo.
+
 Расчётная схема:
 
 ```text
@@ -132,7 +134,7 @@ work_levels >= multiplicative_depth
 poly_modulus_degree = минимальный N, проходящий security
 ```
 
-Для `target_error = 1e-9` текущая калибровка depth=2 даёт `work_bits ~= 44`, поэтому быстрый режим выбирает 45-битные рабочие модули, а conservative-режим — 50-битные. Первая реализация возвращает `CkksPlanningResult` с `CkksProfile`, выбранными битами и `SecurityReport`.
+Для `target_error = 1e-9` текущая калибровка depth=2 даёт `work_bits ~= 44`, поэтому быстрый режим выбирает 45-битные рабочие модули, а conservative-режим — 50-битные. Первая реализация возвращает `CkksPlanningResult` с `CkksProfile`, выбранными битами, `estimated_abs_error_bound`, `passes_target_error` и `SecurityReport`.
 
 ### profiles
 
@@ -171,6 +173,7 @@ poly_modulus_degree = минимальный N, проходящий security
 - `demo_bootstrap_end_to_end` является historical experimental demo и не входит в default CTest.
 - `bench_ckks` измеряет время операций, численную ошибку и размеры сериализованных объектов.
 - `bench_chain_accuracy` калибрует связь между chain length, `scale_log2`, рабочей битностью и точностью.
+- `bench_parameter_planner` проверяет выбранные planner-ом профили на реальном SEAL-прогоне.
 - `bench_bootstrap_parts` измеряет `mul_plain_rescale`, `linear_transform`, `sum_slots` и `polynomial_eval`.
 - `bench_bootstrap_refresh` измеряет experimental путь `Bootstrapper::refresh`.
 - `bench_parallel_throughput` измеряет throughput при параллельной обработке независимых ciphertext.

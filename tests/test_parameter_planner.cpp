@@ -32,6 +32,9 @@ void test_speed_plan_for_one_e_minus_nine() {
     require(result.calibrated_loss_bits == 14, "planner calibrated loss mismatch");
     require(result.selected_work_bits == 45, "speed plan should select 45-bit work moduli");
     require(result.selected_scale_log2 == 45, "speed plan should align scale and work bits");
+    require(result.estimated_precision_bits == 31, "planner estimated precision mismatch");
+    require(result.estimated_abs_error_bound <= request.target_error, "planner should pass target error");
+    require(result.passes_target_error, "planner pass flag mismatch");
     require(result.selected_work_levels == 2, "planner depth mismatch");
     require(result.profile.poly_modulus_degree == 8192, "planner should select minimal tc128 N for this request");
     require(result.profile.slots == 4096, "planner slots mismatch");
@@ -53,6 +56,8 @@ void test_conservative_plan() {
 
     const auto result = m2424::plan_ckks_parameters(request);
     require(result.selected_work_bits == 50, "conservative plan should select at least 50-bit work moduli");
+    require(result.estimated_precision_bits == 36, "conservative estimated precision mismatch");
+    require(result.passes_target_error, "conservative plan should pass target error");
     require(result.profile.poly_modulus_degree == 16384, "50-bit depth-2 plan should move to minimal secure N");
     require(result.security.passes_tc128, "conservative plan should pass tc128");
 }
@@ -67,6 +72,31 @@ void test_security_and_slots_drive_degree() {
     const auto result = m2424::plan_ckks_parameters(request);
     require(result.profile.poly_modulus_degree == 16384, "slots should drive N to 16384");
     require(result.profile.slots == 8192, "planner should preserve requested slots");
+}
+
+void test_operation_budget_drives_loss_and_levels() {
+    m2424::CkksOperationBudget budget;
+    budget.additions = 3;
+    budget.ciphertext_muls = 1;
+    budget.plaintext_mul_rescales = 1;
+    budget.mod_switches = 2;
+    budget.rotations = 4;
+    budget.linear_transforms = 1;
+
+    require(m2424::estimated_level_budget(budget) == 3, "operation budget level estimate mismatch");
+    require(m2424::calibrated_loss_bits(budget) == 23, "operation budget loss estimate mismatch");
+
+    m2424::CkksPlanningRequest request;
+    request.target_error = 1e-9;
+    request.multiplicative_depth = 1;
+    request.slots = 4096;
+    request.use_operation_budget = true;
+    request.operation_budget = budget;
+
+    const auto result = m2424::plan_ckks_parameters(request);
+    require(result.calibrated_loss_bits == 23, "planner should use explicit operation budget loss");
+    require(result.selected_work_levels == 3, "planner should use explicit operation budget levels");
+    require(result.selected_work_bits == 55, "operation budget should drive work bits");
 }
 
 void test_invalid_inputs() {
@@ -98,6 +128,7 @@ int main() {
         test_speed_plan_for_one_e_minus_nine();
         test_conservative_plan();
         test_security_and_slots_drive_degree();
+        test_operation_budget_drives_loss_and_levels();
         test_invalid_inputs();
     } catch (const std::exception& error) {
         ok = false;

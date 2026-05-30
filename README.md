@@ -25,6 +25,7 @@ cmake --build build -j
 ./build/demo_abft
 ./build/bench_ckks
 ./build/bench_chain_accuracy
+./build/bench_parameter_planner
 ./build/demo_noise_growth
 ./build/demo_secure_stats
 ./build/demo_client_compute_roundtrip
@@ -56,6 +57,8 @@ cmake --build build -j
 ```
 
 `bench_chain_accuracy` проводит контролируемый sweep точности: при фиксированных входе, `N`, операции и масштабе меняет длину chain, а отдельно проверяет влияние `scale_log2` и битности рабочих модулей. Текущий вывод: длина chain задаёт глубину, а точность в основном задаётся согласованной парой `scale_log2 ~= work_modulus_bits`.
+
+`bench_parameter_planner` строит профиль через `CkksParameterPlanner`, запускает выбранный repeated-mul профиль на реальном SEAL-прогоне и печатает отдельные планы по explicit operation budget. Это sanity-check для калиброванной модели, а не формальное доказательство для произвольного pipeline.
 
 `demo_noise_growth` печатает CSV по последовательным зашифрованным возведениям в квадрат. Сценарий показывает, как растёт ошибка, как меняются `scale`/`chain_index`, и где заканчивается доступная мультипликативная глубина без bootstrapping.
 
@@ -193,7 +196,7 @@ work_levels >= multiplicative_depth
 
 В текущих экспериментах для двух последовательных `mul_relin_rescale` потеря составляет около 14 бит, поэтому для `1e-9` минимальный практический режим — `scale_log2 = 45` и 45-битные рабочие модули. 50-битный режим остаётся conservative-вариантом.
 
-Модуль `m2424::parameter_planner` реализует первую версию этого расчёта: `plan_ckks_parameters(request)` возвращает минимальный `CkksProfile`, выбранные биты, глубину и `SecurityReport`.
+Модуль `m2424::parameter_planner` реализует первую версию этого расчёта: `plan_ckks_parameters(request)` возвращает минимальный `CkksProfile`, выбранные биты, глубину, `SecurityReport`, `estimated_abs_error_bound` и флаг `passes_target_error`. Для нетривиальных программ нужно передавать `CkksOperationBudget` по всем используемым примитивам (`add/sub`, plaintext ops, `mul`, `rescale`, `mod_switch`, rotations, linear transforms, EvalMod, refresh), иначе planner использует только coarse `operation_profile`.
 
 Модуль `m2424::CheckedEvaluator` выполняет операции через `SealAdapter` и возвращает `CheckedResult`: ciphertext, `CipherInfo`, метрики точности, tolerance и статус. Он нужен для сценариев, где после каждого шага вычисления надо контролировать ошибку, уровень ciphertext и масштаб.
 

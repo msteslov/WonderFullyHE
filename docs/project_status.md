@@ -35,6 +35,7 @@ WonderFullyHE — учебно-исследовательский прототи
 - Benchmark публичного refresh-пути.
 - Benchmark времени операций, ошибок и размеров ciphertext/ключей.
 - Benchmark `bench_chain_accuracy` для контролируемой проверки влияния длины chain, `scale_log2` и рабочей битности на точность.
+- Benchmark `bench_parameter_planner` для проверки выбранных planner-ом профилей на реальном SEAL-прогоне.
 - Benchmark строительных блоков bootstrapping: plaintext multiplication, linear transform, slot summation, polynomial evaluation.
 - Benchmark параллельной обработки независимых ciphertext с разделением setup/runtime.
 - Security report по CKKS-профилям относительно лимитов Microsoft SEAL `tc128`, `tc192` и `tc256`.
