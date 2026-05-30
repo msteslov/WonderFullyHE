@@ -200,6 +200,8 @@ work_levels >= multiplicative_depth
 
 Модуль `m2424::CheckedEvaluator` выполняет операции через `SealAdapter` и возвращает `CheckedResult`: ciphertext, `CipherInfo`, метрики точности, tolerance и статус. Он нужен для сценариев, где после каждого шага вычисления надо контролировать ошибку, уровень ciphertext и масштаб.
 
+Модуль `m2424::operation_budget` собирает бюджет операций для planner-а. `CheckedEvaluator` автоматически накапливает budget для `add/sub`, `mul`, `rotate`, `sum_slots` и `linear_transform`; прямые низкоуровневые вызовы `SealAdapter` пока считаются вручную через `OperationBudgetBuilder`.
+
 Модуль `m2424::DiagonalLinearTransform` строит и применяет диагональное разложение комплексной матрицы:
 
 ```text

@@ -2,6 +2,7 @@
 
 #include "m2424/accuracy.hpp"
 #include "m2424/linear_transform.hpp"
+#include "m2424/operation_budget.hpp"
 #include "m2424/seal_adapter.hpp"
 
 #include <cstddef>
@@ -29,6 +30,8 @@ public:
     CheckedResult sum_slots(const Cipher& input, std::size_t slot_count, const std::vector<double>& expected);
     CheckedResult linear_transform(const Cipher& input, const LinearTransform& transform,
                                    const std::vector<double>& expected);
+    const CkksOperationBudget& operation_budget() const noexcept;
+    void reset_operation_budget() noexcept;
 
 private:
     CheckedResult finalize(std::string operation, Cipher cipher, const std::vector<double>& expected);
@@ -36,6 +39,7 @@ private:
     SealAdapter& adapter_;
     std::size_t payload_size_{};
     double tolerance_{};
+    OperationBudgetBuilder budget_builder_;
 };
 
 } // namespace m2424

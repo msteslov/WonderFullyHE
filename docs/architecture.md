@@ -59,6 +59,10 @@ compare(expected, actual, tolerance)
 
 Демонстрационные приложения и тесты используют этот модуль как единый критерий точности.
 
+### operation_budget
+
+`OperationBudgetBuilder` собирает `CkksOperationBudget` для planner-а. `CheckedEvaluator` уже накапливает бюджет для своих операций автоматически, поэтому типичный проверяемый pipeline может быть использован как вход в `plan_ckks_parameters`. Прямые вызовы `SealAdapter` остаются низкоуровневым API; для них budget нужно записывать явно.
+
 ### abft
 
 Модуль `abft` реализует checksum-проверки корректности. Текущие проверки покрывают:

@@ -18,29 +18,44 @@ CheckedEvaluator::CheckedEvaluator(SealAdapter& adapter, std::size_t payload_siz
 }
 
 CheckedResult CheckedEvaluator::add(const Cipher& lhs, const Cipher& rhs, const std::vector<double>& expected) {
+    budget_builder_.record_add();
     return finalize("add", adapter_.add(lhs, rhs), expected);
 }
 
 CheckedResult CheckedEvaluator::sub(const Cipher& lhs, const Cipher& rhs, const std::vector<double>& expected) {
+    budget_builder_.record_add();
     return finalize("sub", adapter_.sub(lhs, rhs), expected);
 }
 
 CheckedResult CheckedEvaluator::mul(const Cipher& lhs, const Cipher& rhs, const std::vector<double>& expected) {
+    budget_builder_.record_ciphertext_mul();
     return finalize("mul", adapter_.mul_relin_rescale(lhs, rhs), expected);
 }
 
 CheckedResult CheckedEvaluator::rotate(const Cipher& input, int steps, const std::vector<double>& expected) {
+    (void)steps;
+    budget_builder_.record_rotation();
     return finalize("rotate", adapter_.rotate(input, steps), expected);
 }
 
 CheckedResult CheckedEvaluator::sum_slots(const Cipher& input, std::size_t slot_count,
                                           const std::vector<double>& expected) {
+    budget_builder_.record_sum_slots(slot_count);
     return finalize("sum_slots", m2424::sum_slots(adapter_, input, slot_count), expected);
 }
 
 CheckedResult CheckedEvaluator::linear_transform(const Cipher& input, const LinearTransform& transform,
                                                  const std::vector<double>& expected) {
+    budget_builder_.record_linear_transform(transform);
     return finalize("linear_transform", transform.apply(adapter_, input), expected);
+}
+
+const CkksOperationBudget& CheckedEvaluator::operation_budget() const noexcept {
+    return budget_builder_.budget();
+}
+
+void CheckedEvaluator::reset_operation_budget() noexcept {
+    budget_builder_.reset();
 }
 
 CheckedResult CheckedEvaluator::finalize(std::string operation, Cipher cipher, const std::vector<double>& expected) {

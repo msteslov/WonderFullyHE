@@ -7,6 +7,7 @@ WonderFullyHE — учебно-исследовательский прототи
 - Адаптер `SealAdapter`, скрывающий низкоуровневые типы Microsoft SEAL.
 - Готовые CKKS-профили в `m2424::profiles`: `fast_demo_ckks`, `basic_ckks`, `balanced_ckks`, `depth_ckks`, `high_precision_ckks`.
 - Первая версия `CkksParameterPlanner`: подбор `scale`, рабочих модулей, длины chain и `N` из `target_error`, depth, slots и security.
+- `OperationBudgetBuilder` и автоматический tracking бюджета в `CheckedEvaluator` для базовых проверяемых pipeline.
 - Операции `encode`, `encrypt`, `decrypt`, `decode`.
 - Гомоморфные операции `add`, `sub`, `mul_relin_rescale`, `rotate`.
 - Plaintext-операции `add_plain`, `sub_plain`, `mul_plain`, `mul_plain_rescale`.
