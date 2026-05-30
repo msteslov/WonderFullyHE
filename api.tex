@@ -74,6 +74,37 @@ WonderFullyHE реализует библиотечный слой для защ
 увеличивает масштаб до \(2^{50}\), когда приоритетом является меньшая
 ошибка округления, а не скорость.
 
+Готовые профили являются пресетами. Целевой способ выбора параметров ---
+\texttt{CkksParameterPlanner}:
+\[
+    (\varepsilon, D, S, \mathsf{ops}, \mathsf{security})
+    \mapsto
+    (N, Q, \Delta),
+\]
+где \(\varepsilon\) --- целевая ошибка, \(D\) --- требуемая
+мультипликативная глубина, \(S\) --- число слотов.
+
+Для целевой ошибки используется оценка:
+\[
+    b_{\mathsf{result}} = \lceil -\log_2(\varepsilon) \rceil,
+\]
+\[
+    b_{\mathsf{work}}
+    =
+    b_{\mathsf{result}}
+    +
+    b_{\mathsf{loss}}(\mathsf{ops}),
+\]
+где \(b_{\mathsf{loss}}\) задаётся калибровкой конкретного набора
+операций. Для \(\varepsilon=10^{-9}\) имеем
+\[
+    b_{\mathsf{result}} = 30.
+\]
+Текущий benchmark для двух последовательных
+\texttt{mul\_relin\_rescale} даёт потерю порядка 14 бит, поэтому
+практический быстрый режим выбирает рабочие модули около 45 бит и
+\(\log_2(\Delta)\approx45\).
+
 \section*{Адаптер над Microsoft SEAL}
 
 Создание контекста:
@@ -312,6 +343,26 @@ CKKS-контексте с тем же профилем. Это позволяе
     \mathsf{max\_abs\_error} \leq \mathsf{tolerance}.
 \]
 
+Для доказуемого контракта точности ошибка должна распространяться
+по стадиям:
+\[
+    E_{\mathsf{total}}
+    \leq
+    E_{\mathsf{encode}}
+    +
+    E_{\mathsf{encrypt}}
+    +
+    E_{\mathsf{rescale}}
+    +
+    E_{\mathsf{keyswitch}}
+    +
+    E_{\mathsf{poly}}
+    +
+    E_{\mathsf{linear}}.
+\]
+Планировщик должен запускать вычисление только если рассчитанная
+верхняя граница не превышает заданную \(\mathsf{tolerance}\).
+
 \section*{ABFT-проверки}
 
 Контрольная сумма полезной нагрузки:
@@ -417,6 +468,23 @@ Bootstrapping-модуль выделен как отдельный компон
     \mathsf{SlotToCoeff}.
 \]
 
+Текущий scalable target --- не плотная таблица преобразования, а
+factorized FFT-like реализация \(\mathsf{CoeffToSlot}\) и
+\(\mathsf{SlotToCoeff}\). Плотное диагональное разложение остаётся
+reference-path для малых размеров.
+
+Для \(\mathsf{EvalMod}\) при нормализации
+\[
+    |u| \leq 2^{-10}
+\]
+достаточен полином \(P3\):
+\[
+    P3(u) = u - 6.579736267393u^3.
+\]
+Его ошибка аппроксимации на указанном интервале существенно меньше
+\(10^{-9}\); более высокие степени \(P5/P7\) увеличивают глубину и
+используются только при расширении интервала или более жёсткой цели.
+
 Цель итогового преобразования:
 \[
     \mathsf{Bootstrap}(c) = c',
@@ -501,6 +569,8 @@ Microsoft SEAL:
 \texttt{demo\_bootstrap\_pipeline} & Отчёт bootstrapping-модуля. \\
 \hline
 \texttt{bench\_ckks} & Измерение времени, ошибки и размеров ciphertext/ключей. \\
+\hline
+\texttt{bench\_chain\_accuracy} & Калибровка влияния chain length, scale и рабочей битности на точность. \\
 \hline
 \texttt{bench\_bootstrap\_parts} & Измерение plaintext-умножения, линейного преобразования, суммы слотов и полинома. \\
 \hline

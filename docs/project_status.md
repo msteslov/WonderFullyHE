@@ -6,6 +6,7 @@ WonderFullyHE — учебно-исследовательский прототи
 
 - Адаптер `SealAdapter`, скрывающий низкоуровневые типы Microsoft SEAL.
 - Готовые CKKS-профили в `m2424::profiles`: `fast_demo_ckks`, `basic_ckks`, `balanced_ckks`, `depth_ckks`, `high_precision_ckks`.
+- Первая версия `CkksParameterPlanner`: подбор `scale`, рабочих модулей, длины chain и `N` из `target_error`, depth, slots и security.
 - Операции `encode`, `encrypt`, `decrypt`, `decode`.
 - Гомоморфные операции `add`, `sub`, `mul_relin_rescale`, `rotate`.
 - Plaintext-операции `add_plain`, `sub_plain`, `mul_plain`, `mul_plain_rescale`.
@@ -33,6 +34,7 @@ WonderFullyHE — учебно-исследовательский прототи
 - Historical end-to-end demo для refresh; не входит в default CTest, пока scaling gate не проходит.
 - Benchmark публичного refresh-пути.
 - Benchmark времени операций, ошибок и размеров ciphertext/ключей.
+- Benchmark `bench_chain_accuracy` для контролируемой проверки влияния длины chain, `scale_log2` и рабочей битности на точность.
 - Benchmark строительных блоков bootstrapping: plaintext multiplication, linear transform, slot summation, polynomial evaluation.
 - Benchmark параллельной обработки независимых ciphertext с разделением setup/runtime.
 - Security report по CKKS-профилям относительно лимитов Microsoft SEAL `tc128`, `tc192` и `tc256`.
@@ -41,10 +43,14 @@ WonderFullyHE — учебно-исследовательский прототи
 
 ## В работе
 
-- Расширение ABFT на цепочки операций.
-- Sweep-benchmark для refresh на разных размерах входа и параметрах.
+- Расширение калибровочной модели `ops_profile -> calibrated_loss_bits`; для target `1e-9` текущий быстрый ориентир — 45-битные рабочие модули при `scale_log2 = 45`.
+- `BootstrapPlanner` как обязательный gate перед refresh: проверка уровней, scale, period window, EvalMod interval и error budget до ciphertext-прогона.
+- Factorized FFT-like backend для `CoeffToSlot/SlotToCoeff`; текущий dense diagonal backend остаётся reference для малых `slots`.
+- Оптимизация rotation keys, BSGS/hoisting и кеширования plaintext-диагоналей.
 
 ## Ограничения
 
 - ABFT-модуль контролирует вычислительную согласованность, но не заменяет криптографическую аутентификацию результата.
 - Для реального внешнего применения требуется отдельное управление ключами, формат обмена данными и анализ side-channel рисков.
+- Full bootstrapping пока не является стабильным API: текущий код имеет stage-by-stage gates и oracle-harness, но не гарантирует бесконечное число операций с ошибкой `1e-9`.
+- Повышать степень `EvalMod` выше `P3` не является текущим способом улучшить точность: при `|u| <= 2^-10` ошибка `P3` уже меньше целевого порога, а bottleneck находится в scale/noise/transforms.

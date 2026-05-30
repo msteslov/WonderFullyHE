@@ -11,6 +11,7 @@ add_library(m2424
     eval_mod.cpp
     linear_transform.cpp
     m2424.cpp
+    parameter_planner.cpp
     polynomial.cpp
     profiles.cpp
     profile_report.cpp

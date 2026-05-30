@@ -24,6 +24,7 @@ cmake --build build -j
 ```bash
 ./build/demo_abft
 ./build/bench_ckks
+./build/bench_chain_accuracy
 ./build/demo_noise_growth
 ./build/demo_secure_stats
 ./build/demo_client_compute_roundtrip
@@ -53,6 +54,8 @@ cmake --build build -j
 ```bash
 ./build/bench_ckks high_precision_ckks
 ```
+
+`bench_chain_accuracy` проводит контролируемый sweep точности: при фиксированных входе, `N`, операции и масштабе меняет длину chain, а отдельно проверяет влияние `scale_log2` и битности рабочих модулей. Текущий вывод: длина chain задаёт глубину, а точность в основном задаётся согласованной парой `scale_log2 ~= work_modulus_bits`.
 
 `demo_noise_growth` печатает CSV по последовательным зашифрованным возведениям в квадрат. Сценарий показывает, как растёт ошибка, как меняются `scale`/`chain_index`, и где заканчивается доступная мультипликативная глубина без bootstrapping.
 
@@ -98,7 +101,7 @@ cmake --build build -j
 
 `demo_bootstrap_end_to_end` оставлен как historical experimental demo и не включён в default CTest, потому что full refresh сейчас заблокирован scaling gate.
 
-`demo_eval_mod_polynomial` проверяет полином `EvalMod` степени 7 на диапазоне `[-2^-10, 2^-10]`: сначала против `sin(2*pi*u)/(2*pi)` на открытых данных, затем на зашифрованном CKKS-векторе в профиле `boot_ckks`.
+`demo_eval_mod_polynomial` проверяет полиномы `EvalMod` на диапазоне `[-2^-10, 2^-10]`: сначала против `sin(2*pi*u)/(2*pi)` на открытых данных, затем на зашифрованном CKKS-векторе в профиле `boot_ckks`.
 
 `bench_parallel_throughput` измеряет масштабирование на независимых ciphertext. Benchmark разделяет `setup_ms` и `runtime_ms`: подготовка включает создание контекстов, ключей и входных ciphertext, а runtime измеряет параллельные вычисления над уже зашифрованными данными.
 
@@ -126,7 +129,7 @@ ctest --test-dir build --output-on-failure
 
 ## Архитектура и API
 
-`CkksProfile` описывает параметры схемы: `poly_modulus_degree`, битовые длины коэффициентов модуля, масштаб `scale` и лимит слотов. Готовые профили находятся в `m2424::profiles`, поэтому обычному пользователю не нужно вручную подбирать modulus chain для первого запуска. Обёртки `Plain` и `Cipher` скрывают `seal::Plaintext`/`seal::Ciphertext`, а `SealAdapter` управляет жизненным циклом SEAL‑контекста. В текущей C++-реализации публичные типы и функции находятся в пространстве имён `m2424`.
+`CkksProfile` описывает параметры схемы: `poly_modulus_degree`, битовые длины коэффициентов модуля, масштаб `scale` и лимит слотов. Готовые профили находятся в `m2424::profiles` и остаются пресетами для demo/tests; целевой путь развития — planner, который строит профиль из `target_error`, глубины, числа слотов и требования к security. Обёртки `Plain` и `Cipher` скрывают `seal::Plaintext`/`seal::Ciphertext`, а `SealAdapter` управляет жизненным циклом SEAL‑контекста.
 
 Готовые профили:
 
@@ -179,6 +182,19 @@ auto decoded = adapter.decode(adapter.decrypt(squared));
 
 Модуль `m2424::accuracy` задаёт единые метрики точности: `max_abs_error`, `mean_abs_error` и `compare(expected, actual, tolerance)`. Demo и тесты используют этот общий код, чтобы критерии корректности не расходились между сценариями.
 
+Для целевой точности `1e-9` библиотека должна выбирать параметры расчётом:
+
+```text
+required_result_bits = ceil(-log2(target_error))
+work_bits = required_result_bits + calibrated_loss_bits(ops_profile)
+scale_log2 ~= work_bits
+work_levels >= multiplicative_depth
+```
+
+В текущих экспериментах для двух последовательных `mul_relin_rescale` потеря составляет около 14 бит, поэтому для `1e-9` минимальный практический режим — `scale_log2 = 45` и 45-битные рабочие модули. 50-битный режим остаётся conservative-вариантом.
+
+Модуль `m2424::parameter_planner` реализует первую версию этого расчёта: `plan_ckks_parameters(request)` возвращает минимальный `CkksProfile`, выбранные биты, глубину и `SecurityReport`.
+
 Модуль `m2424::CheckedEvaluator` выполняет операции через `SealAdapter` и возвращает `CheckedResult`: ciphertext, `CipherInfo`, метрики точности, tolerance и статус. Он нужен для сценариев, где после каждого шага вычисления надо контролировать ошибку, уровень ciphertext и масштаб.
 
 Модуль `m2424::DiagonalLinearTransform` строит и применяет диагональное разложение комплексной матрицы:
@@ -189,19 +205,19 @@ A*x = sum_k diag_k * Rot_k(x)
 
 Для bootstrapping-блоков добавлены генераторы `canonical_embedding_matrix(slots)` и `invert_matrix(matrix)`. Они дают численные коэффициенты для прототипов `CoeffToSlot` и `SlotToCoeff`; коэффициенты не выписываются вручную, а вычисляются из корней единицы CKKS.
 
-Модуль `m2424::EvalModPolynomial` реализует полином:
+Модуль `m2424::EvalModPolynomial` реализует нечётные варианты `P3`, `P5` и `P7`. Для текущего интервала `|u| <= 2^-10` default должен оставаться `P3`: его ошибка аппроксимации около `1e-14`, что достаточно для target `1e-9` и дешевле по depth, чем `P5/P7`.
 
 ```text
 P7(u) = u - 6.579736267393*u^3 + 12.98787880453*u^5 - 12.20811674381*u^7
 ```
 
-Рабочий диапазон первой версии: `|u| <= 2^-10`. Ciphertext-версия считает степени `u^2`, `u^3`, `u^5`, `u^7` отдельной схемой, без общего последовательного подъёма степени.
+Chebyshev/minimax-полиномы стоит использовать как offline-инструмент для генерации минимальной степени при изменении интервала или tolerance, а не как более тяжёлый default.
 
 Модуль `m2424::Bootstrapper` пока является experimental точкой входа для refresh. Рабочим regression gate считается `bench_bootstrap_scaling`; full refresh blocked, если normalization scalar не представим после `ModRaise -> CoeffToSlot`.
 
-Модуль `m2424::BootstrapPipelinePlan` задаёт целевую архитектуру bootstrapping: домены значений между стадиями, transform backend (`DenseDiagonal` для текущего research path или `FftLike` для будущего масштабируемого path), scaling strategy и active gate. Это отделяет математический план от временного `BootstrapPrototype`.
+Модуль `m2424::BootstrapPipelinePlan` задаёт целевую архитектуру bootstrapping: домены значений между стадиями, transform backend (`DenseDiagonal` для текущего research path или `FftLike` для будущего масштабируемого path), scaling strategy и active gate. Bootstrapping должен выполняться только по рассчитанному плану, который заранее проверяет `chain_index`, `scale_log2`, остаток modulus, interval для `EvalMod` и error budget.
 
-Модуль `m2424::BootstrapPrototype` оставлен как внутренний проверочный harness для разработки bootstrapping-блоков. Внутри `DiagonalLinearTransform` используется baby-step/giant-step-разложение, которое уменьшает число CKKS-ротаций при плотных диагональных матрицах. Для повторных запусков кэшируются encoded plaintext-диагонали под конкретные `chain_index` и `scale`.
+Модуль `m2424::BootstrapPrototype` оставлен как внутренний проверочный harness. Текущий `CoeffToSlot/SlotToCoeff` строится через dense diagonal transform и годится как reference для маленьких `slots`; production path должен перейти на настоящий factorized FFT-like backend с sparse layers, BSGS/hoisting и ограниченным набором rotation keys.
 
 Модуль `m2424::abft` содержит checksum-инструменты: `append_checksum`, `checksum`, `verify_appended_checksum`, `verify_checksum_value`.
 
@@ -267,5 +283,10 @@ P7(u) = u - 6.579736267393*u^3 + 12.98787880453*u^5 - 12.20811674381*u^7
 - [ ] Собрать end-to-end refresh-путь поверх готовых строительных блоков после прохождения scaling gate.
 - [ ] Перенести refresh-путь из experimental prototype в стабильный публичный API после прохождения scaling gate.
 - [x] Добавить benchmark scaling gate перед full refresh validation.
+- [x] Добавить контролируемый benchmark `bench_chain_accuracy` для связи chain/scale/work bits и точности.
+- [x] Добавить первую версию `CkksParameterPlanner`: `target_error`, depth, slots и security -> минимальный `CkksProfile`.
 - [ ] Добавить строгий validation-benchmark для сохранения значения только после прохождения scaling gate.
 - [ ] Добавить сравнение с OpenFHE для тех же строительных блоков и для end-to-end refresh после завершения bootstrapping.
+- [ ] Добавить calibration layer `ops_profile -> calibrated_loss_bits`.
+- [ ] Сделать `BootstrapPlanner` обязательным gate перед refresh.
+- [ ] Реализовать factorized FFT-like backend для `CoeffToSlot/SlotToCoeff`; dense backend оставить reference-path.

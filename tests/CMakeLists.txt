@@ -18,8 +18,13 @@ add_executable(test_bootstrap_dft test_bootstrap_dft.cpp)
 target_compile_features(test_bootstrap_dft PRIVATE cxx_std_17)
 target_link_libraries(test_bootstrap_dft PRIVATE m2424)
 
+add_executable(test_parameter_planner test_parameter_planner.cpp)
+target_compile_features(test_parameter_planner PRIVATE cxx_std_17)
+target_link_libraries(test_parameter_planner PRIVATE m2424)
+
 add_test(NAME test_smoke COMMAND test_smoke)
 add_test(NAME test_accuracy COMMAND test_accuracy)
 add_test(NAME test_adapter_failures COMMAND test_adapter_failures)
 add_test(NAME test_bootstrap_scale_design COMMAND test_bootstrap_scale_design)
 add_test(NAME test_bootstrap_dft COMMAND test_bootstrap_dft)
+add_test(NAME test_parameter_planner COMMAND test_parameter_planner)

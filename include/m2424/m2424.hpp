@@ -11,6 +11,7 @@
 #include "m2424/diagonal_transform.hpp"
 #include "m2424/eval_mod.hpp"
 #include "m2424/linear_transform.hpp"
+#include "m2424/parameter_planner.hpp"
 #include "m2424/polynomial.hpp"
 #include "m2424/profiles.hpp"
 #include "m2424/profile_report.hpp"

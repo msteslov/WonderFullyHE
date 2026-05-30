@@ -15,6 +15,7 @@ WonderFullyHE реализует библиотеку защищённых вы�
         +-- PolynomialEvaluator: вычисление полиномов от ciphertext
         +-- Bootstrapper: диагностика глубины и отчёт по bootstrapping-конвейеру
         +-- profiles: готовые CKKS-профили для типовых сценариев
+        +-- parameter planning: целевой слой подбора scale/chain/N по требованиям
         +-- profile_report: воспроизводимые таблицы CKKS-параметров
         |
         v
@@ -105,6 +106,34 @@ Full refresh не считается стабильным API, пока `bench_b
 
 Контракты стадий фиксируют, что `ModRaise` является structural-only, `Scaling` является первым correctness gate, `EvalMod` проверяется отдельно от transform backend, а `SlotToCoeff` возвращается в correctness path только после прохождения предыдущих gates.
 
+Целевой `BootstrapPlanner` должен стать обязательным входом в refresh. Он заранее считает для каждой стадии `chain_index`, `scale_log2`, остаток modulus, bound значения и error budget. Если план не проходит, refresh не запускается и возвращает явную причину: `blocked_by_levels`, `blocked_by_period_window`, `blocked_by_evalmod_capacity` или `blocked_by_error_budget`.
+
+Для `EvalMod` default-полиномом остаётся `P3`, пока нормализованный вход удовлетворяет `|u| <= 2^-10`. На этом интервале математическая ошибка аппроксимации около `1e-14`, поэтому для target `1e-9` bottleneck находится в CKKS scale/noise и линейных трансформах, а не в степени полинома.
+
+### Parameter planning
+
+Ручные профили не должны быть основным способом выбора параметров. Модуль `parameter_planner` строит профиль по требованиям:
+
+```text
+target_error
+multiplicative_depth
+slots
+ops_profile
+security_bits
+```
+
+Расчётная схема:
+
+```text
+required_result_bits = ceil(-log2(target_error))
+work_bits = required_result_bits + calibrated_loss_bits(ops_profile)
+scale_log2 ~= work_bits
+work_levels >= multiplicative_depth
+poly_modulus_degree = минимальный N, проходящий security
+```
+
+Для `target_error = 1e-9` текущая калибровка depth=2 даёт `work_bits ~= 44`, поэтому быстрый режим выбирает 45-битные рабочие модули, а conservative-режим — 50-битные. Первая реализация возвращает `CkksPlanningResult` с `CkksProfile`, выбранными битами и `SecurityReport`.
+
 ### profiles
 
 Модуль `profiles` содержит готовые наборы `CkksProfile` для типовых режимов:
@@ -141,6 +170,7 @@ Full refresh не считается стабильным API, пока `bench_b
 - `demo_bootstrap_cipher_path` запускает experimental refresh-путь от существующего ciphertext.
 - `demo_bootstrap_end_to_end` является historical experimental demo и не входит в default CTest.
 - `bench_ckks` измеряет время операций, численную ошибку и размеры сериализованных объектов.
+- `bench_chain_accuracy` калибрует связь между chain length, `scale_log2`, рабочей битностью и точностью.
 - `bench_bootstrap_parts` измеряет `mul_plain_rescale`, `linear_transform`, `sum_slots` и `polynomial_eval`.
 - `bench_bootstrap_refresh` измеряет experimental путь `Bootstrapper::refresh`.
 - `bench_parallel_throughput` измеряет throughput при параллельной обработке независимых ciphertext.
@@ -148,8 +178,10 @@ Full refresh не считается стабильным API, пока `bench_b
 
 ## Следующие шаги реализации
 
-Следующий этап реализации — расширение проверок и измерений refresh:
+Следующий этап реализации:
 
-1. расширение проверок для цепочек операций после refresh;
-2. добавление sweep-режима benchmark для разных параметров и размеров входа;
-3. сравнение refresh-сценариев с OpenFHE после фиксации одинаковых параметров измерения.
+1. расширить calibration layer `ops_profile -> calibrated_loss_bits` реальными sweep-измерениями;
+2. сделать `BootstrapPlanner` обязательным gate перед refresh;
+3. реализовать factorized FFT-like `CoeffToSlot/SlotToCoeff`, оставив dense backend как reference;
+4. оптимизировать rotation keys, BSGS/hoisting и кеширование диагоналей;
+5. сравнить строительные блоки с OpenFHE/Lattigo на одинаковых параметрах.
