@@ -32,6 +32,7 @@ cmake --build build -j
 ./build/demo_galois_key_optimization
 ./build/demo_bootstrap_pipeline
 ./build/bench_bootstrap_parts
+./build/bench_bootstrap_planner
 ./build/bench_bootstrap_full
 ./build/bench_bootstrap_refresh
 ./build/bench_bootstrap_validation
@@ -71,6 +72,8 @@ cmake --build build -j
 `demo_bootstrap_pipeline` печатает отчёт bootstrapping-модуля: профиль `depth_ckks`, границу вычислительной глубины, параметры ciphertext и этапы конвейера `ModRaise -> CoeffToSlot -> EvalMod -> SlotToCoeff`.
 
 `bench_bootstrap_parts` печатает CSV по строительным блокам bootstrapping: `mul_plain_rescale`, rotation-based `linear_transform`, `sum_slots` и `polynomial_eval`. В отчёт входят время, уровень ciphertext, ошибка и сериализованный размер результата.
+
+`bench_bootstrap_planner` демонстрирует связку `CheckedEvaluator -> OperationBudgetBuilder -> plan_bootstrap_refresh`: выполняет короткий проверяемый pipeline, получает его budget и печатает, поместится ли повторный блок без refresh или нужен bootstrapping.
 
 `bench_bootstrap_scaling` является обязательным gate перед full refresh: он выполняет только `encrypt -> lower level -> ModRaise -> CoeffToSlot -> normalization -> decrypt/check` и проверяет, представим ли normalization scalar при выбранных `period_mode` и `plain_scale_log2`. Tiny scalar больше не выполняется одним plaintext multiply: scaling layer раскладывает его на несколько `mul_plain_rescale` шагов по доступной modulus capacity.
 
