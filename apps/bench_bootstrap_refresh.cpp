@@ -119,25 +119,13 @@ int main() {
         const auto slot_domain_info = adapter.info(slot_domain);
         const double max_abs_before_normalization =
             max_abs_value(head(adapter.decode_complex(adapter.decrypt(slot_domain)), slots));
-        const double period_log2 = m2424::bootstrap_period_log2(
-            m2424::BootstrapPeriodMode::TotalCoeffModulus,
-            0.0,
-            profile.coeff_modulus_bits,
+        const auto scale_design = m2424::plan_bootstrap_refresh_scale_gate({
+            profile,
             before,
-            after_mod_raise);
-        const auto scale_design = m2424::make_bootstrap_scale_design(
-            m2424::BootstrapPeriodMode::TotalCoeffModulus,
-            0.0,
-            period_log2,
-            m2424::BootstrapScalingStrategy::DecomposedPlainMultiplyRescale,
-            40.0,
-            60.0,
-            m2424::EvalModDegree::P3,
-            m2424::active_coeff_modulus_bits(profile, slot_domain_info),
+            after_mod_raise,
             slot_domain_info,
-            max_abs_before_normalization,
-            0,
-            2.0);
+            max_abs_before_normalization
+        });
 
         std::printf("scale_gate,status,period_log2,max_abs_before_normalization,required_levels,chain_remaining_after_strategy,blocker\n");
         std::printf("experimental_refresh,%s,%.6e,%.6e,%zu,%zu,%s\n",

@@ -114,6 +114,22 @@ struct BootstrapRefreshPlanningResult {
     CkksPlanningResult parameter_plan;
 };
 
+struct BootstrapRefreshScaleGateRequest {
+    CkksProfile profile;
+    CipherInfo before_mod_raise;
+    CipherInfo after_mod_raise;
+    CipherInfo slot_domain_info;
+    double max_abs_before_normalization{};
+    BootstrapPeriodMode period_mode{BootstrapPeriodMode::TotalCoeffModulus};
+    double manual_period_log2{};
+    BootstrapScalingStrategy normalization_strategy{BootstrapScalingStrategy::DecomposedPlainMultiplyRescale};
+    double plain_scale_log2{40.0};
+    double target_scale_log2{60.0};
+    EvalModDegree evalmod_degree{EvalModDegree::P3};
+    std::size_t min_chain_remaining{};
+    double evalmod_capacity_margin_log2{2.0};
+};
+
 const char* to_string(BootstrapValueDomain domain) noexcept;
 const char* to_string(BootstrapTransformBackend backend) noexcept;
 const char* to_string(BootstrapScalingStrategy strategy) noexcept;
@@ -148,5 +164,6 @@ BootstrapPeriodFeasibilityWindow bootstrap_period_feasibility_window(
     double evalmod_capacity_margin_log2);
 
 BootstrapRefreshPlanningResult plan_bootstrap_refresh(const BootstrapRefreshPlanningRequest& request);
+BootstrapScaleDesign plan_bootstrap_refresh_scale_gate(const BootstrapRefreshScaleGateRequest& request);
 
 } // namespace m2424

@@ -229,6 +229,8 @@ Chebyshev/minimax-полиномы стоит использовать как of
 
 `Bootstrapper::plan_refresh_for_budget` выполняет тот же gate для реального ciphertext: берёт `CipherInfo` из адаптера и возвращает решение до запуска experimental refresh.
 
+`plan_bootstrap_refresh_scale_gate` проверяет уже собранные stage facts для prototype-refresh: period, active modulus bits, normalization levels и capacity первого `EvalMod` multiplication.
+
 Модуль `m2424::BootstrapPrototype` оставлен как внутренний проверочный harness. Текущий `CoeffToSlot/SlotToCoeff` строится через dense diagonal transform и годится как reference для маленьких `slots`; production path должен перейти на настоящий factorized FFT-like backend с sparse layers, BSGS/hoisting и ограниченным набором rotation keys.
 
 Модуль `m2424::abft` содержит checksum-инструменты: `append_checksum`, `checksum`, `verify_appended_checksum`, `verify_checksum_value`.

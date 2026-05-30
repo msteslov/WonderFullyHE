@@ -365,4 +365,26 @@ BootstrapRefreshPlanningResult plan_bootstrap_refresh(const BootstrapRefreshPlan
     return result;
 }
 
+BootstrapScaleDesign plan_bootstrap_refresh_scale_gate(const BootstrapRefreshScaleGateRequest& request) {
+    const double period_log2 = bootstrap_period_log2(
+        request.period_mode,
+        request.manual_period_log2,
+        request.profile.coeff_modulus_bits,
+        request.before_mod_raise,
+        request.after_mod_raise);
+    return make_bootstrap_scale_design(
+        request.period_mode,
+        request.manual_period_log2,
+        period_log2,
+        request.normalization_strategy,
+        request.plain_scale_log2,
+        request.target_scale_log2,
+        request.evalmod_degree,
+        active_coeff_modulus_bits(request.profile, request.slot_domain_info),
+        request.slot_domain_info,
+        request.max_abs_before_normalization,
+        request.min_chain_remaining,
+        request.evalmod_capacity_margin_log2);
+}
+
 } // namespace m2424

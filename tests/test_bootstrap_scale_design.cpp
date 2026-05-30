@@ -97,6 +97,13 @@ int main() {
     const auto active_bits = m2424::active_coeff_modulus_bits(
         profile,
         make_info(40.0, 2, 3, 140.0));
+    const auto refresh_scale_gate = m2424::plan_bootstrap_refresh_scale_gate({
+        profile,
+        make_info(40.0, 1, 2, 100.0),
+        make_info(40.0, 3, 4, 200.0),
+        make_info(40.0, 3, 4, 200.0),
+        1.0e-5
+    });
 
     m2424::CkksOperationBudget small_budget;
     small_budget.ciphertext_muls = 2;
@@ -147,6 +154,8 @@ int main() {
         && possible_window.possible
         && possible_window.margin_log2 >= 0.0
         && active_bits == std::vector<int>({60, 40, 40})
+        && refresh_scale_gate.status == m2424::BootstrapScaleDesignStatus::ScaleStrategyBlocked
+        && refresh_scale_gate.period_log2 == 160.0
         && fits_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh
         && !fits_refresh_plan.needs_refresh
         && required_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::RefreshRequired

@@ -116,6 +116,8 @@ Full refresh не считается стабильным API, пока `bench_b
 
 `Bootstrapper::plan_refresh_for_budget` применяет этот gate к реальному ciphertext и должен стать входной точкой перед любым будущим guarded refresh.
 
+`plan_bootstrap_refresh_scale_gate` является вторым gate для prototype-refresh: принимает факты после `ModRaise -> CoeffToSlot`, считает period/scaling design и блокирует запуск, если normalization scalar, остаток levels или capacity первого `EvalMod` multiplication не проходят.
+
 Для `EvalMod` default-полиномом остаётся `P3`, пока нормализованный вход удовлетворяет `|u| <= 2^-10`. На этом интервале математическая ошибка аппроксимации около `1e-14`, поэтому для target `1e-9` bottleneck находится в CKKS scale/noise и линейных трансформах, а не в степени полинома.
 
 ### Parameter planning
