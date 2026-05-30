@@ -41,13 +41,6 @@ double max_abs_value(const m2424::ComplexVector& values) {
     return result;
 }
 
-std::vector<int> active_coeff_modulus_bits(const m2424::CkksProfile& profile,
-                                           const m2424::CipherInfo& info) {
-    const std::size_t active_size = std::min(info.coeff_modulus_size, profile.coeff_modulus_bits.size());
-    return {profile.coeff_modulus_bits.begin(),
-            profile.coeff_modulus_bits.begin() + static_cast<std::ptrdiff_t>(active_size)};
-}
-
 void run_profile(const ProfileCase& profile_case) {
     constexpr std::size_t slots = 16;
     constexpr double amplitude = 1e-5;
@@ -71,7 +64,7 @@ void run_profile(const ProfileCase& profile_case) {
     const auto start_info = adapter.info(current);
     const auto before_normalization = head(adapter.decode_complex(adapter.decrypt(current)), slots);
     const double max_abs_before_normalization = max_abs_value(before_normalization);
-    const auto active_bits = active_coeff_modulus_bits(profile, start_info);
+    const auto active_bits = m2424::active_coeff_modulus_bits(profile, start_info);
     const auto period_window = m2424::bootstrap_period_feasibility_window(
         start_info.coeff_modulus_log2,
         std::log2(start_info.scale),

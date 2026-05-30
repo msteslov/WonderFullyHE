@@ -45,13 +45,6 @@ double max_abs_value(const m2424::ComplexVector& values) {
     return result;
 }
 
-std::vector<int> active_coeff_modulus_bits(const m2424::CkksProfile& profile,
-                                           const m2424::CipherInfo& info) {
-    const std::size_t active_size = std::min(info.coeff_modulus_size, profile.coeff_modulus_bits.size());
-    return {profile.coeff_modulus_bits.begin(),
-            profile.coeff_modulus_bits.begin() + static_cast<std::ptrdiff_t>(active_size)};
-}
-
 std::string csv_safe(std::string value) {
     std::replace(value.begin(), value.end(), ',', ';');
     return value;
@@ -140,7 +133,7 @@ int main() {
             40.0,
             60.0,
             m2424::EvalModDegree::P3,
-            active_coeff_modulus_bits(profile, slot_domain_info),
+            m2424::active_coeff_modulus_bits(profile, slot_domain_info),
             slot_domain_info,
             max_abs_before_normalization,
             0,

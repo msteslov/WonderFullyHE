@@ -44,13 +44,6 @@ m2424::ComplexVector head(m2424::ComplexVector values, std::size_t n) {
     return values;
 }
 
-std::vector<int> active_coeff_modulus_bits(const m2424::CkksProfile& profile,
-                                           const m2424::CipherInfo& info) {
-    const std::size_t active_size = std::min(info.coeff_modulus_size, profile.coeff_modulus_bits.size());
-    return {profile.coeff_modulus_bits.begin(),
-            profile.coeff_modulus_bits.begin() + static_cast<std::ptrdiff_t>(active_size)};
-}
-
 void run_case(const char* profile_name,
               const m2424::CkksProfile& profile,
               double prescale_log2,
@@ -78,7 +71,7 @@ void run_case(const char* profile_name,
     const auto start_info = adapter.info(current);
     const auto before_normalization = head(adapter.decode_complex(adapter.decrypt(current)), slots);
     const double max_abs_before_normalization = max_abs_value(before_normalization);
-    const auto active_bits = active_coeff_modulus_bits(profile, start_info);
+    const auto active_bits = m2424::active_coeff_modulus_bits(profile, start_info);
     const auto window = m2424::bootstrap_period_feasibility_window(
         start_info.coeff_modulus_log2,
         std::log2(start_info.scale),

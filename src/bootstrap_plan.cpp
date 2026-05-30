@@ -2,7 +2,9 @@
 
 #include "m2424/bootstrap_prototype.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <stdexcept>
 
 namespace m2424 {
@@ -73,6 +75,12 @@ const char* to_string(BootstrapRefreshPlanningStatus status) noexcept {
         return "refresh_plan_blocked";
     }
     return "unknown";
+}
+
+std::vector<int> active_coeff_modulus_bits(const CkksProfile& profile, const CipherInfo& info) {
+    const std::size_t active_size = std::min(info.coeff_modulus_size, profile.coeff_modulus_bits.size());
+    return {profile.coeff_modulus_bits.begin(),
+            profile.coeff_modulus_bits.begin() + static_cast<std::ptrdiff_t>(active_size)};
 }
 
 namespace {

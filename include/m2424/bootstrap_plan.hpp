@@ -124,6 +124,7 @@ const char* to_string(BootstrapRefreshPlanningStatus status) noexcept;
 BootstrapPipelinePlan make_research_bootstrap_plan(std::size_t slots);
 BootstrapPipelinePlan make_scalable_bootstrap_plan(std::size_t slots);
 std::vector<int> bootstrap_plan_rotation_steps(const BootstrapPipelinePlan& plan);
+std::vector<int> active_coeff_modulus_bits(const CkksProfile& profile, const CipherInfo& info);
 
 BootstrapScaleDesign make_bootstrap_scale_design(BootstrapPeriodMode period_mode,
                                                  double manual_period_log2,

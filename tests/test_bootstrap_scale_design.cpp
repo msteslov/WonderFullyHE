@@ -92,6 +92,11 @@ int main() {
         std::exp2(242.0),
         m2424::EvalModPolynomial::approximation_bound,
         2.0);
+    m2424::CkksProfile profile;
+    profile.coeff_modulus_bits = {60, 40, 40, 60};
+    const auto active_bits = m2424::active_coeff_modulus_bits(
+        profile,
+        make_info(40.0, 2, 3, 140.0));
 
     m2424::CkksOperationBudget small_budget;
     small_budget.ciphertext_muls = 2;
@@ -141,6 +146,7 @@ int main() {
         && impossible_window.margin_log2 < 0.0
         && possible_window.possible
         && possible_window.margin_log2 >= 0.0
+        && active_bits == std::vector<int>({60, 40, 40})
         && fits_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh
         && !fits_refresh_plan.needs_refresh
         && required_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::RefreshRequired
