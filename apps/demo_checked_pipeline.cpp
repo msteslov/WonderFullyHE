@@ -98,6 +98,22 @@ int main() {
     const bool sum_abft_ok = std::fabs(sum_decoded.front() - sum_ref) <= tolerance;
     print_checked(sum_result, sum_abft_ok ? "PASS" : "FAIL");
 
+    const auto& budget = checked.operation_budget();
+    const auto refresh_plan = checked.plan_refresh_for_tracked_budget(sum_result.info,
+                                                                      1e-9,
+                                                                      adapter.slot_count());
+    std::printf("budget,additions,%zu,ciphertext_muls,%zu,rotations,%zu,plaintext_mul_rescales,%zu\n",
+                budget.additions,
+                budget.ciphertext_muls,
+                budget.rotations,
+                budget.plaintext_mul_rescales);
+    std::printf("refresh_plan,status,%s,required_levels,%zu,available_levels,%zu,needs_refresh,%s,planned_work_bits,%d\n",
+                m2424::to_string(refresh_plan.status),
+                refresh_plan.required_compute_levels,
+                refresh_plan.available_compute_levels,
+                refresh_plan.needs_refresh ? "true" : "false",
+                refresh_plan.parameter_plan.selected_work_bits);
+
     return add_result.ok && add_abft.ok
         && mul_result.ok && mul_abft.ok
         && rotate_result.ok && rotate_abft.ok
