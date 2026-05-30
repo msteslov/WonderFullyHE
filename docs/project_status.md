@@ -8,6 +8,7 @@ WonderFullyHE — учебно-исследовательский прототи
 - Готовые CKKS-профили в `m2424::profiles`: `fast_demo_ckks`, `basic_ckks`, `balanced_ckks`, `depth_ckks`, `high_precision_ckks`.
 - Первая версия `CkksParameterPlanner`: подбор `scale`, рабочих модулей, длины chain и `N` из `target_error`, depth, slots и security.
 - `OperationBudgetBuilder` и автоматический tracking бюджета в `CheckedEvaluator` для базовых проверяемых pipeline.
+- `plan_bootstrap_refresh`: первый gate, который связывает текущий `CipherInfo`, бюджет следующего блока и решение `compute_fits_without_refresh` / `refresh_required` / `refresh_plan_blocked`.
 - Операции `encode`, `encrypt`, `decrypt`, `decode`.
 - Гомоморфные операции `add`, `sub`, `mul_relin_rescale`, `rotate`.
 - Plaintext-операции `add_plain`, `sub_plain`, `mul_plain`, `mul_plain_rescale`.

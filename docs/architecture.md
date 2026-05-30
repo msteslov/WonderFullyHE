@@ -112,6 +112,8 @@ Full refresh не считается стабильным API, пока `bench_b
 
 Целевой `BootstrapPlanner` должен стать обязательным входом в refresh. Он заранее считает для каждой стадии `chain_index`, `scale_log2`, остаток modulus, bound значения и error budget. Если план не проходит, refresh не запускается и возвращает явную причину: `blocked_by_levels`, `blocked_by_period_window`, `blocked_by_evalmod_capacity` или `blocked_by_error_budget`.
 
+Первая часть этого слоя реализована как `plan_bootstrap_refresh`: она принимает текущий `CipherInfo` и `CkksOperationBudget` следующего вычислительного блока, проверяет хватает ли chain levels без refresh и возвращает `compute_fits_without_refresh`, `refresh_required` или `refresh_plan_blocked`.
+
 Для `EvalMod` default-полиномом остаётся `P3`, пока нормализованный вход удовлетворяет `|u| <= 2^-10`. На этом интервале математическая ошибка аппроксимации около `1e-14`, поэтому для target `1e-9` bottleneck находится в CKKS scale/noise и линейных трансформах, а не в степени полинома.
 
 ### Parameter planning

@@ -40,6 +40,10 @@ m2424::BootstrapScaleDesign design(double period_log2,
         2.0);
 }
 
+m2424::CipherInfo refresh_info(std::size_t chain_index) {
+    return make_info(45.0, chain_index, chain_index + 1, 45.0 * static_cast<double>(chain_index + 1));
+}
+
 } // namespace
 
 int main() {
@@ -89,6 +93,42 @@ int main() {
         m2424::EvalModPolynomial::approximation_bound,
         2.0);
 
+    m2424::CkksOperationBudget small_budget;
+    small_budget.ciphertext_muls = 2;
+    const auto fits_refresh_plan = m2424::plan_bootstrap_refresh({
+        refresh_info(3),
+        small_budget,
+        1e-9,
+        4096,
+        128,
+        m2424::ParameterOptimizeFor::Speed,
+        1
+    });
+
+    m2424::CkksOperationBudget large_budget;
+    large_budget.ciphertext_muls = 2;
+    const auto required_refresh_plan = m2424::plan_bootstrap_refresh({
+        refresh_info(1),
+        large_budget,
+        1e-9,
+        4096,
+        128,
+        m2424::ParameterOptimizeFor::Speed,
+        0
+    });
+
+    m2424::CkksOperationBudget impossible_budget;
+    impossible_budget.evalmod_p3 = 10;
+    const auto blocked_refresh_plan = m2424::plan_bootstrap_refresh({
+        refresh_info(1),
+        impossible_budget,
+        1e-15,
+        4096,
+        128,
+        m2424::ParameterOptimizeFor::Speed,
+        0
+    });
+
     const bool ok =
         period_blocked.status == m2424::BootstrapScaleDesignStatus::PeriodModelBlocked
         && scale_blocked.status == m2424::BootstrapScaleDesignStatus::ScaleStrategyBlocked
@@ -100,7 +140,13 @@ int main() {
         && !impossible_window.possible
         && impossible_window.margin_log2 < 0.0
         && possible_window.possible
-        && possible_window.margin_log2 >= 0.0;
+        && possible_window.margin_log2 >= 0.0
+        && fits_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh
+        && !fits_refresh_plan.needs_refresh
+        && required_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::RefreshRequired
+        && required_refresh_plan.needs_refresh
+        && blocked_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::RefreshPlanBlocked
+        && blocked_refresh_plan.needs_refresh;
 
     std::printf("[test_bootstrap_scale_design] status_cases=%s period=%s scale=%s capacity=%s ready=%s\n",
                 ok ? "PASS" : "FAIL",

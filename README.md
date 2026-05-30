@@ -222,6 +222,8 @@ Chebyshev/minimax-полиномы стоит использовать как of
 
 Модуль `m2424::BootstrapPipelinePlan` задаёт целевую архитектуру bootstrapping: домены значений между стадиями, transform backend (`DenseDiagonal` для текущего research path или `FftLike` для будущего масштабируемого path), scaling strategy и active gate. Bootstrapping должен выполняться только по рассчитанному плану, который заранее проверяет `chain_index`, `scale_log2`, остаток modulus, interval для `EvalMod` и error budget.
 
+`plan_bootstrap_refresh` связывает operation budget и bootstrapping decision: по текущему `CipherInfo` и бюджету следующего блока он возвращает `compute_fits_without_refresh`, `refresh_required` или `refresh_plan_blocked`.
+
 Модуль `m2424::BootstrapPrototype` оставлен как внутренний проверочный harness. Текущий `CoeffToSlot/SlotToCoeff` строится через dense diagonal transform и годится как reference для маленьких `slots`; production path должен перейти на настоящий factorized FFT-like backend с sparse layers, BSGS/hoisting и ограниченным набором rotation keys.
 
 Модуль `m2424::abft` содержит checksum-инструменты: `append_checksum`, `checksum`, `verify_appended_checksum`, `verify_checksum_value`.

@@ -3,6 +3,7 @@
 #include "m2424/bootstrap_dft.hpp"
 #include "m2424/bootstrap_scaling.hpp"
 #include "m2424/eval_mod.hpp"
+#include "m2424/parameter_planner.hpp"
 
 #include <cstddef>
 #include <string>
@@ -36,6 +37,12 @@ enum class BootstrapScaleDesignStatus {
     ScaleStrategyBlocked,
     EvalModCapacityBlocked,
     ReadyForEvalModP3
+};
+
+enum class BootstrapRefreshPlanningStatus {
+    ComputeFitsWithoutRefresh,
+    RefreshRequired,
+    RefreshPlanBlocked
 };
 
 struct BootstrapStageSpec {
@@ -87,11 +94,32 @@ struct BootstrapPeriodFeasibilityWindow {
     bool possible{};
 };
 
+struct BootstrapRefreshPlanningRequest {
+    CipherInfo current_info;
+    CkksOperationBudget operation_budget;
+    double target_error{1e-9};
+    std::size_t slots{1};
+    int security_bits{128};
+    ParameterOptimizeFor optimize_for{ParameterOptimizeFor::Speed};
+    std::size_t min_chain_remaining_after_compute{};
+};
+
+struct BootstrapRefreshPlanningResult {
+    BootstrapRefreshPlanningStatus status{BootstrapRefreshPlanningStatus::RefreshPlanBlocked};
+    std::size_t required_compute_levels{};
+    std::size_t available_compute_levels{};
+    bool needs_refresh{};
+    bool parameter_plan_ok{};
+    std::string blocker;
+    CkksPlanningResult parameter_plan;
+};
+
 const char* to_string(BootstrapValueDomain domain) noexcept;
 const char* to_string(BootstrapTransformBackend backend) noexcept;
 const char* to_string(BootstrapScalingStrategy strategy) noexcept;
 const char* to_string(BootstrapPipelineGate gate) noexcept;
 const char* to_string(BootstrapScaleDesignStatus status) noexcept;
+const char* to_string(BootstrapRefreshPlanningStatus status) noexcept;
 
 BootstrapPipelinePlan make_research_bootstrap_plan(std::size_t slots);
 BootstrapPipelinePlan make_scalable_bootstrap_plan(std::size_t slots);
@@ -117,5 +145,7 @@ BootstrapPeriodFeasibilityWindow bootstrap_period_feasibility_window(
     double max_abs_before_normalization,
     double evalmod_bound,
     double evalmod_capacity_margin_log2);
+
+BootstrapRefreshPlanningResult plan_bootstrap_refresh(const BootstrapRefreshPlanningRequest& request);
 
 } // namespace m2424

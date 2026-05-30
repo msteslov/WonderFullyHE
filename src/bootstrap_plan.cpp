@@ -63,6 +63,18 @@ const char* to_string(BootstrapScaleDesignStatus status) noexcept {
     return "unknown";
 }
 
+const char* to_string(BootstrapRefreshPlanningStatus status) noexcept {
+    switch (status) {
+    case BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh:
+        return "compute_fits_without_refresh";
+    case BootstrapRefreshPlanningStatus::RefreshRequired:
+        return "refresh_required";
+    case BootstrapRefreshPlanningStatus::RefreshPlanBlocked:
+        return "refresh_plan_blocked";
+    }
+    return "unknown";
+}
+
 namespace {
 
 std::vector<BootstrapStageSpec> standard_stages() {
@@ -291,6 +303,58 @@ BootstrapPeriodFeasibilityWindow bootstrap_period_feasibility_window(
         window.max_period_for_evalmod_capacity_log2 - window.min_period_for_magnitude_log2;
     window.possible = window.margin_log2 >= 0.0;
     return window;
+}
+
+BootstrapRefreshPlanningResult plan_bootstrap_refresh(const BootstrapRefreshPlanningRequest& request) {
+    if (request.slots == 0) {
+        throw std::invalid_argument("bootstrap refresh planner slots must be positive");
+    }
+    if (request.current_info.chain_index < request.min_chain_remaining_after_compute) {
+        throw std::invalid_argument("min_chain_remaining_after_compute exceeds current chain index");
+    }
+
+    BootstrapRefreshPlanningResult result;
+    result.required_compute_levels = estimated_level_budget(request.operation_budget);
+    result.available_compute_levels =
+        request.current_info.chain_index - request.min_chain_remaining_after_compute;
+
+    CkksPlanningRequest parameter_request;
+    parameter_request.target_error = request.target_error;
+    parameter_request.multiplicative_depth = std::max<std::size_t>(1, result.required_compute_levels);
+    parameter_request.slots = request.slots;
+    parameter_request.security_bits = request.security_bits;
+    parameter_request.optimize_for = request.optimize_for;
+    parameter_request.use_operation_budget = true;
+    parameter_request.operation_budget = request.operation_budget;
+
+    try {
+        result.parameter_plan = plan_ckks_parameters(parameter_request);
+        result.parameter_plan_ok = result.parameter_plan.passes_target_error;
+    } catch (const std::exception& error) {
+        result.status = BootstrapRefreshPlanningStatus::RefreshPlanBlocked;
+        result.needs_refresh = true;
+        result.blocker = error.what();
+        return result;
+    }
+
+    if (!result.parameter_plan_ok) {
+        result.status = BootstrapRefreshPlanningStatus::RefreshPlanBlocked;
+        result.needs_refresh = true;
+        result.blocker = "parameter_plan_failed_target_error";
+        return result;
+    }
+
+    if (result.required_compute_levels <= result.available_compute_levels) {
+        result.status = BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh;
+        result.needs_refresh = false;
+        result.blocker = "none";
+        return result;
+    }
+
+    result.status = BootstrapRefreshPlanningStatus::RefreshRequired;
+    result.needs_refresh = true;
+    result.blocker = "insufficient_chain_for_next_budget";
+    return result;
 }
 
 } // namespace m2424
