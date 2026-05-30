@@ -80,7 +80,20 @@ int main() {
     auto rotate_result = checked.rotate(mul_result.cipher, 1, rotate_expected);
 
     std::printf("case,current_chain,additions,ciphertext_muls,rotations,plaintext_mul_rescales,status,required_levels,available_levels,needs_refresh,planned_work_bits,estimated_abs_error_bound\n");
-    print_plan("repeat_tracked_block", rotate_result.info, checked.operation_budget(), 4096);
+    const auto tracked_plan = checked.plan_refresh_for_tracked_budget(rotate_result.info, 1e-9, 4096);
+    std::printf("%s,%zu,%zu,%zu,%zu,%zu,%s,%zu,%zu,%s,%d,%.6e\n",
+                "repeat_tracked_block",
+                rotate_result.info.chain_index,
+                checked.operation_budget().additions,
+                checked.operation_budget().ciphertext_muls,
+                checked.operation_budget().rotations,
+                checked.operation_budget().plaintext_mul_rescales,
+                m2424::to_string(tracked_plan.status),
+                tracked_plan.required_compute_levels,
+                tracked_plan.available_compute_levels,
+                tracked_plan.needs_refresh ? "true" : "false",
+                tracked_plan.parameter_plan.selected_work_bits,
+                tracked_plan.parameter_plan.estimated_abs_error_bound);
 
     m2424::CkksOperationBudget deeper_budget = checked.operation_budget();
     deeper_budget.ciphertext_muls += 3;

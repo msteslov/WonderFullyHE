@@ -88,6 +88,13 @@ void test_checked_evaluator_tracking() {
     const auto plan = m2424::plan_ckks_parameters(request);
     require(plan.selected_work_levels == 1, "tracked budget level plan mismatch");
     require(plan.passes_target_error, "tracked budget should pass target");
+
+    const auto refresh_plan = checked.plan_refresh_for_tracked_budget(
+        adapter.info(sum_result.cipher),
+        1e-9,
+        4096);
+    require(refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh,
+            "checked evaluator refresh planning mismatch");
 }
 
 } // namespace

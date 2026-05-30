@@ -58,6 +58,24 @@ void CheckedEvaluator::reset_operation_budget() noexcept {
     budget_builder_.reset();
 }
 
+BootstrapRefreshPlanningResult CheckedEvaluator::plan_refresh_for_tracked_budget(
+    const CipherInfo& current_info,
+    double target_error,
+    std::size_t slots,
+    int security_bits,
+    ParameterOptimizeFor optimize_for,
+    std::size_t min_chain_remaining_after_compute) const {
+    return plan_bootstrap_refresh({
+        current_info,
+        budget_builder_.budget(),
+        target_error,
+        slots,
+        security_bits,
+        optimize_for,
+        min_chain_remaining_after_compute
+    });
+}
+
 CheckedResult CheckedEvaluator::finalize(std::string operation, Cipher cipher, const std::vector<double>& expected) {
     if (expected.size() != payload_size_) {
         throw std::invalid_argument("expected vector size must match payload_size");

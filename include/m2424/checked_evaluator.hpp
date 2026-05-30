@@ -1,6 +1,7 @@
 #pragma once
 
 #include "m2424/accuracy.hpp"
+#include "m2424/bootstrap_plan.hpp"
 #include "m2424/linear_transform.hpp"
 #include "m2424/operation_budget.hpp"
 #include "m2424/seal_adapter.hpp"
@@ -32,6 +33,13 @@ public:
                                    const std::vector<double>& expected);
     const CkksOperationBudget& operation_budget() const noexcept;
     void reset_operation_budget() noexcept;
+    BootstrapRefreshPlanningResult plan_refresh_for_tracked_budget(
+        const CipherInfo& current_info,
+        double target_error,
+        std::size_t slots,
+        int security_bits = 128,
+        ParameterOptimizeFor optimize_for = ParameterOptimizeFor::Speed,
+        std::size_t min_chain_remaining_after_compute = 0) const;
 
 private:
     CheckedResult finalize(std::string operation, Cipher cipher, const std::vector<double>& expected);
