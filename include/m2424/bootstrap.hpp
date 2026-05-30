@@ -66,6 +66,14 @@ public:
                                              std::size_t slots,
                                              double tolerance,
                                              double normalization_factor);
+    BootstrapRefreshPlanningResult plan_refresh_for_budget(
+        const Cipher& input,
+        const CkksOperationBudget& operation_budget,
+        double target_error,
+        std::size_t slots,
+        int security_bits = 128,
+        ParameterOptimizeFor optimize_for = ParameterOptimizeFor::Speed,
+        std::size_t min_chain_remaining_after_compute = 0) const;
     BootstrapPipelinePlan plan(std::size_t slots) const;
     const std::vector<BootstrapStage>& pipeline() const noexcept;
 

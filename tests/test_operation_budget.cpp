@@ -1,3 +1,4 @@
+#include "m2424/bootstrap.hpp"
 #include "m2424/checked_evaluator.hpp"
 #include "m2424/operation_budget.hpp"
 #include "m2424/profiles.hpp"
@@ -112,6 +113,14 @@ void test_checked_evaluator_tracking() {
         4096);
     require(refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::RefreshRequired,
             "checked evaluator refresh planning mismatch");
+
+    m2424::Bootstrapper bootstrapper(adapter);
+    const auto bootstrapper_plan = bootstrapper.plan_refresh_for_budget(sum_result.cipher,
+                                                                        budget,
+                                                                        1e-9,
+                                                                        4096);
+    require(bootstrapper_plan.status == refresh_plan.status,
+            "bootstrapper refresh planning should match checked evaluator");
 }
 
 } // namespace

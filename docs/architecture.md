@@ -114,6 +114,8 @@ Full refresh не считается стабильным API, пока `bench_b
 
 Первая часть этого слоя реализована как `plan_bootstrap_refresh`: она принимает текущий `CipherInfo` и `CkksOperationBudget` следующего вычислительного блока, проверяет хватает ли chain levels без refresh и возвращает `compute_fits_without_refresh`, `refresh_required` или `refresh_plan_blocked`.
 
+`Bootstrapper::plan_refresh_for_budget` применяет этот gate к реальному ciphertext и должен стать входной точкой перед любым будущим guarded refresh.
+
 Для `EvalMod` default-полиномом остаётся `P3`, пока нормализованный вход удовлетворяет `|u| <= 2^-10`. На этом интервале математическая ошибка аппроксимации около `1e-14`, поэтому для target `1e-9` bottleneck находится в CKKS scale/noise и линейных трансформах, а не в степени полинома.
 
 ### Parameter planning

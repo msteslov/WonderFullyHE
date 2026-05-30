@@ -171,6 +171,28 @@ BootstrapPrototypeReport Bootstrapper::refresh_checked(const Cipher& input,
     return prototype.refresh_cipher_checked(input, expected);
 }
 
+BootstrapRefreshPlanningResult Bootstrapper::plan_refresh_for_budget(
+    const Cipher& input,
+    const CkksOperationBudget& operation_budget,
+    double target_error,
+    std::size_t slots,
+    int security_bits,
+    ParameterOptimizeFor optimize_for,
+    std::size_t min_chain_remaining_after_compute) const {
+    if (!adapter_) {
+        throw std::runtime_error("Bootstrapper has no SealAdapter");
+    }
+    return plan_bootstrap_refresh({
+        adapter_->info(input),
+        operation_budget,
+        target_error,
+        slots,
+        security_bits,
+        optimize_for,
+        min_chain_remaining_after_compute
+    });
+}
+
 const std::vector<BootstrapStage>& Bootstrapper::pipeline() const noexcept {
     return stages_;
 }

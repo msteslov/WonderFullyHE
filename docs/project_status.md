@@ -9,6 +9,7 @@ WonderFullyHE — учебно-исследовательский прототи
 - Первая версия `CkksParameterPlanner`: подбор `scale`, рабочих модулей, длины chain и `N` из `target_error`, depth, slots и security.
 - `OperationBudgetBuilder` и автоматический tracking бюджета в `CheckedEvaluator` для базовых проверяемых pipeline.
 - `plan_bootstrap_refresh`: первый gate, который связывает текущий `CipherInfo`, бюджет следующего блока и решение `compute_fits_without_refresh` / `refresh_required` / `refresh_plan_blocked`.
+- `Bootstrapper::plan_refresh_for_budget`: применение refresh gate к реальному ciphertext перед запуском experimental refresh.
 - Операции `encode`, `encrypt`, `decrypt`, `decode`.
 - Гомоморфные операции `add`, `sub`, `mul_relin_rescale`, `rotate`.
 - Plaintext-операции `add_plain`, `sub_plain`, `mul_plain`, `mul_plain_rescale`.
