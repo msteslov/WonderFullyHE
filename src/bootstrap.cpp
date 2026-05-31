@@ -84,7 +84,7 @@ Bootstrapper::Bootstrapper(SealAdapter& adapter) : adapter_(&adapter) {
         {"eval_mod_normalization", BootstrapStageStatus::Ready, {}, {},
          "амплитуда входа EvalMod приводится к рабочему интервалу полинома"},
         {"EvalMod", BootstrapStageStatus::PrimitiveReady, {}, {},
-         "модульная редукция приближается полиномом P3 на нормализованном интервале"},
+         "модульная редукция приближается параметризуемым экспериментальным EvalMod"},
         {"post_refresh_mod_raise", BootstrapStageStatus::PrimitiveReady, {}, {},
          "после refresh ciphertext снова поднимается к первой RNS-базе"}
     };
@@ -212,13 +212,20 @@ BootstrapPrototypeReport Bootstrapper::refresh_checked(const Cipher& input,
 BootstrapPrototypeReport Bootstrapper::refresh_slots_to_coeffs_first(const Cipher& input,
                                                                      std::size_t slots,
                                                                      double tolerance) {
+    return refresh_slots_to_coeffs_first(input, slots, tolerance, EvalModDegree::P3);
+}
+
+BootstrapPrototypeReport Bootstrapper::refresh_slots_to_coeffs_first(const Cipher& input,
+                                                                     std::size_t slots,
+                                                                     double tolerance,
+                                                                     EvalModDegree evalmod_degree) {
     if (!adapter_) {
         throw std::runtime_error("Bootstrapper has no SealAdapter");
     }
     BootstrapPrototype prototype(*adapter_, slots, tolerance);
     prototype.set_transform_backend(BootstrapTransformBackend::FftLike);
     prototype.set_circuit_order(BootstrapCircuitOrder::SlotsToCoeffsFirst);
-    prototype.set_evalmod_degree(EvalModDegree::P3);
+    prototype.set_evalmod_degree(evalmod_degree);
     prototype.set_plain_scale_log2(std::log2(adapter_->info(input).scale));
     return prototype.refresh_cipher_fast(input);
 }
@@ -228,13 +235,22 @@ BootstrapPrototypeReport Bootstrapper::refresh_slots_to_coeffs_first_checked(
     const ComplexVector& expected,
     std::size_t slots,
     double tolerance) {
+    return refresh_slots_to_coeffs_first_checked(input, expected, slots, tolerance, EvalModDegree::P3);
+}
+
+BootstrapPrototypeReport Bootstrapper::refresh_slots_to_coeffs_first_checked(
+    const Cipher& input,
+    const ComplexVector& expected,
+    std::size_t slots,
+    double tolerance,
+    EvalModDegree evalmod_degree) {
     if (!adapter_) {
         throw std::runtime_error("Bootstrapper has no SealAdapter");
     }
     BootstrapPrototype prototype(*adapter_, slots, tolerance);
     prototype.set_transform_backend(BootstrapTransformBackend::FftLike);
     prototype.set_circuit_order(BootstrapCircuitOrder::SlotsToCoeffsFirst);
-    prototype.set_evalmod_degree(EvalModDegree::P3);
+    prototype.set_evalmod_degree(evalmod_degree);
     prototype.set_plain_scale_log2(std::log2(adapter_->info(input).scale));
     return prototype.refresh_cipher_checked(input, expected);
 }
@@ -245,6 +261,27 @@ BootstrapGuardedRefreshResult Bootstrapper::refresh_slots_to_coeffs_first_guarde
     double target_error,
     std::size_t slots,
     double tolerance,
+    int security_bits,
+    ParameterOptimizeFor optimize_for,
+    std::size_t min_chain_remaining_after_compute) {
+    return refresh_slots_to_coeffs_first_guarded(input,
+                                                 operation_budget,
+                                                 target_error,
+                                                 slots,
+                                                 tolerance,
+                                                 EvalModDegree::P3,
+                                                 security_bits,
+                                                 optimize_for,
+                                                 min_chain_remaining_after_compute);
+}
+
+BootstrapGuardedRefreshResult Bootstrapper::refresh_slots_to_coeffs_first_guarded(
+    const Cipher& input,
+    const CkksOperationBudget& operation_budget,
+    double target_error,
+    std::size_t slots,
+    double tolerance,
+    EvalModDegree evalmod_degree,
     int security_bits,
     ParameterOptimizeFor optimize_for,
     std::size_t min_chain_remaining_after_compute) {
@@ -260,7 +297,7 @@ BootstrapGuardedRefreshResult Bootstrapper::refresh_slots_to_coeffs_first_guarde
         result.blocker = result.planning.blocker;
         return result;
     }
-    result.refresh = refresh_slots_to_coeffs_first(input, slots, tolerance);
+    result.refresh = refresh_slots_to_coeffs_first(input, slots, tolerance, evalmod_degree);
     result.refresh_executed = true;
     result.blocker = guarded_refresh_blocker(result.refresh, false);
     return result;
@@ -276,6 +313,29 @@ BootstrapGuardedRefreshResult Bootstrapper::refresh_slots_to_coeffs_first_checke
     int security_bits,
     ParameterOptimizeFor optimize_for,
     std::size_t min_chain_remaining_after_compute) {
+    return refresh_slots_to_coeffs_first_checked_guarded(input,
+                                                         expected,
+                                                         operation_budget,
+                                                         target_error,
+                                                         slots,
+                                                         tolerance,
+                                                         EvalModDegree::P3,
+                                                         security_bits,
+                                                         optimize_for,
+                                                         min_chain_remaining_after_compute);
+}
+
+BootstrapGuardedRefreshResult Bootstrapper::refresh_slots_to_coeffs_first_checked_guarded(
+    const Cipher& input,
+    const ComplexVector& expected,
+    const CkksOperationBudget& operation_budget,
+    double target_error,
+    std::size_t slots,
+    double tolerance,
+    EvalModDegree evalmod_degree,
+    int security_bits,
+    ParameterOptimizeFor optimize_for,
+    std::size_t min_chain_remaining_after_compute) {
     BootstrapGuardedRefreshResult result;
     result.planning = plan_refresh_for_budget(input,
                                               operation_budget,
@@ -288,7 +348,7 @@ BootstrapGuardedRefreshResult Bootstrapper::refresh_slots_to_coeffs_first_checke
         result.blocker = result.planning.blocker;
         return result;
     }
-    result.refresh = refresh_slots_to_coeffs_first_checked(input, expected, slots, tolerance);
+    result.refresh = refresh_slots_to_coeffs_first_checked(input, expected, slots, tolerance, evalmod_degree);
     result.refresh_executed = true;
     result.blocker = guarded_refresh_blocker(result.refresh, true);
     return result;
