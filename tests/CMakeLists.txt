@@ -1,40 +1,21 @@
-add_executable(test_smoke test_smoke.cpp)
-target_compile_features(test_smoke PRIVATE cxx_std_17)
-target_link_libraries(test_smoke PRIVATE m2424)
+function(m2424_add_test target)
+    add_executable(${target} ${target}.cpp)
+    target_compile_features(${target} PRIVATE cxx_std_17)
+    target_link_libraries(${target} PRIVATE m2424)
+    add_test(NAME ${target} COMMAND ${target})
+endfunction()
 
-add_executable(test_accuracy test_accuracy.cpp)
-target_compile_features(test_accuracy PRIVATE cxx_std_17)
-target_link_libraries(test_accuracy PRIVATE m2424)
+set(M2424_TESTS
+    test_accuracy
+    test_adapter_failures
+    test_bootstrap_dft
+    test_bootstrap_scalable_refresh
+    test_bootstrap_scale_design
+    test_operation_budget
+    test_parameter_planner
+    test_smoke
+)
 
-add_executable(test_adapter_failures test_adapter_failures.cpp)
-target_compile_features(test_adapter_failures PRIVATE cxx_std_17)
-target_link_libraries(test_adapter_failures PRIVATE m2424)
-
-add_executable(test_bootstrap_scale_design test_bootstrap_scale_design.cpp)
-target_compile_features(test_bootstrap_scale_design PRIVATE cxx_std_17)
-target_link_libraries(test_bootstrap_scale_design PRIVATE m2424)
-
-add_executable(test_bootstrap_dft test_bootstrap_dft.cpp)
-target_compile_features(test_bootstrap_dft PRIVATE cxx_std_17)
-target_link_libraries(test_bootstrap_dft PRIVATE m2424)
-
-add_executable(test_bootstrap_scalable_refresh test_bootstrap_scalable_refresh.cpp)
-target_compile_features(test_bootstrap_scalable_refresh PRIVATE cxx_std_17)
-target_link_libraries(test_bootstrap_scalable_refresh PRIVATE m2424)
-
-add_executable(test_parameter_planner test_parameter_planner.cpp)
-target_compile_features(test_parameter_planner PRIVATE cxx_std_17)
-target_link_libraries(test_parameter_planner PRIVATE m2424)
-
-add_executable(test_operation_budget test_operation_budget.cpp)
-target_compile_features(test_operation_budget PRIVATE cxx_std_17)
-target_link_libraries(test_operation_budget PRIVATE m2424)
-
-add_test(NAME test_smoke COMMAND test_smoke)
-add_test(NAME test_accuracy COMMAND test_accuracy)
-add_test(NAME test_adapter_failures COMMAND test_adapter_failures)
-add_test(NAME test_bootstrap_scale_design COMMAND test_bootstrap_scale_design)
-add_test(NAME test_bootstrap_dft COMMAND test_bootstrap_dft)
-add_test(NAME test_bootstrap_scalable_refresh COMMAND test_bootstrap_scalable_refresh)
-add_test(NAME test_parameter_planner COMMAND test_parameter_planner)
-add_test(NAME test_operation_budget COMMAND test_operation_budget)
+foreach(target IN LISTS M2424_TESTS)
+    m2424_add_test(${target})
+endforeach()

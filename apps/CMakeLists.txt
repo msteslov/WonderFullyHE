@@ -1,159 +1,70 @@
-add_executable(demo_basic demo_basic.cpp)
-target_compile_features(demo_basic PRIVATE cxx_std_17)
-target_link_libraries(demo_basic PRIVATE m2424)
+option(M2424_BUILD_APPS "Build m2424 command-line demos and measurement tools" ON)
+option(M2424_BUILD_RESEARCH_APPS "Build experimental/research bootstrap harnesses" OFF)
 
-add_executable(demo_abft demo_abft.cpp)
-target_compile_features(demo_abft PRIVATE cxx_std_17)
-target_link_libraries(demo_abft PRIVATE m2424)
+if(NOT M2424_BUILD_APPS)
+    return()
+endif()
 
-add_executable(bench_ckks bench_ckks.cpp)
-target_compile_features(bench_ckks PRIVATE cxx_std_17)
-target_link_libraries(bench_ckks PRIVATE m2424)
+function(m2424_add_app target)
+    add_executable(${target} ${target}.cpp)
+    target_compile_features(${target} PRIVATE cxx_std_17)
+    target_link_libraries(${target} PRIVATE m2424)
+    set_target_properties(${target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+endfunction()
 
-add_executable(bench_chain_accuracy bench_chain_accuracy.cpp)
-target_compile_features(bench_chain_accuracy PRIVATE cxx_std_17)
-target_link_libraries(bench_chain_accuracy PRIVATE m2424)
-
-add_executable(bench_parameter_planner bench_parameter_planner.cpp)
-target_compile_features(bench_parameter_planner PRIVATE cxx_std_17)
-target_link_libraries(bench_parameter_planner PRIVATE m2424)
-
-add_executable(bench_bootstrap_parts bench_bootstrap_parts.cpp)
-target_compile_features(bench_bootstrap_parts PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_parts PRIVATE m2424)
-
-add_executable(bench_bootstrap_planner bench_bootstrap_planner.cpp)
-target_compile_features(bench_bootstrap_planner PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_planner PRIVATE m2424)
-
-add_executable(bench_bootstrap_layout_planner bench_bootstrap_layout_planner.cpp)
-target_compile_features(bench_bootstrap_layout_planner PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_layout_planner PRIVATE m2424)
-
-add_executable(bench_bootstrap_layout_physical_gate bench_bootstrap_layout_physical_gate.cpp)
-target_compile_features(bench_bootstrap_layout_physical_gate PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_layout_physical_gate PRIVATE m2424)
-
-add_executable(bench_bootstrap_full bench_bootstrap_full.cpp)
-target_compile_features(bench_bootstrap_full PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_full PRIVATE m2424)
-
-add_executable(bench_bootstrap_refresh bench_bootstrap_refresh.cpp)
-target_compile_features(bench_bootstrap_refresh PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_refresh PRIVATE m2424)
-
-add_executable(bench_bootstrap_multi_cycle bench_bootstrap_multi_cycle.cpp)
-target_compile_features(bench_bootstrap_multi_cycle PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_multi_cycle PRIVATE m2424)
-
-add_executable(bench_bootstrap_validation bench_bootstrap_validation.cpp)
-target_compile_features(bench_bootstrap_validation PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_validation PRIVATE m2424)
-
-add_executable(bench_bootstrap_scaling bench_bootstrap_scaling.cpp)
-target_compile_features(bench_bootstrap_scaling PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_scaling PRIVATE m2424)
-
-add_executable(bench_bootstrap_one_case bench_bootstrap_one_case.cpp)
-target_compile_features(bench_bootstrap_one_case PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_one_case PRIVATE m2424)
-
-add_executable(bench_bootstrap_period_model bench_bootstrap_period_model.cpp)
-target_compile_features(bench_bootstrap_period_model PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_period_model PRIVATE m2424)
-
-add_executable(bench_bootstrap_scale_strategy bench_bootstrap_scale_strategy.cpp)
-target_compile_features(bench_bootstrap_scale_strategy PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_scale_strategy PRIVATE m2424)
-
-add_executable(bench_bootstrap_profile_budget bench_bootstrap_profile_budget.cpp)
-target_compile_features(bench_bootstrap_profile_budget PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_profile_budget PRIVATE m2424)
-
-add_executable(bench_bootstrap_reference_path bench_bootstrap_reference_path.cpp)
-target_compile_features(bench_bootstrap_reference_path PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_reference_path PRIVATE m2424)
-
-add_executable(bench_bootstrap_prescaled_coeff_to_slot bench_bootstrap_prescaled_coeff_to_slot.cpp)
-target_compile_features(bench_bootstrap_prescaled_coeff_to_slot PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_prescaled_coeff_to_slot PRIVATE m2424)
-
-add_executable(bench_bootstrap_slots_to_coeffs_first bench_bootstrap_slots_to_coeffs_first.cpp)
-target_compile_features(bench_bootstrap_slots_to_coeffs_first PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_slots_to_coeffs_first PRIVATE m2424)
-
-add_executable(bench_bootstrap_stc_budget bench_bootstrap_stc_budget.cpp)
-target_compile_features(bench_bootstrap_stc_budget PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_stc_budget PRIVATE m2424)
-
-add_executable(bench_bootstrap_stc_deep_probe bench_bootstrap_stc_deep_probe.cpp)
-target_compile_features(bench_bootstrap_stc_deep_probe PRIVATE cxx_std_17)
-target_link_libraries(bench_bootstrap_stc_deep_probe PRIVATE m2424)
-
-add_executable(demo_bootstrap_diagonals demo_bootstrap_diagonals.cpp)
-target_compile_features(demo_bootstrap_diagonals PRIVATE cxx_std_17)
-target_link_libraries(demo_bootstrap_diagonals PRIVATE m2424)
-
-add_executable(demo_bootstrap_prototype demo_bootstrap_prototype.cpp)
-target_compile_features(demo_bootstrap_prototype PRIVATE cxx_std_17)
-target_link_libraries(demo_bootstrap_prototype PRIVATE m2424)
-
-add_executable(demo_bootstrap_cipher_path demo_bootstrap_cipher_path.cpp)
-target_compile_features(demo_bootstrap_cipher_path PRIVATE cxx_std_17)
-target_link_libraries(demo_bootstrap_cipher_path PRIVATE m2424)
-
-add_executable(demo_bootstrap_end_to_end demo_bootstrap_end_to_end.cpp)
-target_compile_features(demo_bootstrap_end_to_end PRIVATE cxx_std_17)
-target_link_libraries(demo_bootstrap_end_to_end PRIVATE m2424)
-
-add_executable(demo_eval_mod_polynomial demo_eval_mod_polynomial.cpp)
-target_compile_features(demo_eval_mod_polynomial PRIVATE cxx_std_17)
-target_link_libraries(demo_eval_mod_polynomial PRIVATE m2424)
-
-add_executable(bench_parallel_throughput bench_parallel_throughput.cpp)
-target_compile_features(bench_parallel_throughput PRIVATE cxx_std_17)
-target_link_libraries(bench_parallel_throughput PRIVATE m2424)
-
-add_executable(demo_precision_profiles demo_precision_profiles.cpp)
-target_compile_features(demo_precision_profiles PRIVATE cxx_std_17)
-target_link_libraries(demo_precision_profiles PRIVATE m2424)
-
-add_executable(demo_checked_pipeline demo_checked_pipeline.cpp)
-target_compile_features(demo_checked_pipeline PRIVATE cxx_std_17)
-target_link_libraries(demo_checked_pipeline PRIVATE m2424)
-
-add_executable(demo_noise_growth demo_noise_growth.cpp)
-target_compile_features(demo_noise_growth PRIVATE cxx_std_17)
-target_link_libraries(demo_noise_growth PRIVATE m2424)
-
-add_executable(demo_mod_raise demo_mod_raise.cpp)
-target_compile_features(demo_mod_raise PRIVATE cxx_std_17)
-target_link_libraries(demo_mod_raise PRIVATE m2424)
-
-add_executable(demo_secure_stats demo_secure_stats.cpp)
-target_compile_features(demo_secure_stats PRIVATE cxx_std_17)
-target_link_libraries(demo_secure_stats PRIVATE m2424)
-
-add_executable(demo_client_compute_roundtrip demo_client_compute_roundtrip.cpp)
-target_compile_features(demo_client_compute_roundtrip PRIVATE cxx_std_17)
-target_link_libraries(demo_client_compute_roundtrip PRIVATE m2424)
-
-add_executable(demo_galois_key_optimization demo_galois_key_optimization.cpp)
-target_compile_features(demo_galois_key_optimization PRIVATE cxx_std_17)
-target_link_libraries(demo_galois_key_optimization PRIVATE m2424)
-
-add_executable(demo_bootstrap_pipeline demo_bootstrap_pipeline.cpp)
-target_compile_features(demo_bootstrap_pipeline PRIVATE cxx_std_17)
-target_link_libraries(demo_bootstrap_pipeline PRIVATE m2424)
-
-add_executable(demo_profile_report demo_profile_report.cpp)
-target_compile_features(demo_profile_report PRIVATE cxx_std_17)
-target_link_libraries(demo_profile_report PRIVATE m2424)
-
-add_executable(demo_security_report demo_security_report.cpp)
-target_compile_features(demo_security_report PRIVATE cxx_std_17)
-target_link_libraries(demo_security_report PRIVATE m2424)
-
-set_target_properties(demo_basic demo_abft bench_ckks bench_chain_accuracy bench_parameter_planner bench_bootstrap_parts bench_bootstrap_planner bench_bootstrap_layout_planner bench_bootstrap_layout_physical_gate bench_bootstrap_full bench_bootstrap_refresh bench_bootstrap_multi_cycle bench_bootstrap_validation bench_bootstrap_scaling bench_bootstrap_one_case bench_bootstrap_period_model bench_bootstrap_scale_strategy bench_bootstrap_profile_budget bench_bootstrap_reference_path bench_bootstrap_prescaled_coeff_to_slot bench_bootstrap_slots_to_coeffs_first bench_bootstrap_stc_budget bench_bootstrap_stc_deep_probe demo_bootstrap_diagonals demo_bootstrap_prototype demo_bootstrap_cipher_path demo_bootstrap_end_to_end demo_eval_mod_polynomial bench_parallel_throughput demo_precision_profiles demo_checked_pipeline demo_noise_growth demo_mod_raise demo_secure_stats demo_client_compute_roundtrip demo_galois_key_optimization demo_bootstrap_pipeline demo_profile_report demo_security_report PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+set(M2424_STABLE_APPS
+    bench_chain_accuracy
+    bench_ckks
+    bench_parameter_planner
+    bench_parallel_throughput
+    demo_abft
+    demo_basic
+    demo_checked_pipeline
+    demo_client_compute_roundtrip
+    demo_eval_mod_polynomial
+    demo_galois_key_optimization
+    demo_mod_raise
+    demo_noise_growth
+    demo_precision_profiles
+    demo_profile_report
+    demo_secure_stats
+    demo_security_report
 )
+
+set(M2424_RESEARCH_APPS
+    bench_bootstrap_full
+    bench_bootstrap_layout_physical_gate
+    bench_bootstrap_layout_planner
+    bench_bootstrap_multi_cycle
+    bench_bootstrap_one_case
+    bench_bootstrap_parts
+    bench_bootstrap_period_model
+    bench_bootstrap_planner
+    bench_bootstrap_prescaled_coeff_to_slot
+    bench_bootstrap_profile_budget
+    bench_bootstrap_reference_path
+    bench_bootstrap_refresh
+    bench_bootstrap_scale_strategy
+    bench_bootstrap_scaling
+    bench_bootstrap_slots_to_coeffs_first
+    bench_bootstrap_stc_budget
+    bench_bootstrap_stc_deep_probe
+    bench_bootstrap_validation
+    demo_bootstrap_cipher_path
+    demo_bootstrap_diagonals
+    demo_bootstrap_end_to_end
+    demo_bootstrap_pipeline
+    demo_bootstrap_prototype
+)
+
+foreach(target IN LISTS M2424_STABLE_APPS)
+    m2424_add_app(${target})
+endforeach()
+
+if(M2424_BUILD_RESEARCH_APPS)
+    foreach(target IN LISTS M2424_RESEARCH_APPS)
+        m2424_add_app(${target})
+    endforeach()
+endif()
