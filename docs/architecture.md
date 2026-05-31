@@ -133,6 +133,8 @@ Search учитывает prescale вместе с plaintext scale transform-а.
 
 `BootstrapPrototypeReport::continuation_levels` фиксирует, сколько уровней остаётся после refresh-круга. Это текущая основная метрика прогресса к полноценному bootstrapping: нужно увеличить её и затем сделать `restore_level_criterion=true` без ухудшения ошибки. Сырой `post_refresh_mod_raise` оставлен диагностическим флагом; он показывает, что один structural raise недостаточен, потому что может поднять chain и одновременно нарушить tolerance.
 
+После `EvalMod P3` выполняется `output_scale_repair`: plaintext-rescale с коэффициентом `1` и рассчитанным plaintext scale возвращает результат к рабочему scale около `2^40`. Это делает refresh-круг повторяемым: `bench_bootstrap_multi_cycle` уже проходит несколько циклов подряд, но остаток уровней остаётся главным ограничением.
+
 Для `EvalMod` default-полиномом остаётся `P3`, пока нормализованный вход удовлетворяет `|u| <= 2^-10`. На этом интервале математическая ошибка аппроксимации около `1e-14`, поэтому для target `1e-9` bottleneck находится в CKKS scale/noise и линейных трансформах, а не в степени полинома.
 
 ### Parameter planning

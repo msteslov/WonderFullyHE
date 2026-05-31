@@ -270,6 +270,25 @@ Cipher BootstrapPrototype::apply_normalization(const Cipher& input, double facto
         adapter_, input, std::log2(std::abs(factor)), plain_scale_log2_).result;
 }
 
+Cipher apply_output_scale_repair(SealAdapter& adapter, const Cipher& input, double target_scale_log2) {
+    const auto info = adapter.info(input);
+    const double current_scale_log2 = std::log2(info.scale);
+    if (current_scale_log2 <= target_scale_log2 + 0.5) {
+        return input;
+    }
+    if (info.chain_index == 0) {
+        throw std::runtime_error("cannot repair bootstrap output scale without remaining levels");
+    }
+    constexpr double assumed_drop_log2 = 40.0;
+    const double plain_scale_log2 = target_scale_log2 + assumed_drop_log2 - current_scale_log2;
+    if (!std::isfinite(plain_scale_log2) || plain_scale_log2 <= 0.0) {
+        throw std::runtime_error("cannot repair bootstrap output scale");
+    }
+    return adapter.mul_plain_rescale(
+        input,
+        adapter.encode_scalar_at_scale_like(1.0, std::exp2(plain_scale_log2), input));
+}
+
 void mark_stage_structural(BootstrapPrototypeStage& stage) {
     stage.status = "STRUCTURAL";
     stage.max_abs_error = 0.0;
@@ -989,6 +1008,30 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         mark_stage_diagnostic(eval_stage);
     }
     report.stages.push_back(eval_stage);
+
+    before = adapter_.info(current);
+    stage_ms = elapsed_ms([&] {
+        current = apply_output_scale_repair(adapter_, current, plain_scale_log2_);
+    });
+    after = adapter_.info(current);
+    stage_error = 0.0;
+    if (expected) {
+        const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        stage_error = max_complex_error(*expected, actual);
+    }
+    if (after.chain_index != before.chain_index || std::fabs(std::log2(after.scale) - std::log2(before.scale)) > 0.5) {
+        auto repair_stage = make_stage("output_scale_repair",
+                                       before,
+                                       after,
+                                       stage_error,
+                                       tolerance_,
+                                       stage_ms,
+                                       expected != nullptr);
+        if (expected) {
+            mark_stage_diagnostic(repair_stage);
+        }
+        report.stages.push_back(repair_stage);
+    }
 
     double preserve_error = 0.0;
     if (expected) {

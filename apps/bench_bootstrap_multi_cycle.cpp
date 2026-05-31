@@ -1,0 +1,158 @@
+#include "m2424/bootstrap.hpp"
+#include "m2424/profiles.hpp"
+#include "m2424/seal_adapter.hpp"
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <exception>
+#include <string>
+#include <vector>
+
+namespace {
+
+template <typename Fn>
+double elapsed_ms(Fn&& fn) {
+    const auto started = std::chrono::steady_clock::now();
+    fn();
+    const auto finished = std::chrono::steady_clock::now();
+    return std::chrono::duration<double, std::milli>(finished - started).count();
+}
+
+m2424::ComplexVector make_expected(std::size_t slots, double amplitude) {
+    m2424::ComplexVector expected;
+    expected.reserve(slots);
+    for (std::size_t i = 0; i < slots; ++i) {
+        expected.push_back({amplitude * std::sin(static_cast<double>(i) / 4.0), 0.0});
+    }
+    return expected;
+}
+
+std::vector<double> real_part(const m2424::ComplexVector& values) {
+    std::vector<double> result;
+    result.reserve(values.size());
+    for (const auto& value : values) {
+        result.push_back(value.real());
+    }
+    return result;
+}
+
+double max_error(m2424::SealAdapter& adapter,
+                 const m2424::Cipher& cipher,
+                 const m2424::ComplexVector& expected) {
+    auto actual = adapter.decode_complex(adapter.decrypt(cipher));
+    actual.resize(expected.size());
+    double result = 0.0;
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        result = std::max(result, std::abs(actual[i] - expected[i]));
+    }
+    return result;
+}
+
+std::size_t arg_size_or(int argc, char** argv, int index, std::size_t fallback) {
+    if (argc <= index) {
+        return fallback;
+    }
+    const auto parsed = std::strtoull(argv[index], nullptr, 10);
+    return parsed == 0 ? fallback : static_cast<std::size_t>(parsed);
+}
+
+void sanitize(std::string& text) {
+    std::replace(text.begin(), text.end(), ',', ';');
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    const std::size_t slots = arg_size_or(argc, argv, 1, 4);
+    const std::size_t cycles = arg_size_or(argc, argv, 2, 3);
+    constexpr double tolerance = 1e-3;
+    constexpr double amplitude = 1e-5;
+
+    std::vector<int> rotations;
+    const double rotation_plan_ms = elapsed_ms([&] {
+        rotations = m2424::Bootstrapper::scalable_refresh_rotation_steps(slots);
+    });
+
+    auto adapter = m2424::SealAdapter::create(m2424::profiles::boot_deep_ckks());
+    double keygen_ms = 0.0;
+    keygen_ms = elapsed_ms([&] {
+        adapter.keygen(rotations, true);
+    });
+
+    const auto expected = make_expected(slots, amplitude);
+    auto current = adapter.encrypt(adapter.encode(real_part(expected)));
+    const auto initial_info = adapter.info(current);
+    m2424::Bootstrapper bootstrapper(adapter);
+
+    std::printf("cycle,slots,stage,chain_before,chain_after,scale_before_log2,scale_after_log2,continuation_levels,restore_level,preserve_value,max_abs_error,cycle_ms,exception,status\n");
+    std::printf("0,%zu,setup,%zu,%zu,%.6f,%.6f,%zu,true,true,%.6e,%.6f,,PASS\n",
+                slots,
+                initial_info.chain_index,
+                initial_info.chain_index,
+                std::log2(initial_info.scale),
+                std::log2(initial_info.scale),
+                initial_info.chain_index,
+                max_error(adapter, current, expected),
+                rotation_plan_ms + keygen_ms);
+
+    bool all_pass = true;
+    double max_seen_error = 0.0;
+    std::size_t min_continuation_levels = initial_info.chain_index;
+    for (std::size_t cycle = 1; cycle <= cycles; ++cycle) {
+        const auto before = adapter.info(current);
+        m2424::BootstrapPrototypeReport report;
+        std::string exception;
+        double cycle_ms = 0.0;
+        bool pass = false;
+        try {
+            cycle_ms = elapsed_ms([&] {
+                report = bootstrapper.refresh_slots_to_coeffs_first_checked(
+                    current, expected, slots, tolerance);
+            });
+            current = report.result;
+            const auto after = adapter.info(current);
+            const double error = max_error(adapter, current, expected);
+            max_seen_error = std::max(max_seen_error, error);
+            min_continuation_levels = std::min(min_continuation_levels, report.continuation_levels);
+            pass = report.preserve_value_criterion && error <= tolerance;
+            all_pass = all_pass && pass;
+            std::printf("%zu,%zu,refresh,%zu,%zu,%.6f,%.6f,%zu,%s,%s,%.6e,%.6f,,%s\n",
+                        cycle,
+                        slots,
+                        before.chain_index,
+                        after.chain_index,
+                        std::log2(before.scale),
+                        std::log2(after.scale),
+                        report.continuation_levels,
+                        report.restore_level_criterion ? "true" : "false",
+                        report.preserve_value_criterion ? "true" : "false",
+                        error,
+                        cycle_ms,
+                        pass ? "PASS" : "FAIL");
+        } catch (const std::exception& error) {
+            exception = error.what();
+            sanitize(exception);
+            all_pass = false;
+            std::printf("%zu,%zu,refresh,%zu,0,%.6f,0,0,false,false,0,%.6f,%s,FAIL\n",
+                        cycle,
+                        slots,
+                        before.chain_index,
+                        std::log2(before.scale),
+                        cycle_ms,
+                        exception.c_str());
+            break;
+        }
+    }
+
+    std::printf("summary,%zu,%zu,multi_cycle,0,0,0,0,%zu,false,%s,%.6e,0,,%s\n",
+                cycles,
+                slots,
+                min_continuation_levels,
+                all_pass ? "true" : "false",
+                max_seen_error,
+                all_pass ? "PASS" : "FAIL");
+    return all_pass ? 0 : 1;
+}

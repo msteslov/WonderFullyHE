@@ -35,6 +35,8 @@ WonderFullyHE — учебно-исследовательский прототи
 - Period-model gate показал следующий blocker: реальные period-mode могут попасть в EvalMod interval, но пока не дают одновременно достаточный уровень и безопасный scale перед P3.
 - Experimental API `Bootstrapper::refresh(cipher, slots, tolerance)` и стабильный helper `Bootstrapper::refresh_rotation_steps(slots)`.
 - Scalable refresh API `Bootstrapper::refresh_slots_to_coeffs_first(...)` и `Bootstrapper::scalable_refresh_rotation_steps(slots)`: публичный путь использует `SlotsToCoeffsFirst + FftLike + EvalMod P3` и покрыт отдельным CTest.
+- `output_scale_repair` после `EvalMod P3`: value-preserving plaintext-rescale возвращает output scale к рабочему диапазону около `2^40`, что позволяет запускать несколько refresh-кругов подряд.
+- `bench_bootstrap_multi_cycle`: текущий baseline — `slots=4, cycles=3` проходит с `max_abs_error < 2e-5`, минимум `8` continuation levels; `slots=16, cycles=2` проходит с `max_abs_error < 2e-5`, минимум `4` continuation levels.
 - Нормализация входа `EvalMod` по амплитуде после `CoeffToSlot`.
 - Historical end-to-end demo для refresh; не входит в default CTest, пока scaling gate не проходит.
 - Benchmark публичного refresh-пути.
@@ -52,7 +54,7 @@ WonderFullyHE — учебно-исследовательский прототи
 - Расширение калибровочной модели `ops_profile -> calibrated_loss_bits`; для target `1e-9` текущий быстрый ориентир — 45-битные рабочие модули при `scale_log2 = 45`.
 - `BootstrapPlanner` как обязательный gate перед refresh: проверка уровней, scale, period window, EvalMod interval и error budget до ciphertext-прогона.
 - Factorized FFT-like backend для `CoeffToSlot/SlotToCoeff`; текущий dense diagonal backend остаётся reference для малых `slots`.
-- Довести `SlotsToCoeffsFirst` от guarded refresh до полноценного level-refresh: сейчас путь сохраняет значение, проходит `EvalMod P3` на `boot_deep_ckks` и явно сообщает `continuation_levels`; текущий измеренный режим даёт около `5` уровней после круга, но `restore_level=false`.
+- Довести `SlotsToCoeffsFirst` от guarded refresh до полноценного level-refresh: сейчас путь сохраняет значение, проходит `EvalMod P3` на `boot_deep_ckks` и поддерживает повторные циклы; для `slots=16` остаток после круга пока около `4` уровней, поэтому следующий фокус — поднять continuation budget.
 - Следующий blocker: сырой `post_refresh_mod_raise` поднимает chain, но нарушает tolerance, поэтому нужен корректный output scaling/denormalization перед post-raise, а не простой structural raise.
 - Оптимизация rotation keys, BSGS/hoisting и кеширования plaintext-диагоналей.
 
