@@ -5,6 +5,7 @@
 #include <exception>
 #include <utility>
 #include <stdexcept>
+#include <sstream>
 
 namespace m2424 {
 
@@ -46,6 +47,31 @@ static BootstrapStage make_stage(std::string name,
         after,
         std::move(note)
     };
+}
+
+static bool has_failing_stage(const BootstrapPrototypeReport& report) {
+    return std::any_of(report.stages.begin(), report.stages.end(), [](const BootstrapPrototypeStage& stage) {
+        return stage.status == "FAIL";
+    });
+}
+
+static std::string guarded_refresh_blocker(const BootstrapPrototypeReport& report, bool require_value_check) {
+    if (has_failing_stage(report)) {
+        return "refresh_stage_failed";
+    }
+    if (!report.restore_level_criterion) {
+        return "refresh_did_not_restore_levels";
+    }
+    if (require_value_check && !report.inside_evalmod_interval) {
+        return "refresh_input_outside_evalmod_interval";
+    }
+    if (require_value_check && !report.preserve_value_criterion) {
+        return "refresh_did_not_preserve_value";
+    }
+    if (!report.result_ready()) {
+        return "refresh_result_unavailable";
+    }
+    return "none";
 }
 
 Bootstrapper::Bootstrapper(SealAdapter& adapter) : adapter_(&adapter) {
@@ -237,7 +263,7 @@ BootstrapGuardedRefreshResult Bootstrapper::refresh_slots_to_coeffs_first_guarde
     }
     result.refresh = refresh_slots_to_coeffs_first(input, slots, tolerance);
     result.refresh_executed = true;
-    result.blocker = "none";
+    result.blocker = guarded_refresh_blocker(result.refresh, false);
     return result;
 }
 
@@ -265,7 +291,7 @@ BootstrapGuardedRefreshResult Bootstrapper::refresh_slots_to_coeffs_first_checke
     }
     result.refresh = refresh_slots_to_coeffs_first_checked(input, expected, slots, tolerance);
     result.refresh_executed = true;
-    result.blocker = "none";
+    result.blocker = guarded_refresh_blocker(result.refresh, true);
     return result;
 }
 
