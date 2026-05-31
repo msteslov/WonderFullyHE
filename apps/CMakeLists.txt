@@ -34,29 +34,12 @@ set(M2424_STABLE_APPS
 )
 
 set(M2424_RESEARCH_APPS
-    bench_bootstrap_full
-    bench_bootstrap_layout_physical_gate
-    bench_bootstrap_layout_planner
     bench_bootstrap_multi_cycle
-    bench_bootstrap_one_case
-    bench_bootstrap_parts
-    bench_bootstrap_period_model
-    bench_bootstrap_planner
-    bench_bootstrap_prescaled_coeff_to_slot
-    bench_bootstrap_profile_budget
     bench_bootstrap_reference_path
     bench_bootstrap_refresh
-    bench_bootstrap_scale_strategy
-    bench_bootstrap_scaling
-    bench_bootstrap_slots_to_coeffs_first
-    bench_bootstrap_stc_budget
-    bench_bootstrap_stc_deep_probe
     bench_bootstrap_validation
     demo_bootstrap_cipher_path
-    demo_bootstrap_diagonals
-    demo_bootstrap_end_to_end
     demo_bootstrap_pipeline
-    demo_bootstrap_prototype
 )
 
 foreach(target IN LISTS M2424_STABLE_APPS)
