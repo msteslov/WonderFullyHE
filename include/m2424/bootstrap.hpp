@@ -50,6 +50,7 @@ public:
     explicit Bootstrapper(SealAdapter& adapter);
 
     static std::vector<int> refresh_rotation_steps(std::size_t slots);
+    static std::vector<int> scalable_refresh_rotation_steps(std::size_t slots);
 
     BootstrapReport analyze_depth(const std::vector<double>& input, std::size_t max_steps);
     BootstrapPrototypeReport refresh(const Cipher& input, std::size_t slots, double tolerance);
@@ -66,6 +67,13 @@ public:
                                              std::size_t slots,
                                              double tolerance,
                                              double normalization_factor);
+    BootstrapPrototypeReport refresh_slots_to_coeffs_first(const Cipher& input,
+                                                           std::size_t slots,
+                                                           double tolerance);
+    BootstrapPrototypeReport refresh_slots_to_coeffs_first_checked(const Cipher& input,
+                                                                   const ComplexVector& expected,
+                                                                   std::size_t slots,
+                                                                   double tolerance);
     BootstrapRefreshPlanningResult plan_refresh_for_budget(
         const Cipher& input,
         const CkksOperationBudget& operation_budget,

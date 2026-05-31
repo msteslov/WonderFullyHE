@@ -129,6 +129,8 @@ Search учитывает prescale вместе с plaintext scale transform-а.
 
 Физический gate для `ModRaiseFirst + FFT-like CoeffToSlot` показал текущий blocker: после `ModRaise` диагностическая амплитуда доминирует, и один только prescale внутри transform-а не даёт готовый вход `EvalMod` под `32768/tc128`. Поэтому ближайший рабочий путь для refresh — `SlotsToCoeffsFirst`, где сначала выполняется `SlotToCoeff`, затем `ModRaise`, затем обратный `CoeffToSlot` и нормализация перед `EvalMod P3`.
 
+Этот путь вынесен в публичный API как `Bootstrapper::refresh_slots_to_coeffs_first(...)`. Для него нужно генерировать Galois-ключи через `Bootstrapper::scalable_refresh_rotation_steps(slots)`. На текущем этапе он является guarded refresh path: значение сохраняется в пределах tolerance и `EvalMod P3` проходит физически, но полноценное восстановление цепочки ещё требует отдельного post-refresh/modulus management слоя.
+
 Для `EvalMod` default-полиномом остаётся `P3`, пока нормализованный вход удовлетворяет `|u| <= 2^-10`. На этом интервале математическая ошибка аппроксимации около `1e-14`, поэтому для target `1e-9` bottleneck находится в CKKS scale/noise и линейных трансформах, а не в степени полинома.
 
 ### Parameter planning
@@ -191,6 +193,7 @@ poly_modulus_degree = минимальный N, проходящий security
 - `bench_bootstrap_scaling` проверяет представимость normalization scalar после `ModRaise -> CoeffToSlot`.
 - `bench_bootstrap_reference_path` является oracle-harness для маленьких slots и stage-by-stage reference comparison.
 - `bench_bootstrap_layout_physical_gate` проверяет layout-планнер на реальном ciphertext: строит профиль из planner-а, меряет фактическую амплитуду после FFT-like `CoeffToSlot`, перепланирует period/levels и проверяет готовность к `EvalMod P3`.
+- `test_bootstrap_scalable_refresh` проверяет публичный `SlotsToCoeffsFirst/FftLike/P3` путь через `Bootstrapper`, а не через отдельный benchmark.
 - `demo_bootstrap_cipher_path` запускает experimental refresh-путь от существующего ciphertext.
 - `demo_bootstrap_end_to_end` является historical experimental demo и не входит в default CTest.
 - `bench_ckks` измеряет время операций, численную ошибку и размеры сериализованных объектов.

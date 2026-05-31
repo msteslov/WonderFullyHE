@@ -112,7 +112,7 @@ Benchmark также выполняет физический участок `Coe
 
 `demo_mod_raise` проверяет низкоуровневый CKKS ModRaise: ciphertext после снижения уровня расширяется обратно к первой RNS-базе без расшифрования. В отчёт входят `chain_index`, число коэффициентных модулей, масштаб, ошибка декодирования относительно ciphertext до подъёма и статус.
 
-`demo_bootstrap_cipher_path` запускает experimental ciphertext-only путь для исследования состояния ciphertext. Его вывод не является доказательством сохранения значения.
+`demo_bootstrap_cipher_path` запускает публичный `SlotsToCoeffsFirst/FftLike/P3` путь через `Bootstrapper::refresh_slots_to_coeffs_first_checked` на `boot_deep_ckks`. Этот путь сохраняет значение в пределах tolerance и проходит `EvalMod P3`; восстановление chain до полноценного unlimited-depth refresh остаётся следующим слоем.
 
 `demo_bootstrap_end_to_end` оставлен как historical experimental demo и не включён в default CTest, потому что full refresh сейчас заблокирован scaling gate.
 
@@ -135,6 +135,7 @@ Default CTest запускает только тесты-инварианты. D
 - `test_smoke` покрывает encode → encrypt → mul_relin_rescale → decrypt, add/sub/rotate, plaintext-операции, сериализацию ключей/ciphertext, checked evaluator, linear transform, polynomial evaluator, `sum_slots`, ABFT checksum, базовую валидацию профиля и security report.
 - `test_accuracy` проверяет finite/NaN/Inf handling, worst-index и расширенные error metrics.
 - `test_adapter_failures` проверяет negative API cases: некорректные inputs, отсутствие ключей, пустые/corrupt buffers и unsafe scale reinterpretation preconditions.
+- `test_bootstrap_scalable_refresh` проверяет публичный `SlotsToCoeffsFirst/FftLike/P3` refresh path через `Bootstrapper`.
 
 ```bash
 cmake -S . -B build -DBUILD_TESTING=ON

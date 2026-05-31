@@ -36,6 +36,21 @@ Cipher weighted_term(SealAdapter& adapter, const Cipher& value, double coefficie
     return adapter.mul_plain_rescale(value, adapter.encode_scalar_like(coefficient, value));
 }
 
+Cipher weighted_term_to_scale(SealAdapter& adapter,
+                              const Cipher& value,
+                              double coefficient,
+                              double target_scale_log2) {
+    constexpr double assumed_drop_log2 = 40.0;
+    const auto info = adapter.info(value);
+    const double plain_scale_log2 = target_scale_log2 + assumed_drop_log2 - std::log2(info.scale);
+    if (!std::isfinite(plain_scale_log2) || plain_scale_log2 <= 0.0) {
+        throw std::runtime_error("cannot align EvalMod term scale");
+    }
+    return adapter.mul_plain_rescale(
+        value,
+        adapter.encode_scalar_at_scale_like(coefficient, std::exp2(plain_scale_log2), value));
+}
+
 Cipher add_terms(SealAdapter& adapter, Cipher lhs, Cipher rhs) {
     try {
         lhs = adapter.match_level_and_scale(lhs, rhs);
@@ -148,9 +163,10 @@ Cipher EvalModPolynomial::evaluate(SealAdapter& adapter, const Cipher& input, Ev
     const Cipher u2 = multiply_same_level(adapter, input, input);
     const Cipher u3 = multiply_same_level(adapter, adapter.mod_switch_to(input, u2), u2);
     if (degree == EvalModDegree::P3) {
-        Cipher result = weighted_term(adapter, adapter.mod_switch_to(input, u3), a1);
-        result = add_terms(adapter, std::move(result), weighted_term(adapter, u3, a3));
-        return result;
+        Cipher cubic = weighted_term(adapter, u3, a3);
+        const double target_scale_log2 = std::log2(adapter.info(cubic).scale);
+        Cipher linear = weighted_term_to_scale(adapter, adapter.mod_switch_to(input, u3), a1, target_scale_log2);
+        return add_terms(adapter, std::move(linear), std::move(cubic));
     }
 
     const Cipher u5 = multiply_same_level(adapter, u3, adapter.mod_switch_to(u2, u3));

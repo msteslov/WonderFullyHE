@@ -1,5 +1,6 @@
 #include "m2424/bootstrap.hpp"
 
+#include <algorithm>
 #include <exception>
 #include <utility>
 #include <stdexcept>
@@ -48,16 +49,16 @@ static BootstrapStage make_stage(std::string name,
 
 Bootstrapper::Bootstrapper(SealAdapter& adapter) : adapter_(&adapter) {
     stages_ = {
+        {"SlotToCoeff", BootstrapStageStatus::PrimitiveReady, {}, {},
+         "рабочий scalable refresh сначала переносит slots в coefficient-представление"},
         {"ModRaise", BootstrapStageStatus::PrimitiveReady, {}, {},
-         "ciphertext расширяется к первой RNS-базе modulus chain"},
+         "ciphertext расширяется к первой RNS-базе modulus chain после SlotToCoeff"},
         {"CoeffToSlot", BootstrapStageStatus::PrimitiveReady, {}, {},
-         "линейное преобразование выполняется через CKKS-ротации и plaintext-диагонали"},
+         "обратное FFT-like преобразование возвращает значения в slots перед EvalMod"},
         {"eval_mod_normalization", BootstrapStageStatus::Ready, {}, {},
          "амплитуда входа EvalMod приводится к рабочему интервалу полинома"},
         {"EvalMod", BootstrapStageStatus::PrimitiveReady, {}, {},
-         "модульная редукция приближается полиномом степени 7"},
-        {"SlotToCoeff", BootstrapStageStatus::PrimitiveReady, {}, {},
-         "обратное линейное преобразование возвращает coefficient-представление"},
+         "модульная редукция приближается полиномом P3 на нормализованном интервале"},
         {"post_refresh_mod_raise", BootstrapStageStatus::PrimitiveReady, {}, {},
          "после refresh ciphertext снова поднимается к первой RNS-базе"}
     };
@@ -65,6 +66,17 @@ Bootstrapper::Bootstrapper(SealAdapter& adapter) : adapter_(&adapter) {
 
 std::vector<int> Bootstrapper::refresh_rotation_steps(std::size_t slots) {
     return BootstrapPrototype::required_rotation_steps(slots);
+}
+
+std::vector<int> Bootstrapper::scalable_refresh_rotation_steps(std::size_t slots) {
+    auto slot_to_coeff = make_bootstrap_dft_plan(slots, BootstrapDftType::HomomorphicEncode, 40.0);
+    auto coeff_to_slot = make_bootstrap_dft_plan(slots, BootstrapDftType::HomomorphicDecode, 40.0);
+    auto steps = slot_to_coeff.rotation_steps();
+    const auto inverse_steps = coeff_to_slot.rotation_steps();
+    steps.insert(steps.end(), inverse_steps.begin(), inverse_steps.end());
+    std::sort(steps.begin(), steps.end());
+    steps.erase(std::unique(steps.begin(), steps.end()), steps.end());
+    return steps;
 }
 
 BootstrapReport Bootstrapper::analyze_depth(const std::vector<double>& input, std::size_t max_steps) {
@@ -171,6 +183,36 @@ BootstrapPrototypeReport Bootstrapper::refresh_checked(const Cipher& input,
     return prototype.refresh_cipher_checked(input, expected);
 }
 
+BootstrapPrototypeReport Bootstrapper::refresh_slots_to_coeffs_first(const Cipher& input,
+                                                                     std::size_t slots,
+                                                                     double tolerance) {
+    if (!adapter_) {
+        throw std::runtime_error("Bootstrapper has no SealAdapter");
+    }
+    BootstrapPrototype prototype(*adapter_, slots, tolerance);
+    prototype.set_transform_backend(BootstrapTransformBackend::FftLike);
+    prototype.set_circuit_order(BootstrapCircuitOrder::SlotsToCoeffsFirst);
+    prototype.set_evalmod_degree(EvalModDegree::P3);
+    prototype.set_plain_scale_log2(40.0);
+    return prototype.refresh_cipher_fast(input);
+}
+
+BootstrapPrototypeReport Bootstrapper::refresh_slots_to_coeffs_first_checked(
+    const Cipher& input,
+    const ComplexVector& expected,
+    std::size_t slots,
+    double tolerance) {
+    if (!adapter_) {
+        throw std::runtime_error("Bootstrapper has no SealAdapter");
+    }
+    BootstrapPrototype prototype(*adapter_, slots, tolerance);
+    prototype.set_transform_backend(BootstrapTransformBackend::FftLike);
+    prototype.set_circuit_order(BootstrapCircuitOrder::SlotsToCoeffsFirst);
+    prototype.set_evalmod_degree(EvalModDegree::P3);
+    prototype.set_plain_scale_log2(40.0);
+    return prototype.refresh_cipher_checked(input, expected);
+}
+
 BootstrapRefreshPlanningResult Bootstrapper::plan_refresh_for_budget(
     const Cipher& input,
     const CkksOperationBudget& operation_budget,
@@ -198,7 +240,7 @@ const std::vector<BootstrapStage>& Bootstrapper::pipeline() const noexcept {
 }
 
 BootstrapPipelinePlan Bootstrapper::plan(std::size_t slots) const {
-    return make_research_bootstrap_plan(slots);
+    return make_scalable_bootstrap_plan(slots);
 }
 
 } // namespace m2424

@@ -10,8 +10,8 @@ int main() {
     constexpr std::size_t slots = 16;
     constexpr double tolerance = 2e-5;
 
-    auto rotation_steps = m2424::Bootstrapper::refresh_rotation_steps(slots);
-    auto adapter = m2424::SealAdapter::create(m2424::profiles::boot_ckks());
+    auto rotation_steps = m2424::Bootstrapper::scalable_refresh_rotation_steps(slots);
+    auto adapter = m2424::SealAdapter::create(m2424::profiles::boot_deep_ckks());
     adapter.keygen(rotation_steps, true);
 
     std::vector<double> input;
@@ -24,11 +24,16 @@ int main() {
     auto lowered = adapter.mul_plain_rescale(encrypted, adapter.encode_scalar_like(1.0, encrypted));
 
     m2424::Bootstrapper bootstrapper(adapter);
-    auto report = bootstrapper.refresh(lowered, slots, tolerance);
+    m2424::ComplexVector expected;
+    expected.reserve(input.size());
+    for (double value : input) {
+        expected.push_back({value, 0.0});
+    }
+    auto report = bootstrapper.refresh_slots_to_coeffs_first_checked(lowered, expected, slots, tolerance);
 
     std::printf("bootstrap_cipher_path\n");
     std::printf("profile,slots,tolerance,normalization_factor,rotation_keys\n");
-    std::printf("boot_ckks,%zu,%.6e,%.6e,%zu\n",
+    std::printf("boot_deep_ckks,%zu,%.6e,%.6e,%zu\n",
                 report.slots,
                 report.tolerance,
                 report.normalization_factor,
@@ -45,5 +50,5 @@ int main() {
                     stage.duration_ms);
     }
 
-    return report.restore_level_criterion ? 0 : 1;
+    return report.preserve_value_criterion ? 0 : 1;
 }
