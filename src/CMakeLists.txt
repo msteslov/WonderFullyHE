@@ -5,6 +5,7 @@ add_library(m2424
     bootstrap_dft.cpp
     bootstrap_plan.cpp
     bootstrap_prototype.cpp
+    bootstrap_prototype_detail.cpp
     bootstrap_scaling.cpp
     checked_evaluator.cpp
     diagonal_transform.cpp
