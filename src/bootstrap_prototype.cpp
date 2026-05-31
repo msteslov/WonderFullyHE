@@ -244,6 +244,13 @@ void BootstrapPrototype::set_plain_scale_log2(double value) {
     plain_scale_log2_ = value;
 }
 
+void BootstrapPrototype::set_output_correction_factor(double value) {
+    if (!std::isfinite(value) || value <= 0.0) {
+        throw std::invalid_argument("bootstrap output correction factor must be positive and finite");
+    }
+    output_correction_factor_ = value;
+}
+
 void BootstrapPrototype::set_post_refresh_mod_raise_enabled(bool enabled) noexcept {
     post_refresh_mod_raise_enabled_ = enabled;
 }
@@ -1012,6 +1019,33 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         mark_stage_diagnostic(eval_stage);
     }
     report.stages.push_back(eval_stage);
+
+    if (output_correction_factor_ != 1.0) {
+        if (expected) {
+            eval_expected = scaled(eval_expected, output_correction_factor_);
+        }
+        before = adapter_.info(current);
+        stage_ms = elapsed_ms([&] {
+            current = apply_normalization(current, output_correction_factor_);
+        });
+        after = adapter_.info(current);
+        stage_error = 0.0;
+        if (expected) {
+            const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+            stage_error = max_complex_error(eval_expected, actual);
+        }
+        auto correction_stage = make_stage("output_correction",
+                                           before,
+                                           after,
+                                           stage_error,
+                                           tolerance_,
+                                           stage_ms,
+                                           expected != nullptr);
+        if (expected) {
+            mark_stage_diagnostic(correction_stage);
+        }
+        report.stages.push_back(correction_stage);
+    }
 
     before = adapter_.info(current);
     stage_ms = elapsed_ms([&] {

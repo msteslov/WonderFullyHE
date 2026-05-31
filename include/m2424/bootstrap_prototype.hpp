@@ -92,6 +92,7 @@ public:
     void set_transform_backend(BootstrapTransformBackend backend) noexcept;
     void set_manual_period_log2(double value);
     void set_plain_scale_log2(double value);
+    void set_output_correction_factor(double value);
     void set_post_refresh_mod_raise_enabled(bool enabled) noexcept;
     void set_stc_first_target_chain_index(std::size_t value) noexcept;
     void set_stc_first_period_offset_log2(double value);
@@ -115,6 +116,7 @@ private:
     BootstrapTransformBackend transform_backend_{BootstrapTransformBackend::DenseDiagonal};
     double manual_period_log2_{0.0};
     double plain_scale_log2_{40.0};
+    double output_correction_factor_{1.0};
     bool post_refresh_mod_raise_enabled_{false};
     std::size_t stc_first_target_chain_index_{2};
     double stc_first_period_offset_log2_{3.0};

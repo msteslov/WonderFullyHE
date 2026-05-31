@@ -1,4 +1,5 @@
 #include "m2424/bootstrap.hpp"
+#include "m2424/bootstrap_prototype.hpp"
 #include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
 
@@ -51,6 +52,20 @@ double max_error(m2424::SealAdapter& adapter,
     return result;
 }
 
+double least_squares_real_gain(m2424::SealAdapter& adapter,
+                               const m2424::Cipher& cipher,
+                               const m2424::ComplexVector& expected) {
+    auto actual = adapter.decode_complex(adapter.decrypt(cipher));
+    actual.resize(expected.size());
+    double numerator = 0.0;
+    double denominator = 0.0;
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        numerator += actual[i].real() * expected[i].real();
+        denominator += expected[i].real() * expected[i].real();
+    }
+    return denominator == 0.0 ? 0.0 : numerator / denominator;
+}
+
 std::size_t arg_size_or(int argc, char** argv, int index, std::size_t fallback) {
     if (argc <= index) {
         return fallback;
@@ -65,6 +80,15 @@ int arg_int_or(int argc, char** argv, int index, int fallback) {
     }
     const auto parsed = std::strtol(argv[index], nullptr, 10);
     return parsed <= 0 ? fallback : static_cast<int>(parsed);
+}
+
+double arg_double_or(int argc, char** argv, int index, double fallback) {
+    if (argc <= index) {
+        return fallback;
+    }
+    char* end = nullptr;
+    const double parsed = std::strtod(argv[index], &end);
+    return end == argv[index] ? fallback : parsed;
 }
 
 std::vector<int> repeated_refresh_moduli(int work_bits, std::size_t work_levels) {
@@ -88,6 +112,7 @@ int main(int argc, char** argv) {
     const std::size_t slots = arg_size_or(argc, argv, 1, 4);
     const std::size_t cycles = arg_size_or(argc, argv, 2, 3);
     const int work_bits = arg_int_or(argc, argv, 3, 40);
+    const double correction_factor = arg_double_or(argc, argv, 4, 1.0);
     constexpr double tolerance = 1e-3;
     constexpr double amplitude = 1e-5;
 
@@ -113,10 +138,9 @@ int main(int argc, char** argv) {
     const auto expected = make_expected(slots, amplitude);
     auto current = adapter.encrypt(adapter.encode(real_part(expected)));
     const auto initial_info = adapter.info(current);
-    m2424::Bootstrapper bootstrapper(adapter);
 
-    std::printf("cycle,slots,stage,chain_before,chain_after,scale_before_log2,scale_after_log2,continuation_levels,restore_level,preserve_value,max_abs_error,cycle_ms,exception,status\n");
-    std::printf("0,%zu,setup,%zu,%zu,%.6f,%.6f,%zu,true,true,%.6e,%.6f,,PASS\n",
+    std::printf("cycle,slots,stage,chain_before,chain_after,scale_before_log2,scale_after_log2,continuation_levels,restore_level,preserve_value,max_abs_error,real_gain,cycle_ms,exception,status\n");
+    std::printf("0,%zu,setup,%zu,%zu,%.6f,%.6f,%zu,true,true,%.6e,%.6f,%.6f,,PASS\n",
                 slots,
                 initial_info.chain_index,
                 initial_info.chain_index,
@@ -124,6 +148,7 @@ int main(int argc, char** argv) {
                 std::log2(initial_info.scale),
                 initial_info.chain_index,
                 max_error(adapter, current, expected),
+                least_squares_real_gain(adapter, current, expected),
                 rotation_plan_ms + keygen_ms);
 
     bool all_pass = true;
@@ -137,8 +162,13 @@ int main(int argc, char** argv) {
         bool pass = false;
         try {
             cycle_ms = elapsed_ms([&] {
-                report = bootstrapper.refresh_slots_to_coeffs_first_checked(
-                    current, expected, slots, tolerance);
+                m2424::BootstrapPrototype prototype(adapter, slots, tolerance);
+                prototype.set_transform_backend(m2424::BootstrapTransformBackend::FftLike);
+                prototype.set_circuit_order(m2424::BootstrapCircuitOrder::SlotsToCoeffsFirst);
+                prototype.set_evalmod_degree(m2424::EvalModDegree::P3);
+                prototype.set_plain_scale_log2(std::log2(adapter.info(current).scale));
+                prototype.set_output_correction_factor(correction_factor);
+                report = prototype.refresh_cipher_checked(current, expected);
             });
             current = report.result;
             const auto after = adapter.info(current);
@@ -147,7 +177,7 @@ int main(int argc, char** argv) {
             min_continuation_levels = std::min(min_continuation_levels, report.continuation_levels);
             pass = report.preserve_value_criterion && error <= tolerance;
             all_pass = all_pass && pass;
-            std::printf("%zu,%zu,refresh,%zu,%zu,%.6f,%.6f,%zu,%s,%s,%.6e,%.6f,,%s\n",
+            std::printf("%zu,%zu,refresh,%zu,%zu,%.6f,%.6f,%zu,%s,%s,%.6e,%.6f,%.6f,,%s\n",
                         cycle,
                         slots,
                         before.chain_index,
@@ -158,13 +188,14 @@ int main(int argc, char** argv) {
                         report.restore_level_criterion ? "true" : "false",
                         report.preserve_value_criterion ? "true" : "false",
                         error,
+                        least_squares_real_gain(adapter, current, expected),
                         cycle_ms,
                         pass ? "PASS" : "FAIL");
         } catch (const std::exception& error) {
             exception = error.what();
             sanitize(exception);
             all_pass = false;
-            std::printf("%zu,%zu,refresh,%zu,0,%.6f,0,0,false,false,0,%.6f,%s,FAIL\n",
+            std::printf("%zu,%zu,refresh,%zu,0,%.6f,0,0,false,false,0,0,%.6f,%s,FAIL\n",
                         cycle,
                         slots,
                         before.chain_index,
@@ -175,7 +206,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::printf("summary,%zu,%zu,multi_cycle,0,0,0,0,%zu,false,%s,%.6e,0,,%s\n",
+    std::printf("summary,%zu,%zu,multi_cycle,0,0,0,0,%zu,false,%s,%.6e,0,0,,%s\n",
                 cycles,
                 slots,
                 min_continuation_levels,
