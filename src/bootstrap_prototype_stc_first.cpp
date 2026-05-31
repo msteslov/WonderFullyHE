@@ -2,6 +2,7 @@
 
 #include "bootstrap_prototype_detail.hpp"
 #include "m2424/eval_mod.hpp"
+#include "m2424/mod1_circuit.hpp"
 
 #include <cmath>
 #include <stdexcept>
@@ -9,6 +10,23 @@
 
 namespace m2424 {
 using namespace bootstrap_prototype_detail;
+
+namespace {
+
+BootstrapMod1Model mod1_model_for(EvalModDegree degree, double plain_scale_log2) {
+    switch (degree) {
+    case EvalModDegree::P3:
+        return {BootstrapMod1Type::LegacySineP3, 3, 0, 8, plain_scale_log2};
+    case EvalModDegree::P3DoubleAngle:
+        return {BootstrapMod1Type::LegacySineP3, 3, 1, 8, plain_scale_log2};
+    case EvalModDegree::P5:
+    case EvalModDegree::P7:
+        throw std::invalid_argument("SlotsToCoeffsFirst prototype supports only P3/P3DoubleAngle until CosDiscrete encrypted Mod1 is implemented");
+    }
+    throw std::invalid_argument("unknown EvalMod degree");
+}
+
+} // namespace
 
 BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_first_impl(
     const Cipher& input,
@@ -20,7 +38,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         throw std::invalid_argument("SlotsToCoeffsFirst prototype supports only EvalModDegree::P3/P3DoubleAngle");
     }
 
-    EvalModPolynomial eval_mod;
+    Mod1Circuit mod1(mod1_model_for(evalmod_degree_, plain_scale_log2_));
     BootstrapPrototypeReport report;
     report.slots = slots_;
     report.tolerance = tolerance_;
@@ -197,11 +215,11 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
 
     ComplexVector eval_expected;
     if (expected) {
-        eval_expected = evaluate_plain(eval_mod, normalized_expected, evalmod_degree_);
+        eval_expected = mod1.evaluate_plain(normalized_expected);
     }
     before = adapter_.info(current);
     stage_ms = elapsed_ms([&] {
-        current = eval_mod.evaluate(adapter_, current, evalmod_degree_);
+        current = mod1.evaluate(adapter_, current);
     });
     after = adapter_.info(current);
     stage_error = 0.0;
