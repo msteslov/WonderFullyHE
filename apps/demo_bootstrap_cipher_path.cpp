@@ -22,6 +22,9 @@ int main() {
 
     auto encrypted = adapter.encrypt(adapter.encode(input));
     auto lowered = adapter.mul_plain_rescale(encrypted, adapter.encode_scalar_like(1.0, encrypted));
+    while (adapter.info(lowered).chain_index > 2) {
+        lowered = adapter.mul_plain_rescale(lowered, adapter.encode_scalar_like(1.0, lowered));
+    }
 
     m2424::Bootstrapper bootstrapper(adapter);
     m2424::ComplexVector expected;
@@ -29,15 +32,26 @@ int main() {
     for (double value : input) {
         expected.push_back({value, 0.0});
     }
-    auto report = bootstrapper.refresh_slots_to_coeffs_first_checked(lowered, expected, slots, tolerance);
+    m2424::CkksOperationBudget continuation_budget;
+    continuation_budget.ciphertext_muls = adapter.info(lowered).chain_index + 1;
+    const auto guarded = bootstrapper.refresh_slots_to_coeffs_first_checked_guarded(
+        lowered,
+        expected,
+        continuation_budget,
+        1e-9,
+        slots,
+        tolerance);
+    const auto& report = guarded.refresh;
 
     std::printf("bootstrap_cipher_path\n");
-    std::printf("profile,slots,tolerance,normalization_factor,rotation_keys,continuation_levels,restore_level\n");
-    std::printf("boot_deep_ckks,%zu,%.6e,%.6e,%zu,%zu,%s\n",
+    std::printf("profile,slots,tolerance,normalization_factor,rotation_keys,planning_status,refresh_executed,continuation_levels,restore_level\n");
+    std::printf("boot_deep_ckks,%zu,%.6e,%.6e,%zu,%s,%s,%zu,%s\n",
                 report.slots,
                 report.tolerance,
                 report.normalization_factor,
                 rotation_steps.size(),
+                m2424::to_string(guarded.planning.status),
+                guarded.refresh_executed ? "true" : "false",
                 report.continuation_levels,
                 report.restore_level_criterion ? "true" : "false");
     std::printf("stage,status,chain_before,chain_after,scale_before,scale_after,duration_ms\n");
@@ -52,5 +66,5 @@ int main() {
                     stage.duration_ms);
     }
 
-    return report.preserve_value_criterion ? 0 : 1;
+    return guarded.refresh_executed && report.preserve_value_criterion ? 0 : 1;
 }
