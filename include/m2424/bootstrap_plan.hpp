@@ -75,6 +75,7 @@ struct BootstrapScaleDesign {
     double manual_period_log2{};
     double period_log2{};
     double coeff_to_slot_prescale_log2{};
+    double coeff_to_slot_plain_scale_log2{};
     double plain_scale_log2{};
     double target_scale_log2{};
     std::size_t required_levels{};
@@ -140,6 +141,8 @@ struct BootstrapRefreshScaleGateSearchRequest {
     std::vector<BootstrapPeriodMode> period_modes{BootstrapPeriodMode::TotalCoeffModulus};
     std::vector<double> manual_period_log2_values;
     std::vector<double> coeff_to_slot_prescale_log2_values{0.0};
+    std::vector<double> coeff_to_slot_plain_scale_log2_values;
+    double min_prescale_plain_scale_margin_log2{};
     std::vector<double> plain_scale_log2_values{40.0, 50.0, 60.0, 80.0, 100.0, 120.0, 160.0, 200.0, 240.0};
     std::vector<double> target_scale_log2_values{30.0, 40.0, 50.0, 60.0};
     BootstrapScalingStrategy normalization_strategy{BootstrapScalingStrategy::DecomposedPlainMultiplyRescale};

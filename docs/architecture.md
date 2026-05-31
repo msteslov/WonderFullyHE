@@ -122,6 +122,8 @@ Prescaled `CoeffToSlot` теперь проверяется через `apply_at
 
 `search_bootstrap_refresh_scale_gate` добавляет controlled sweep по period/plain-scale/target-scale и возвращает лучший design. Его задача - показать, существует ли feasible scale-management case при текущем profile/path, и если нет, какой blocker ближайший. `BootstrapScaleStrategyPlan` также хранит `missing_drop_log2`, `missing_scalar_levels` и `missing_total_levels`.
 
+Search учитывает prescale вместе с plaintext scale transform-а. Это важно для dense `CoeffToSlot`: prescale может сделать magnitude algebraically ready, но если transform требует высокий plaintext scale, первый `EvalMod` multiplication снова блокируется по scale capacity.
+
 Для `EvalMod` default-полиномом остаётся `P3`, пока нормализованный вход удовлетворяет `|u| <= 2^-10`. На этом интервале математическая ошибка аппроксимации около `1e-14`, поэтому для target `1e-9` bottleneck находится в CKKS scale/noise и линейных трансформах, а не в степени полинома.
 
 ### Parameter planning

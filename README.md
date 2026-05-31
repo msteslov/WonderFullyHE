@@ -235,6 +235,8 @@ Chebyshev/minimax-полиномы стоит использовать как of
 
 `search_bootstrap_refresh_scale_gate` перебирает допустимые `period_mode`, manual period, plaintext scale и target scale, возвращая лучший feasible design или ближайший blocker. Scale diagnostics включают `missing_drop_log2`, `missing_scalar_levels` и `missing_total_levels`, чтобы выбирать следующий scale-management шаг без слепого запуска full refresh.
 
+Search учитывает `coeff_to_slot_prescale_log2` и `coeff_to_slot_plain_scale_log2`: prescale без физической цены больше не считается готовым design, потому что plaintext scale transform-а напрямую влияет на capacity первого `EvalMod` multiplication.
+
 Модуль `m2424::BootstrapPrototype` оставлен как внутренний проверочный harness. Текущий `CoeffToSlot/SlotToCoeff` строится через dense diagonal transform и годится как reference для маленьких `slots`; production path должен перейти на настоящий factorized FFT-like backend с sparse layers, BSGS/hoisting и ограниченным набором rotation keys.
 
 Модуль `m2424::abft` содержит checksum-инструменты: `append_checksum`, `checksum`, `verify_appended_checksum`, `verify_checksum_value`.

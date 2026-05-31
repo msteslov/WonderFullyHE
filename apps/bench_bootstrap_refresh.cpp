@@ -133,15 +133,18 @@ int main() {
                 m2424::BootstrapPeriodMode::ManualPowerOfTwo
             },
             {200.0, 220.0, 240.0, 260.0, 280.0, 300.0, 320.0, 340.0},
-            {0.0, 20.0, 40.0, 60.0, 80.0, 100.0, 120.0}
+            {0.0, 20.0, 40.0, 60.0, 80.0, 100.0, 120.0},
+            {40.0, 60.0, 80.0, 120.0, 160.0},
+            2.0
         });
         const auto& scale_design = scale_search.best_design;
 
-        std::printf("scale_gate,status,period_log2,coeff_to_slot_prescale_log2,plain_scale_log2,target_scale_log2,max_abs_before_normalization,required_levels,chain_remaining_after_strategy,missing_drop_log2,missing_scalar_levels,missing_total_levels,candidates,ready_candidates,blocker\n");
-        std::printf("experimental_refresh,%s,%.6e,%.6e,%.6e,%.6e,%.6e,%zu,%zu,%.6e,%zu,%zu,%zu,%zu,%s\n",
+        std::printf("scale_gate,status,period_log2,coeff_to_slot_prescale_log2,coeff_to_slot_plain_scale_log2,plain_scale_log2,target_scale_log2,max_abs_before_normalization,required_levels,chain_remaining_after_strategy,missing_drop_log2,missing_scalar_levels,missing_total_levels,candidates,ready_candidates,blocker\n");
+        std::printf("experimental_refresh,%s,%.6e,%.6e,%.6e,%.6e,%.6e,%.6e,%zu,%zu,%.6e,%zu,%zu,%zu,%zu,%s\n",
                     m2424::to_string(scale_design.status),
                     scale_design.period_log2,
                     scale_design.coeff_to_slot_prescale_log2,
+                    scale_design.coeff_to_slot_plain_scale_log2,
                     scale_design.plain_scale_log2,
                     scale_design.target_scale_log2,
                     max_abs_before_normalization,
@@ -176,8 +179,8 @@ int main() {
             return 0;
         }
     } catch (const std::exception& error) {
-        std::printf("scale_gate,status,period_log2,coeff_to_slot_prescale_log2,plain_scale_log2,target_scale_log2,max_abs_before_normalization,required_levels,chain_remaining_after_strategy,missing_drop_log2,missing_scalar_levels,missing_total_levels,candidates,ready_candidates,blocker\n");
-        std::printf("experimental_refresh,preflight_exception,0.000000e+00,0.000000e+00,0.000000e+00,0.000000e+00,0.000000e+00,0,0,0.000000e+00,0,0,0,0,%s\n",
+        std::printf("scale_gate,status,period_log2,coeff_to_slot_prescale_log2,coeff_to_slot_plain_scale_log2,plain_scale_log2,target_scale_log2,max_abs_before_normalization,required_levels,chain_remaining_after_strategy,missing_drop_log2,missing_scalar_levels,missing_total_levels,candidates,ready_candidates,blocker\n");
+        std::printf("experimental_refresh,preflight_exception,0.000000e+00,0.000000e+00,0.000000e+00,0.000000e+00,0.000000e+00,0.000000e+00,0,0,0.000000e+00,0,0,0,0,%s\n",
                     csv_safe(error.what()).c_str());
         std::printf("summary,profile,slots,tolerance,rotation_keys,plan_ms,keygen_ms,refresh_ms,chain_before,chain_after,scale_before,scale_after,normalization_factor,status\n");
         std::printf("refresh,boot_ckks,%zu,%.6e,%zu,%.6f,%.6f,%.6f,%zu,%zu,%.6e,%.6e,%.6e,blocked_by_scale_gate_exception\n",

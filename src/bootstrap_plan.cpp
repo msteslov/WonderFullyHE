@@ -222,6 +222,7 @@ BootstrapScaleDesign make_bootstrap_scale_design(BootstrapPeriodMode period_mode
     design.manual_period_log2 = manual_period_log2;
     design.period_log2 = period_log2;
     design.coeff_to_slot_prescale_log2 = 0.0;
+    design.coeff_to_slot_plain_scale_log2 = std::log2(start_info.scale);
     design.normalization_strategy = normalization_strategy;
     design.plain_scale_log2 = plain_scale_log2;
     design.target_scale_log2 = target_scale_log2;
@@ -413,11 +414,22 @@ BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
                               double manual_period_log2,
                               double period_log2,
                               double coeff_to_slot_prescale_log2,
+                              double coeff_to_slot_plain_scale_log2,
                               double plain_scale_log2,
                               double target_scale_log2) {
         if (!std::isfinite(coeff_to_slot_prescale_log2) || coeff_to_slot_prescale_log2 < 0.0) {
             throw std::invalid_argument("bootstrap scale gate search prescale must be non-negative and finite");
         }
+        if (!std::isfinite(coeff_to_slot_plain_scale_log2) || coeff_to_slot_plain_scale_log2 <= 0.0) {
+            throw std::invalid_argument("bootstrap scale gate search transform plaintext scale must be positive and finite");
+        }
+        if (coeff_to_slot_prescale_log2 > 0.0
+            && coeff_to_slot_plain_scale_log2 - coeff_to_slot_prescale_log2
+                < request.min_prescale_plain_scale_margin_log2) {
+            return;
+        }
+        auto slot_domain_info = request.slot_domain_info;
+        slot_domain_info.scale = std::exp2(coeff_to_slot_plain_scale_log2);
         const double prescaled_max_abs = request.max_abs_before_normalization *
             std::exp2(-coeff_to_slot_prescale_log2);
         auto design = make_bootstrap_scale_design(
@@ -429,11 +441,12 @@ BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
             target_scale_log2,
             request.evalmod_degree,
             active_bits,
-            request.slot_domain_info,
+            slot_domain_info,
             prescaled_max_abs,
             request.min_chain_remaining,
             request.evalmod_capacity_margin_log2);
         design.coeff_to_slot_prescale_log2 = coeff_to_slot_prescale_log2;
+        design.coeff_to_slot_plain_scale_log2 = coeff_to_slot_plain_scale_log2;
         ++result.candidates;
 
         const bool ready = design.status == BootstrapScaleDesignStatus::ReadyForEvalModP3;
@@ -478,14 +491,21 @@ BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
             }
             for (double manual_period_log2 : request.manual_period_log2_values) {
                 for (double prescale_log2 : request.coeff_to_slot_prescale_log2_values) {
-                    for (double plain_scale_log2 : request.plain_scale_log2_values) {
-                        for (double target_scale_log2 : request.target_scale_log2_values) {
-                            consider(period_mode,
-                                     manual_period_log2,
-                                     manual_period_log2,
-                                     prescale_log2,
-                                     plain_scale_log2,
-                                     target_scale_log2);
+                    const auto transform_plain_scale_values =
+                        request.coeff_to_slot_plain_scale_log2_values.empty()
+                            ? std::vector<double>{std::log2(request.slot_domain_info.scale)}
+                            : request.coeff_to_slot_plain_scale_log2_values;
+                    for (double transform_plain_scale_log2 : transform_plain_scale_values) {
+                        for (double plain_scale_log2 : request.plain_scale_log2_values) {
+                            for (double target_scale_log2 : request.target_scale_log2_values) {
+                                consider(period_mode,
+                                         manual_period_log2,
+                                         manual_period_log2,
+                                         prescale_log2,
+                                         transform_plain_scale_log2,
+                                         plain_scale_log2,
+                                         target_scale_log2);
+                            }
                         }
                     }
                 }
@@ -500,14 +520,21 @@ BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
             request.before_mod_raise,
             request.after_mod_raise);
         for (double prescale_log2 : request.coeff_to_slot_prescale_log2_values) {
-            for (double plain_scale_log2 : request.plain_scale_log2_values) {
-                for (double target_scale_log2 : request.target_scale_log2_values) {
-                    consider(period_mode,
-                             0.0,
-                             period_log2,
-                             prescale_log2,
-                             plain_scale_log2,
-                             target_scale_log2);
+            const auto transform_plain_scale_values =
+                request.coeff_to_slot_plain_scale_log2_values.empty()
+                    ? std::vector<double>{std::log2(request.slot_domain_info.scale)}
+                    : request.coeff_to_slot_plain_scale_log2_values;
+            for (double transform_plain_scale_log2 : transform_plain_scale_values) {
+                for (double plain_scale_log2 : request.plain_scale_log2_values) {
+                    for (double target_scale_log2 : request.target_scale_log2_values) {
+                        consider(period_mode,
+                                 0.0,
+                                 period_log2,
+                                 prescale_log2,
+                                 transform_plain_scale_log2,
+                                 plain_scale_log2,
+                                 target_scale_log2);
+                    }
                 }
             }
         }
