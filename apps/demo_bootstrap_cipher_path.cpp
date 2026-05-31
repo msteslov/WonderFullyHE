@@ -32,12 +32,14 @@ int main() {
     auto report = bootstrapper.refresh_slots_to_coeffs_first_checked(lowered, expected, slots, tolerance);
 
     std::printf("bootstrap_cipher_path\n");
-    std::printf("profile,slots,tolerance,normalization_factor,rotation_keys\n");
-    std::printf("boot_deep_ckks,%zu,%.6e,%.6e,%zu\n",
+    std::printf("profile,slots,tolerance,normalization_factor,rotation_keys,continuation_levels,restore_level\n");
+    std::printf("boot_deep_ckks,%zu,%.6e,%.6e,%zu,%zu,%s\n",
                 report.slots,
                 report.tolerance,
                 report.normalization_factor,
-                rotation_steps.size());
+                rotation_steps.size(),
+                report.continuation_levels,
+                report.restore_level_criterion ? "true" : "false");
     std::printf("stage,status,chain_before,chain_after,scale_before,scale_after,duration_ms\n");
     for (const auto& stage : report.stages) {
         std::printf("%s,%s,%zu,%zu,%.6e,%.6e,%.6f\n",

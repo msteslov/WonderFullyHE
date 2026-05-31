@@ -131,6 +131,8 @@ Search учитывает prescale вместе с plaintext scale transform-а.
 
 Этот путь вынесен в публичный API как `Bootstrapper::refresh_slots_to_coeffs_first(...)`. Для него нужно генерировать Galois-ключи через `Bootstrapper::scalable_refresh_rotation_steps(slots)`. На текущем этапе он является guarded refresh path: значение сохраняется в пределах tolerance и `EvalMod P3` проходит физически, но полноценное восстановление цепочки ещё требует отдельного post-refresh/modulus management слоя.
 
+`BootstrapPrototypeReport::continuation_levels` фиксирует, сколько уровней остаётся после refresh-круга. Это текущая основная метрика прогресса к полноценному bootstrapping: нужно увеличить её и затем сделать `restore_level_criterion=true` без ухудшения ошибки. Сырой `post_refresh_mod_raise` оставлен диагностическим флагом; он показывает, что один structural raise недостаточен, потому что может поднять chain и одновременно нарушить tolerance.
+
 Для `EvalMod` default-полиномом остаётся `P3`, пока нормализованный вход удовлетворяет `|u| <= 2^-10`. На этом интервале математическая ошибка аппроксимации около `1e-14`, поэтому для target `1e-9` bottleneck находится в CKKS scale/noise и линейных трансформах, а не в степени полинома.
 
 ### Parameter planning

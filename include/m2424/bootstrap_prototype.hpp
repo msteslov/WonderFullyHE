@@ -67,6 +67,7 @@ struct BootstrapPrototypeReport {
     bool checked{};
     bool preserve_value_criterion{};
     bool restore_level_criterion{};
+    std::size_t continuation_levels{};
     std::vector<BootstrapPrototypeStage> stages;
     Cipher result;
 };

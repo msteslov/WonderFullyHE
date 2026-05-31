@@ -52,7 +52,8 @@ WonderFullyHE — учебно-исследовательский прототи
 - Расширение калибровочной модели `ops_profile -> calibrated_loss_bits`; для target `1e-9` текущий быстрый ориентир — 45-битные рабочие модули при `scale_log2 = 45`.
 - `BootstrapPlanner` как обязательный gate перед refresh: проверка уровней, scale, period window, EvalMod interval и error budget до ciphertext-прогона.
 - Factorized FFT-like backend для `CoeffToSlot/SlotToCoeff`; текущий dense diagonal backend остаётся reference для малых `slots`.
-- Довести `SlotsToCoeffsFirst` от guarded refresh до полноценного level-refresh: сейчас путь сохраняет значение и проходит `EvalMod P3` на `boot_deep_ckks`, но ещё не восстанавливает chain до уровня, достаточного для неограниченного продолжения вычислений.
+- Довести `SlotsToCoeffsFirst` от guarded refresh до полноценного level-refresh: сейчас путь сохраняет значение, проходит `EvalMod P3` на `boot_deep_ckks` и явно сообщает `continuation_levels`; текущий измеренный режим даёт около `5` уровней после круга, но `restore_level=false`.
+- Следующий blocker: сырой `post_refresh_mod_raise` поднимает chain, но нарушает tolerance, поэтому нужен корректный output scaling/denormalization перед post-raise, а не простой structural raise.
 - Оптимизация rotation keys, BSGS/hoisting и кеширования plaintext-диагоналей.
 
 ## Ограничения

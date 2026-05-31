@@ -112,7 +112,7 @@ Benchmark также выполняет физический участок `Coe
 
 `demo_mod_raise` проверяет низкоуровневый CKKS ModRaise: ciphertext после снижения уровня расширяется обратно к первой RNS-базе без расшифрования. В отчёт входят `chain_index`, число коэффициентных модулей, масштаб, ошибка декодирования относительно ciphertext до подъёма и статус.
 
-`demo_bootstrap_cipher_path` запускает публичный `SlotsToCoeffsFirst/FftLike/P3` путь через `Bootstrapper::refresh_slots_to_coeffs_first_checked` на `boot_deep_ckks`. Этот путь сохраняет значение в пределах tolerance и проходит `EvalMod P3`; восстановление chain до полноценного unlimited-depth refresh остаётся следующим слоем.
+`demo_bootstrap_cipher_path` запускает публичный `SlotsToCoeffsFirst/FftLike/P3` путь через `Bootstrapper::refresh_slots_to_coeffs_first_checked` на `boot_deep_ckks`. Этот путь сохраняет значение в пределах tolerance, проходит `EvalMod P3` и печатает `continuation_levels`; восстановление chain до полноценного unlimited-depth refresh остаётся следующим слоем.
 
 `demo_bootstrap_end_to_end` оставлен как historical experimental demo и не включён в default CTest, потому что full refresh сейчас заблокирован scaling gate.
 

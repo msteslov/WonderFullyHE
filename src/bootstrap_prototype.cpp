@@ -476,6 +476,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_impl(const ComplexVector& i
 
     report.preserve_value_criterion = !checked || preserve_error <= tolerance_;
     report.restore_level_criterion = final_info.chain_index >= initial_info.chain_index;
+    report.continuation_levels = final_info.chain_index;
     report.result = std::move(current);
     return report;
 }
@@ -753,6 +754,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
 
     report.preserve_value_criterion = expected && preserve_error <= tolerance_;
     report.restore_level_criterion = final_info.chain_index > input_info.chain_index;
+    report.continuation_levels = final_info.chain_index;
     report.result = std::move(current);
     if (post_refresh_mod_raise_enabled_) {
         before = adapter_.info(report.result);
@@ -782,6 +784,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
             mark_stage_structural(post_stage);
         }
         report.stages.push_back(post_stage);
+        report.continuation_levels = after.chain_index;
     }
     return report;
 }
@@ -1010,7 +1013,41 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
 
     report.preserve_value_criterion = expected && preserve_error <= tolerance_;
     report.restore_level_criterion = final_info.chain_index >= input_info.chain_index;
+    report.continuation_levels = final_info.chain_index;
     report.result = std::move(current);
+    if (post_refresh_mod_raise_enabled_) {
+        before = adapter_.info(report.result);
+        Cipher post_refresh_result;
+        stage_ms = elapsed_ms([&] {
+            post_refresh_result = adapter_.mod_raise_to_first(report.result);
+        });
+        after = adapter_.info(post_refresh_result);
+        stage_error = 0.0;
+        if (expected) {
+            const auto actual = head(adapter_.decode_complex(adapter_.decrypt(post_refresh_result)), slots_);
+            stage_error = max_complex_error(*expected, actual);
+            preserve_error = stage_error;
+        }
+        BootstrapPrototypeStage post_stage{
+            "post_refresh_mod_raise",
+            expected ? (stage_error <= tolerance_ ? "PASS" : "FAIL") : "STRUCTURAL",
+            before.chain_index,
+            after.chain_index,
+            before.coeff_modulus_size,
+            after.coeff_modulus_size,
+            before.coeff_modulus_log2,
+            after.coeff_modulus_log2,
+            before.scale,
+            after.scale,
+            stage_error,
+            stage_ms
+        };
+        report.stages.push_back(post_stage);
+        report.result = std::move(post_refresh_result);
+        report.preserve_value_criterion = !expected || preserve_error <= tolerance_;
+        report.restore_level_criterion = after.chain_index >= input_info.chain_index;
+        report.continuation_levels = after.chain_index;
+    }
     return report;
 }
 

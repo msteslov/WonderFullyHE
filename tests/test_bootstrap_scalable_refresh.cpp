@@ -56,6 +56,7 @@ int main() {
         && report.evalmod_degree == m2424::EvalModDegree::P3
         && report.inside_evalmod_interval
         && report.preserve_value_criterion
+        && report.continuation_levels >= 5
         && saw_evalmod
         && evalmod_passed;
 
