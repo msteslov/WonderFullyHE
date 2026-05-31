@@ -238,7 +238,7 @@ Chebyshev/minimax-полиномы стоит использовать как of
 
 Search учитывает `coeff_to_slot_prescale_log2` и `coeff_to_slot_plain_scale_log2`: prescale без физической цены больше не считается готовым design, потому что plaintext scale transform-а напрямую влияет на capacity первого `EvalMod` multiplication.
 
-Модуль `m2424::BootstrapPrototype` оставлен как внутренний проверочный harness. Текущий `CoeffToSlot/SlotToCoeff` строится через dense diagonal transform и годится как reference для маленьких `slots`; production path должен перейти на настоящий factorized FFT-like backend с sparse layers, BSGS/hoisting и ограниченным набором rotation keys.
+Модуль `m2424::BootstrapPrototype` оставлен как внутренний проверочный harness. `CoeffToSlot` получил первый FFT-like backend: canonical embedding раскладывается на рекурсивные even/odd слои и проверяется против dense reference для маленьких `slots`. `SlotToCoeff` пока остаётся dense inverse reference; следующий backend-layer должен убрать этот остаток и добавить BSGS/hoisting.
 
 Модуль `m2424::abft` содержит checksum-инструменты: `append_checksum`, `checksum`, `verify_appended_checksum`, `verify_checksum_value`.
 

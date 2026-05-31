@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 namespace m2424 {
 namespace {
@@ -19,6 +21,96 @@ ComplexMatrix scaled_matrix(ComplexMatrix matrix, double scale) {
         }
     }
     return matrix;
+}
+
+ComplexMatrix identity_matrix(std::size_t n) {
+    ComplexMatrix matrix(n, ComplexVector(n, Complex{0.0, 0.0}));
+    for (std::size_t i = 0; i < n; ++i) {
+        matrix[i][i] = Complex{1.0, 0.0};
+    }
+    return matrix;
+}
+
+bool close_complex(Complex lhs, Complex rhs) {
+    return std::abs(lhs - rhs) <= 1e-9;
+}
+
+std::vector<ComplexMatrix> factor_eval_layers(const ComplexVector& roots) {
+    const std::size_t n = roots.size();
+    if (n == 0 || (n & (n - 1)) != 0) {
+        throw std::invalid_argument("bootstrap DFT roots must be a non-zero power of two");
+    }
+    if (n == 1) {
+        return {};
+    }
+
+    const std::size_t half = n / 2;
+    ComplexVector squared_roots;
+    squared_roots.reserve(half);
+    std::vector<std::size_t> group_for_row(n);
+    for (std::size_t row = 0; row < n; ++row) {
+        const Complex squared = roots[row] * roots[row];
+        auto it = std::find_if(squared_roots.begin(), squared_roots.end(), [&](Complex value) {
+            return close_complex(value, squared);
+        });
+        if (it == squared_roots.end()) {
+            if (squared_roots.size() >= half) {
+                throw std::invalid_argument("bootstrap DFT roots do not form square-root pairs");
+            }
+            group_for_row[row] = squared_roots.size();
+            squared_roots.push_back(squared);
+        } else {
+            group_for_row[row] = static_cast<std::size_t>(std::distance(squared_roots.begin(), it));
+        }
+    }
+    if (squared_roots.size() != half) {
+        throw std::invalid_argument("bootstrap DFT roots must collapse into half as many squared roots");
+    }
+
+    ComplexMatrix split(n, ComplexVector(n, Complex{0.0, 0.0}));
+    for (std::size_t i = 0; i < half; ++i) {
+        split[i][2 * i] = Complex{1.0, 0.0};
+        split[half + i][2 * i + 1] = Complex{1.0, 0.0};
+    }
+
+    std::vector<ComplexMatrix> layers;
+    layers.push_back(std::move(split));
+    for (const auto& child : factor_eval_layers(squared_roots)) {
+        ComplexMatrix block(n, ComplexVector(n, Complex{0.0, 0.0}));
+        for (std::size_t row = 0; row < half; ++row) {
+            for (std::size_t col = 0; col < half; ++col) {
+                block[row][col] = child[row][col];
+                block[half + row][half + col] = child[row][col];
+            }
+        }
+        layers.push_back(std::move(block));
+    }
+
+    ComplexMatrix combine(n, ComplexVector(n, Complex{0.0, 0.0}));
+    for (std::size_t row = 0; row < n; ++row) {
+        const std::size_t group = group_for_row[row];
+        combine[row][group] = Complex{1.0, 0.0};
+        combine[row][half + group] = roots[row];
+    }
+    layers.push_back(std::move(combine));
+    return layers;
+}
+
+ComplexVector canonical_roots(std::size_t slots) {
+    constexpr double kPi = 3.141592653589793238462643383279502884;
+    const std::uint64_t polynomial_degree = static_cast<std::uint64_t>(2 * slots);
+    const std::uint64_t cyclotomic_order = 2 * polynomial_degree;
+    const Complex zeta = std::exp(Complex{0.0, 2.0 * kPi / static_cast<double>(cyclotomic_order)});
+    ComplexVector roots;
+    roots.reserve(slots);
+    for (std::size_t i = 0; i < slots; ++i) {
+        std::uint64_t exponent = 1;
+        for (std::size_t j = 0; j < i; ++j) {
+            exponent = (exponent * 5U) % cyclotomic_order;
+        }
+        roots.push_back(std::pow(zeta, static_cast<double>(exponent)));
+    }
+    return roots;
 }
 
 void validate_plan_inputs(std::size_t slots,
@@ -49,22 +141,31 @@ std::vector<BootstrapDftLayer> make_layers(std::size_t slots,
                                            double plain_scale_log2,
                                            const std::vector<std::size_t>& levels,
                                            double scaling_log2) {
-    const std::size_t layer_count = 1;
+    std::vector<ComplexMatrix> matrices;
+    if (type == BootstrapDftType::HomomorphicDecode) {
+        matrices = factor_eval_layers(canonical_roots(slots));
+    } else {
+        matrices.push_back(invert_matrix(canonical_embedding_matrix(slots)));
+    }
+    if (matrices.empty()) {
+        matrices.push_back(identity_matrix(slots));
+    }
+    const std::size_t layer_count = matrices.size();
     const double layer_scaling_log2 = scaling_log2 / static_cast<double>(layer_count);
     const double layer_scale = std::exp2(layer_scaling_log2);
-    ComplexMatrix matrix = type == BootstrapDftType::HomomorphicDecode
-        ? canonical_embedding_matrix(slots)
-        : invert_matrix(canonical_embedding_matrix(slots));
-    matrix = scaled_matrix(std::move(matrix), layer_scale);
 
     std::vector<BootstrapDftLayer> layers;
-    layers.push_back(BootstrapDftLayer{
-        type == BootstrapDftType::HomomorphicDecode ? "coeff_to_slots" : "slots_to_coeffs",
-        DiagonalLinearTransform::from_matrix(matrix),
-        plain_scale_log2,
-        layer_scaling_log2,
-        levels.front()
-    });
+    layers.reserve(matrices.size());
+    for (std::size_t i = 0; i < matrices.size(); ++i) {
+        const auto level_budget_index = levels[std::min(i, levels.size() - 1)];
+        layers.push_back(BootstrapDftLayer{
+            type == BootstrapDftType::HomomorphicDecode ? "coeff_to_slots_fft_layer" : "slots_to_coeffs",
+            DiagonalLinearTransform::from_matrix(scaled_matrix(std::move(matrices[i]), layer_scale)),
+            plain_scale_log2,
+            layer_scaling_log2,
+            level_budget_index
+        });
+    }
     return layers;
 }
 

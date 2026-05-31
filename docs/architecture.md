@@ -109,7 +109,7 @@ Prescaled `CoeffToSlot` теперь проверяется через `apply_at
 Архитектурный target разделён на два backend'а:
 
 - `DenseDiagonal`: текущий research backend для малых `slots`, где `CoeffToSlot` и `SlotToCoeff` строятся через полную canonical embedding matrix и diagonal decomposition.
-- `FftLike`: целевой scalable backend для больших `slots`, где transforms должны быть staged FFT-like линейными преобразованиями вместо плотных таблиц.
+- `FftLike`: целевой scalable backend для больших `slots`, где transforms должны быть staged FFT-like линейными преобразованиями вместо плотных таблиц. Первая часть реализована для `CoeffToSlot`: canonical embedding раскладывается через рекурсивный even/odd split, а dense matrix остаётся reference для проверки.
 
 Контракты стадий фиксируют, что `ModRaise` является structural-only, `Scaling` является первым correctness gate, `EvalMod` проверяется отдельно от transform backend, а `SlotToCoeff` возвращается в correctness path только после прохождения предыдущих gates.
 

@@ -58,6 +58,23 @@ bool cpu_roundtrip_ok() {
         if (decode.rotation_steps().empty() || encode.rotation_steps().empty()) {
             return false;
         }
+        if (decode.plan().layers.size() <= 1) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool factorized_decode_matches_dense() {
+    for (std::size_t slots : {4U, 8U, 16U}) {
+        auto decode = m2424::FactorizedLinearTransform(m2424::make_bootstrap_dft_plan(
+            slots, m2424::BootstrapDftType::HomomorphicDecode, 40.0));
+        auto dense = m2424::DiagonalLinearTransform::from_matrix(
+            m2424::canonical_embedding_matrix(slots));
+        const auto input = make_input(slots);
+        if (max_error(dense.apply_plain(input), decode.apply_plain(input)) > 1e-10) {
+            return false;
+        }
     }
     return true;
 }
@@ -109,6 +126,7 @@ bool ciphertext_roundtrip_ok() {
 int main() {
     bool ok = true;
     ok = cpu_roundtrip_ok() && ok;
+    ok = factorized_decode_matches_dense() && ok;
     ok = invalid_scale_rejected() && ok;
     ok = unsupported_slots_rejected() && ok;
     ok = ciphertext_roundtrip_ok() && ok;
