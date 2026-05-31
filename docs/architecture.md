@@ -135,6 +135,8 @@ Search учитывает prescale вместе с plaintext scale transform-а.
 
 После `EvalMod P3` выполняется `output_scale_repair`: plaintext-rescale с коэффициентом `1` и рассчитанным plaintext scale возвращает результат к рабочему scale около `2^40`. Это делает refresh-круг повторяемым: `bench_bootstrap_multi_cycle` уже проходит несколько циклов подряд, но остаток уровней остаётся главным ограничением.
 
+FFT-like `CoeffToSlot` применяет попарное composition соседних layers. Для `slots=16` это снижает число ciphertext-level transform stages с `8` до `4`; multi-cycle baseline после этого проходит `3` refresh-круга подряд с минимумом `8` continuation levels. Проверочный 57-битный layout показывает, что один рост modulus bits не решает точность: ошибка остаётся порядка `1e-5`, поэтому следующий точностной blocker находится в modular-reduction/rounding semantics.
+
 Для `EvalMod` default-полиномом остаётся `P3`, пока нормализованный вход удовлетворяет `|u| <= 2^-10`. На этом интервале математическая ошибка аппроксимации около `1e-14`, поэтому для target `1e-9` bottleneck находится в CKKS scale/noise и линейных трансформах, а не в степени полинома.
 
 ### Parameter planning

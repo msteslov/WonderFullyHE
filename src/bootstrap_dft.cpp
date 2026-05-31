@@ -31,6 +31,41 @@ ComplexMatrix identity_matrix(std::size_t n) {
     return matrix;
 }
 
+ComplexMatrix multiply_matrices(const ComplexMatrix& lhs, const ComplexMatrix& rhs) {
+    if (lhs.empty() || rhs.empty() || lhs.size() != rhs.size()) {
+        throw std::invalid_argument("matrix product requires non-empty equally sized square matrices");
+    }
+    const std::size_t n = lhs.size();
+    ComplexMatrix result(n, ComplexVector(n, Complex{0.0, 0.0}));
+    for (std::size_t row = 0; row < n; ++row) {
+        if (lhs[row].size() != n || rhs[row].size() != n) {
+            throw std::invalid_argument("matrix product requires square matrices");
+        }
+        for (std::size_t mid = 0; mid < n; ++mid) {
+            if (std::abs(lhs[row][mid]) == 0.0) {
+                continue;
+            }
+            for (std::size_t col = 0; col < n; ++col) {
+                result[row][col] += lhs[row][mid] * rhs[mid][col];
+            }
+        }
+    }
+    return result;
+}
+
+std::vector<ComplexMatrix> compose_adjacent_layers(const std::vector<ComplexMatrix>& layers) {
+    std::vector<ComplexMatrix> composed;
+    composed.reserve((layers.size() + 1) / 2);
+    for (std::size_t i = 0; i < layers.size(); i += 2) {
+        if (i + 1 == layers.size()) {
+            composed.push_back(layers[i]);
+            continue;
+        }
+        composed.push_back(multiply_matrices(layers[i + 1], layers[i]));
+    }
+    return composed;
+}
+
 bool close_complex(Complex lhs, Complex rhs) {
     return std::abs(lhs - rhs) <= 1e-9;
 }
@@ -143,7 +178,7 @@ std::vector<BootstrapDftLayer> make_layers(std::size_t slots,
                                            double scaling_log2) {
     std::vector<ComplexMatrix> matrices;
     if (type == BootstrapDftType::HomomorphicDecode) {
-        matrices = factor_eval_layers(canonical_roots(slots));
+        matrices = compose_adjacent_layers(factor_eval_layers(canonical_roots(slots)));
     } else {
         matrices.push_back(invert_matrix(canonical_embedding_matrix(slots)));
     }

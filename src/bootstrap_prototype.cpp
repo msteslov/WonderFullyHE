@@ -279,8 +279,12 @@ Cipher apply_output_scale_repair(SealAdapter& adapter, const Cipher& input, doub
     if (info.chain_index == 0) {
         throw std::runtime_error("cannot repair bootstrap output scale without remaining levels");
     }
-    constexpr double assumed_drop_log2 = 40.0;
-    const double plain_scale_log2 = target_scale_log2 + assumed_drop_log2 - current_scale_log2;
+    const auto bits = adapter.coeff_modulus_bits();
+    if (info.coeff_modulus_size == 0 || info.coeff_modulus_size > bits.size()) {
+        throw std::runtime_error("cannot infer bootstrap output rescale modulus size");
+    }
+    const double next_drop_log2 = static_cast<double>(bits[info.coeff_modulus_size - 1]);
+    const double plain_scale_log2 = target_scale_log2 + next_drop_log2 - current_scale_log2;
     if (!std::isfinite(plain_scale_log2) || plain_scale_log2 <= 0.0) {
         throw std::runtime_error("cannot repair bootstrap output scale");
     }
@@ -839,9 +843,9 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     }
 
     auto slot_to_coeff = FactorizedLinearTransform(make_bootstrap_dft_plan(
-        slots_, BootstrapDftType::HomomorphicEncode, 40.0));
+        slots_, BootstrapDftType::HomomorphicEncode, plain_scale_log2_));
     auto coeff_to_slot = FactorizedLinearTransform(make_bootstrap_dft_plan(
-        slots_, BootstrapDftType::HomomorphicDecode, 40.0));
+        slots_, BootstrapDftType::HomomorphicDecode, plain_scale_log2_));
 
     auto current = input;
     const auto input_info = adapter_.info(input);

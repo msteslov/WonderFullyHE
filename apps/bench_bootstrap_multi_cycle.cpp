@@ -59,6 +59,25 @@ std::size_t arg_size_or(int argc, char** argv, int index, std::size_t fallback) 
     return parsed == 0 ? fallback : static_cast<std::size_t>(parsed);
 }
 
+int arg_int_or(int argc, char** argv, int index, int fallback) {
+    if (argc <= index) {
+        return fallback;
+    }
+    const auto parsed = std::strtol(argv[index], nullptr, 10);
+    return parsed <= 0 ? fallback : static_cast<int>(parsed);
+}
+
+std::vector<int> repeated_refresh_moduli(int work_bits, std::size_t work_levels) {
+    std::vector<int> bits;
+    bits.reserve(work_levels + 2);
+    bits.push_back(60);
+    for (std::size_t i = 0; i < work_levels; ++i) {
+        bits.push_back(work_bits);
+    }
+    bits.push_back(60);
+    return bits;
+}
+
 void sanitize(std::string& text) {
     std::replace(text.begin(), text.end(), ',', ';');
 }
@@ -68,6 +87,7 @@ void sanitize(std::string& text) {
 int main(int argc, char** argv) {
     const std::size_t slots = arg_size_or(argc, argv, 1, 4);
     const std::size_t cycles = arg_size_or(argc, argv, 2, 3);
+    const int work_bits = arg_int_or(argc, argv, 3, 40);
     constexpr double tolerance = 1e-3;
     constexpr double amplitude = 1e-5;
 
@@ -76,7 +96,15 @@ int main(int argc, char** argv) {
         rotations = m2424::Bootstrapper::scalable_refresh_rotation_steps(slots);
     });
 
-    auto adapter = m2424::SealAdapter::create(m2424::profiles::boot_deep_ckks());
+    const auto profile = work_bits == 40
+        ? m2424::profiles::boot_deep_ckks()
+        : m2424::CkksProfile{
+            32768,
+            repeated_refresh_moduli(work_bits, 13),
+            std::exp2(static_cast<double>(work_bits)),
+            16384
+        };
+    auto adapter = m2424::SealAdapter::create(profile);
     double keygen_ms = 0.0;
     keygen_ms = elapsed_ms([&] {
         adapter.keygen(rotations, true);

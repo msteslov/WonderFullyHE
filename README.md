@@ -115,7 +115,7 @@ Benchmark также выполняет физический участок `Coe
 
 `demo_bootstrap_cipher_path` запускает публичный `SlotsToCoeffsFirst/FftLike/P3` путь через `Bootstrapper::refresh_slots_to_coeffs_first_checked` на `boot_deep_ckks`. Этот путь сохраняет значение в пределах tolerance, проходит `EvalMod P3` и печатает `continuation_levels`; восстановление chain до полноценного unlimited-depth refresh остаётся следующим слоем.
 
-`bench_bootstrap_multi_cycle` запускает несколько refresh-кругов подряд и печатает ошибку, scale и остаток уровней после каждого круга. Текущий baseline после `output_scale_repair`: `slots=4, cycles=3` проходит с `max_abs_error < 2e-5` и минимумом `8` continuation levels; `slots=16, cycles=2` проходит с `max_abs_error < 2e-5` и минимумом `4` continuation levels.
+`bench_bootstrap_multi_cycle` запускает несколько refresh-кругов подряд и печатает ошибку, scale и остаток уровней после каждого круга. Текущий baseline после сжатия FFT-like `CoeffToSlot` и `output_scale_repair`: `slots=16, cycles=3` проходит с `max_abs_error < 2e-5` и минимумом `8` continuation levels на 40-битном layout. Проверочный 57-битный layout `60 + 13*57 + 60` также проходит `slots=16, cycles=3`, но ошибка остаётся около `1e-5`; значит следующий bottleneck точности находится не в modulus bits, а в текущем modular-reduction/rounding path.
 
 `demo_bootstrap_end_to_end` оставлен как historical experimental demo и не включён в default CTest, потому что full refresh сейчас заблокирован scaling gate.
 

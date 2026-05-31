@@ -36,13 +36,22 @@ Cipher weighted_term(SealAdapter& adapter, const Cipher& value, double coefficie
     return adapter.mul_plain_rescale(value, adapter.encode_scalar_like(coefficient, value));
 }
 
+double next_rescale_drop_log2(SealAdapter& adapter, const Cipher& value) {
+    const auto info = adapter.info(value);
+    const auto bits = adapter.coeff_modulus_bits();
+    if (info.coeff_modulus_size == 0 || info.coeff_modulus_size > bits.size()) {
+        throw std::runtime_error("cannot infer next rescale modulus size");
+    }
+    return static_cast<double>(bits[info.coeff_modulus_size - 1]);
+}
+
 Cipher weighted_term_to_scale(SealAdapter& adapter,
                               const Cipher& value,
                               double coefficient,
                               double target_scale_log2) {
-    constexpr double assumed_drop_log2 = 40.0;
     const auto info = adapter.info(value);
-    const double plain_scale_log2 = target_scale_log2 + assumed_drop_log2 - std::log2(info.scale);
+    const double plain_scale_log2 =
+        target_scale_log2 + next_rescale_drop_log2(adapter, value) - std::log2(info.scale);
     if (!std::isfinite(plain_scale_log2) || plain_scale_log2 <= 0.0) {
         throw std::runtime_error("cannot align EvalMod term scale");
     }

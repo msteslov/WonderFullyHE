@@ -1,6 +1,7 @@
 #include "m2424/bootstrap.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
 #include <utility>
 #include <stdexcept>
@@ -193,7 +194,7 @@ BootstrapPrototypeReport Bootstrapper::refresh_slots_to_coeffs_first(const Ciphe
     prototype.set_transform_backend(BootstrapTransformBackend::FftLike);
     prototype.set_circuit_order(BootstrapCircuitOrder::SlotsToCoeffsFirst);
     prototype.set_evalmod_degree(EvalModDegree::P3);
-    prototype.set_plain_scale_log2(40.0);
+    prototype.set_plain_scale_log2(std::log2(adapter_->info(input).scale));
     return prototype.refresh_cipher_fast(input);
 }
 
@@ -209,7 +210,7 @@ BootstrapPrototypeReport Bootstrapper::refresh_slots_to_coeffs_first_checked(
     prototype.set_transform_backend(BootstrapTransformBackend::FftLike);
     prototype.set_circuit_order(BootstrapCircuitOrder::SlotsToCoeffsFirst);
     prototype.set_evalmod_degree(EvalModDegree::P3);
-    prototype.set_plain_scale_log2(40.0);
+    prototype.set_plain_scale_log2(std::log2(adapter_->info(input).scale));
     return prototype.refresh_cipher_checked(input, expected);
 }
 
