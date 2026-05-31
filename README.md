@@ -78,6 +78,7 @@ cmake --build build -j
 `bench_bootstrap_scaling` является обязательным gate перед full refresh: он выполняет только `encrypt -> lower level -> ModRaise -> CoeffToSlot -> normalization -> decrypt/check` и проверяет, представим ли normalization scalar при выбранных `period_mode` и `plain_scale_log2`. Tiny scalar больше не выполняется одним plaintext multiply: scaling layer раскладывает его на несколько `mul_plain_rescale` шагов по доступной modulus capacity.
 
 `bench_bootstrap_prescaled_coeff_to_slot` проверяет перенос части normalization в `CoeffToSlot` diagonals. Prescaled diagonals кодируются через `apply_at_plain_scale`, чтобы избежать transparent plaintext; такой путь физически исполняется, но высокий plaintext scale поднимает ciphertext scale и пока оставляет blocker `not_enough_levels_for_scale`.
+Benchmark также выполняет физический участок `CoeffToSlot -> normalization -> ScaleSquash` и печатает `p3_ready`; на текущем `boot_ckks` prescale cases пока дают `0` готовых входов для `EvalMod`.
 
 `bench_bootstrap_full` и `bench_bootstrap_refresh` оставлены как experimental harness для разработки конвейера. `bench_bootstrap_refresh` сначала печатает operation-budget gate, затем scale gate, и не запускает experimental refresh, если следующий блок помещается без refresh или текущий prototype-refresh заблокирован. Эти harness не являются доказательством корректного bootstrapping, пока `bench_bootstrap_scaling` блокирует full validation.
 
