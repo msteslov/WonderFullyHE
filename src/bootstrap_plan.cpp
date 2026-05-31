@@ -79,6 +79,20 @@ const char* to_string(BootstrapRefreshPlanningStatus status) noexcept {
     return "unknown";
 }
 
+const char* to_string(BootstrapLayoutPlanningStatus status) noexcept {
+    switch (status) {
+    case BootstrapLayoutPlanningStatus::Ready:
+        return "ready";
+    case BootstrapLayoutPlanningStatus::BlockedBySecurityBudget:
+        return "blocked_by_security_budget";
+    case BootstrapLayoutPlanningStatus::BlockedByEvalModCapacity:
+        return "blocked_by_evalmod_capacity";
+    case BootstrapLayoutPlanningStatus::BlockedByScaleBudget:
+        return "blocked_by_scale_budget";
+    }
+    return "unknown";
+}
+
 std::vector<int> active_coeff_modulus_bits(const CkksProfile& profile, const CipherInfo& info) {
     const std::size_t active_size = std::min(info.coeff_modulus_size, profile.coeff_modulus_bits.size());
     return {profile.coeff_modulus_bits.begin(),
@@ -540,6 +554,124 @@ BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
         }
     }
 
+    return result;
+}
+
+std::size_t estimated_bootstrap_transform_levels(std::size_t slots,
+                                                 BootstrapTransformBackend backend,
+                                                 BootstrapDftType type) {
+    validate_slots(slots);
+    if (backend == BootstrapTransformBackend::DenseDiagonal) {
+        return 1;
+    }
+    return make_bootstrap_dft_plan(slots, type, 40.0).layers.size();
+}
+
+BootstrapLayoutPlanningResult plan_bootstrap_layout(const BootstrapLayoutPlanningRequest& request) {
+    validate_slots(request.slots);
+    if (!std::isfinite(request.max_abs_after_coeff_to_slot_log2)) {
+        throw std::invalid_argument("bootstrap layout max_abs_after_coeff_to_slot_log2 must be finite");
+    }
+    if (!std::isfinite(request.transform_output_scale_log2) || request.transform_output_scale_log2 <= 0.0) {
+        throw std::invalid_argument("bootstrap layout transform output scale log2 must be positive and finite");
+    }
+    if (!std::isfinite(request.normalization_plain_scale_log2) || request.normalization_plain_scale_log2 <= 0.0) {
+        throw std::invalid_argument("bootstrap layout normalization plaintext scale log2 must be positive and finite");
+    }
+    if (!std::isfinite(request.target_scale_log2) || request.target_scale_log2 <= 0.0) {
+        throw std::invalid_argument("bootstrap layout target scale log2 must be positive and finite");
+    }
+    if (!std::isfinite(request.evalmod_capacity_margin_log2) || request.evalmod_capacity_margin_log2 < 0.0) {
+        throw std::invalid_argument("bootstrap layout EvalMod margin log2 must be finite and non-negative");
+    }
+    if (request.first_mod_bits <= 0 || request.middle_mod_bits <= 0 || request.last_mod_bits <= 0) {
+        throw std::invalid_argument("bootstrap layout modulus bits must be positive");
+    }
+
+    BootstrapLayoutPlanningResult result;
+    result.transform_backend = request.transform_backend;
+    result.slots = request.slots;
+    result.poly_modulus_degree = request.poly_modulus_degree;
+    result.security_level = request.security_level;
+    result.coeff_to_slot_levels = request.coeff_to_slot_levels != 0
+        ? request.coeff_to_slot_levels
+        : estimated_bootstrap_transform_levels(request.slots, request.transform_backend,
+                                               BootstrapDftType::HomomorphicDecode);
+    result.evalmod_levels = request.evalmod_levels;
+    result.slot_to_coeff_levels = request.slot_to_coeff_levels != 0
+        ? request.slot_to_coeff_levels
+        : estimated_bootstrap_transform_levels(request.slots, request.transform_backend,
+                                               BootstrapDftType::HomomorphicEncode);
+    result.residual_levels = request.residual_levels;
+    result.evalmod_capacity_margin_log2 = request.evalmod_capacity_margin_log2;
+
+    const double evalmod_bound_log2 = std::log2(EvalModPolynomial::approximation_bound);
+    result.period_log2 = std::ceil(std::max(0.0, request.max_abs_after_coeff_to_slot_log2 - evalmod_bound_log2));
+    result.normalization_levels = result.period_log2 == 0.0
+        ? 0
+        : static_cast<std::size_t>(std::ceil(result.period_log2 / request.normalization_plain_scale_log2));
+    const double normalization_drop_log2 =
+        static_cast<double>(result.normalization_levels * static_cast<std::size_t>(request.middle_mod_bits));
+    result.scale_after_normalization_log2 =
+        request.transform_output_scale_log2 + result.period_log2 - normalization_drop_log2;
+    result.scale_squash_levels = result.scale_after_normalization_log2 <= request.target_scale_log2
+        ? 0
+        : static_cast<std::size_t>(
+            std::ceil((result.scale_after_normalization_log2 - request.target_scale_log2) /
+                      static_cast<double>(request.middle_mod_bits)));
+    const double squash_drop_log2 =
+        static_cast<double>(result.scale_squash_levels * static_cast<std::size_t>(request.middle_mod_bits));
+    result.scale_after_squash_log2 = result.scale_after_normalization_log2 - squash_drop_log2;
+    result.first_evalmod_product_scale_log2 = 2.0 * result.scale_after_squash_log2;
+
+    result.total_levels = result.coeff_to_slot_levels
+        + result.normalization_levels
+        + result.scale_squash_levels
+        + result.evalmod_levels
+        + result.slot_to_coeff_levels
+        + result.residual_levels;
+
+    result.profile.poly_modulus_degree = request.poly_modulus_degree;
+    result.profile.scale = std::exp2(std::min(request.target_scale_log2, 60.0));
+    result.profile.slots = request.slots;
+    result.profile.coeff_modulus_bits.reserve(result.total_levels + 1);
+    result.profile.coeff_modulus_bits.push_back(request.first_mod_bits);
+    for (std::size_t i = 1; i < result.total_levels; ++i) {
+        result.profile.coeff_modulus_bits.push_back(request.middle_mod_bits);
+    }
+    result.profile.coeff_modulus_bits.push_back(request.last_mod_bits);
+    result.total_coeff_modulus_bits = total_coeff_modulus_bits(result.profile);
+    result.security_budget_bits = coeff_modulus_max_bit_count(request.poly_modulus_degree, request.security_level);
+    result.security_ok = result.security_budget_bits > 0
+        && result.total_coeff_modulus_bits <= result.security_budget_bits;
+
+    const std::size_t consumed_before_evalmod =
+        result.coeff_to_slot_levels + result.normalization_levels + result.scale_squash_levels;
+    const std::size_t active_moduli_before_evalmod =
+        result.profile.coeff_modulus_bits.size() > consumed_before_evalmod
+            ? result.profile.coeff_modulus_bits.size() - consumed_before_evalmod
+            : 0;
+    for (std::size_t i = 0; i < active_moduli_before_evalmod; ++i) {
+        result.remaining_modulus_before_evalmod_log2 +=
+            static_cast<double>(result.profile.coeff_modulus_bits[i]);
+    }
+    result.evalmod_capacity_ok =
+        result.first_evalmod_product_scale_log2 + request.evalmod_capacity_margin_log2
+            <= result.remaining_modulus_before_evalmod_log2;
+
+    if (!result.security_ok) {
+        result.status = BootstrapLayoutPlanningStatus::BlockedBySecurityBudget;
+        result.blocker = to_string(result.status);
+    } else if (!result.evalmod_capacity_ok) {
+        result.status = BootstrapLayoutPlanningStatus::BlockedByEvalModCapacity;
+        result.blocker = to_string(result.status);
+    } else if (active_moduli_before_evalmod <= result.evalmod_levels + result.slot_to_coeff_levels) {
+        result.status = BootstrapLayoutPlanningStatus::BlockedByScaleBudget;
+        result.blocker = "not_enough_active_moduli_before_evalmod";
+    } else {
+        result.status = BootstrapLayoutPlanningStatus::Ready;
+        result.blocker = "none";
+    }
     return result;
 }
 

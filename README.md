@@ -75,6 +75,8 @@ cmake --build build -j
 
 `bench_bootstrap_planner` демонстрирует связку `CheckedEvaluator -> OperationBudgetBuilder -> plan_bootstrap_refresh`: выполняет короткий проверяемый pipeline, получает его budget и печатает, поместится ли повторный блок без refresh или нужен bootstrapping.
 
+`bench_bootstrap_layout_planner` считает level/scale/security budget для bootstrapping circuit. Текущий вывод: dense-like layout не помещается в `16384/tc128`, FFT-like `CoeffToSlot` с текущим inverse reference помещается в `32768/tc128`, а полностью factorized inverse с тем же числом слоёв требует больше modulus bits, чем разрешает `32768/tc128`.
+
 `bench_bootstrap_scaling` является обязательным gate перед full refresh: он выполняет только `encrypt -> lower level -> ModRaise -> CoeffToSlot -> normalization -> decrypt/check` и проверяет, представим ли normalization scalar при выбранных `period_mode` и `plain_scale_log2`. Tiny scalar больше не выполняется одним plaintext multiply: scaling layer раскладывает его на несколько `mul_plain_rescale` шагов по доступной modulus capacity.
 
 `bench_bootstrap_prescaled_coeff_to_slot` проверяет перенос части normalization в `CoeffToSlot` diagonals. Prescaled diagonals кодируются через `apply_at_plain_scale`, чтобы избежать transparent plaintext; такой путь физически исполняется, но высокий plaintext scale поднимает ciphertext scale и пока оставляет blocker `not_enough_levels_for_scale`.

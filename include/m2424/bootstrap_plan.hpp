@@ -45,6 +45,13 @@ enum class BootstrapRefreshPlanningStatus {
     RefreshPlanBlocked
 };
 
+enum class BootstrapLayoutPlanningStatus {
+    Ready,
+    BlockedBySecurityBudget,
+    BlockedByEvalModCapacity,
+    BlockedByScaleBudget
+};
+
 struct BootstrapStageSpec {
     std::string name;
     BootstrapValueDomain input_domain{};
@@ -158,12 +165,59 @@ struct BootstrapRefreshScaleGateSearchResult {
     bool ready{};
 };
 
+struct BootstrapLayoutPlanningRequest {
+    std::size_t slots{16};
+    std::size_t poly_modulus_degree{32768};
+    SecurityLevel security_level{SecurityLevel::TC128};
+    BootstrapTransformBackend transform_backend{BootstrapTransformBackend::FftLike};
+    double max_abs_after_coeff_to_slot_log2{};
+    double transform_output_scale_log2{40.0};
+    double normalization_plain_scale_log2{40.0};
+    double target_scale_log2{60.0};
+    double evalmod_capacity_margin_log2{2.0};
+    std::size_t coeff_to_slot_levels{};
+    std::size_t evalmod_levels{3};
+    std::size_t slot_to_coeff_levels{};
+    std::size_t residual_levels{1};
+    int first_mod_bits{60};
+    int middle_mod_bits{40};
+    int last_mod_bits{60};
+};
+
+struct BootstrapLayoutPlanningResult {
+    BootstrapLayoutPlanningStatus status{BootstrapLayoutPlanningStatus::BlockedByScaleBudget};
+    BootstrapTransformBackend transform_backend{BootstrapTransformBackend::FftLike};
+    std::size_t slots{};
+    std::size_t poly_modulus_degree{};
+    SecurityLevel security_level{SecurityLevel::TC128};
+    double period_log2{};
+    std::size_t coeff_to_slot_levels{};
+    std::size_t normalization_levels{};
+    std::size_t scale_squash_levels{};
+    std::size_t evalmod_levels{};
+    std::size_t slot_to_coeff_levels{};
+    std::size_t residual_levels{};
+    std::size_t total_levels{};
+    int total_coeff_modulus_bits{};
+    int security_budget_bits{};
+    double scale_after_normalization_log2{};
+    double scale_after_squash_log2{};
+    double remaining_modulus_before_evalmod_log2{};
+    double first_evalmod_product_scale_log2{};
+    double evalmod_capacity_margin_log2{};
+    bool security_ok{};
+    bool evalmod_capacity_ok{};
+    std::string blocker;
+    CkksProfile profile;
+};
+
 const char* to_string(BootstrapValueDomain domain) noexcept;
 const char* to_string(BootstrapTransformBackend backend) noexcept;
 const char* to_string(BootstrapScalingStrategy strategy) noexcept;
 const char* to_string(BootstrapPipelineGate gate) noexcept;
 const char* to_string(BootstrapScaleDesignStatus status) noexcept;
 const char* to_string(BootstrapRefreshPlanningStatus status) noexcept;
+const char* to_string(BootstrapLayoutPlanningStatus status) noexcept;
 
 BootstrapPipelinePlan make_research_bootstrap_plan(std::size_t slots);
 BootstrapPipelinePlan make_scalable_bootstrap_plan(std::size_t slots);
@@ -195,5 +249,9 @@ BootstrapRefreshPlanningResult plan_bootstrap_refresh(const BootstrapRefreshPlan
 BootstrapScaleDesign plan_bootstrap_refresh_scale_gate(const BootstrapRefreshScaleGateRequest& request);
 BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
     const BootstrapRefreshScaleGateSearchRequest& request);
+std::size_t estimated_bootstrap_transform_levels(std::size_t slots,
+                                                 BootstrapTransformBackend backend,
+                                                 BootstrapDftType type);
+BootstrapLayoutPlanningResult plan_bootstrap_layout(const BootstrapLayoutPlanningRequest& request);
 
 } // namespace m2424

@@ -125,6 +125,8 @@ Prescaled `CoeffToSlot` теперь проверяется через `apply_at
 
 Search учитывает prescale вместе с plaintext scale transform-а. Это важно для dense `CoeffToSlot`: prescale может сделать magnitude algebraically ready, но если transform требует высокий plaintext scale, первый `EvalMod` multiplication снова блокируется по scale capacity.
 
+`plan_bootstrap_layout` считает circuit-level feasibility до ciphertext-прогона: period, normalization levels, scale-squash levels, EvalMod levels, transform levels, residual levels, total modulus bits и security limit. Первый расчёт показывает: dense-like layout требует около `600` bits при лимите `438` для `16384/tc128`; FFT-like `CoeffToSlot` с текущим inverse reference требует около `760` bits и помещается в `32768/tc128`; полностью factorized inverse с таким же числом слоёв требует около `1040` bits и не помещается в `32768/tc128`.
+
 Для `EvalMod` default-полиномом остаётся `P3`, пока нормализованный вход удовлетворяет `|u| <= 2^-10`. На этом интервале математическая ошибка аппроксимации около `1e-14`, поэтому для target `1e-9` bottleneck находится в CKKS scale/noise и линейных трансформах, а не в степени полинома.
 
 ### Parameter planning

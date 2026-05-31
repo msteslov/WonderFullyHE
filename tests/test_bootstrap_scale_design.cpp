@@ -121,6 +121,35 @@ int main() {
         {40.0, 80.0},
         {40.0, 60.0}
     });
+    const auto dense_layout = m2424::plan_bootstrap_layout({
+        16,
+        16384,
+        m2424::SecurityLevel::TC128,
+        m2424::BootstrapTransformBackend::DenseDiagonal,
+        252.0,
+        40.0,
+        160.0,
+        60.0,
+        2.0,
+        1,
+        3,
+        1,
+        1,
+        60,
+        40,
+        60
+    });
+    const auto fft_layout = m2424::plan_bootstrap_layout({
+        16,
+        32768,
+        m2424::SecurityLevel::TC128,
+        m2424::BootstrapTransformBackend::FftLike,
+        132.0,
+        40.0,
+        160.0,
+        60.0,
+        2.0
+    });
 
     m2424::CkksOperationBudget small_budget;
     small_budget.ciphertext_muls = 2;
@@ -177,6 +206,10 @@ int main() {
         && refresh_scale_search.candidates == 16
         && refresh_scale_search.ready == (refresh_scale_search.ready_candidates > 0)
         && refresh_scale_search.best_design.period_log2 > 0.0
+        && dense_layout.total_levels > dense_layout.normalization_levels
+        && dense_layout.security_budget_bits == 438
+        && fft_layout.coeff_to_slot_levels > dense_layout.coeff_to_slot_levels
+        && !fft_layout.blocker.empty()
         && fits_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh
         && !fits_refresh_plan.needs_refresh
         && required_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::RefreshRequired
