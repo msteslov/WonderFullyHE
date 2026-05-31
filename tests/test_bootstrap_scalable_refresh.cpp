@@ -26,7 +26,7 @@ void require(bool condition, const char* message) {
     }
 }
 
-void run_case(std::size_t slots, double amplitude, double tolerance) {
+void run_case(std::size_t slots, double amplitude, double tolerance, m2424::EvalModDegree evalmod_degree) {
     const auto rotation_steps = m2424::Bootstrapper::scalable_refresh_rotation_steps(slots);
     require(!rotation_steps.empty(), "refresh must require rotations");
 
@@ -42,17 +42,17 @@ void run_case(std::size_t slots, double amplitude, double tolerance) {
     m2424::Bootstrapper bootstrapper(adapter);
     const auto plan = bootstrapper.plan(slots);
     const auto report = bootstrapper.refresh_slots_to_coeffs_first_checked(
-        current, expected, slots, tolerance);
+        current, expected, slots, tolerance, evalmod_degree);
 
     m2424::CkksOperationBudget small_budget;
     small_budget.plaintext_mul_rescales = 1;
     const auto skipped_guard = bootstrapper.refresh_slots_to_coeffs_first_checked_guarded(
-        current, expected, small_budget, 1e-9, slots, tolerance);
+        current, expected, small_budget, 1e-9, slots, tolerance, evalmod_degree);
 
     m2424::CkksOperationBudget refresh_budget;
     refresh_budget.ciphertext_muls = adapter.info(current).chain_index + 1;
     const auto executed_guard = bootstrapper.refresh_slots_to_coeffs_first_checked_guarded(
-        current, expected, refresh_budget, 1e-9, slots, tolerance);
+        current, expected, refresh_budget, 1e-9, slots, tolerance, evalmod_degree);
 
     bool saw_evalmod = false;
     bool evalmod_passed = false;
@@ -76,8 +76,8 @@ void run_case(std::size_t slots, double amplitude, double tolerance) {
             "report should use SlotsToCoeffsFirst");
     require(report.transform_backend == m2424::BootstrapTransformBackend::FftLike,
             "report should use FftLike backend");
-    require(report.evalmod_degree == m2424::EvalModDegree::P3,
-            "scalable refresh should use P3 EvalMod baseline");
+    require(report.evalmod_degree == evalmod_degree,
+            "scalable refresh should preserve requested EvalMod degree");
     require(report.inside_evalmod_interval, "normalized values should fit EvalMod interval");
     require(report.preserve_value_criterion, "refresh should preserve checked value");
     require(report.continuation_levels >= 5, "refresh should leave continuation levels");
@@ -87,15 +87,18 @@ void run_case(std::size_t slots, double amplitude, double tolerance) {
     require(executed_guard.refresh_executed, "guard should execute when levels are insufficient");
     require(executed_guard.planning.status == m2424::BootstrapRefreshPlanningStatus::RefreshRequired,
             "execute guard planning status mismatch");
+    require(executed_guard.refresh.evalmod_degree == evalmod_degree,
+            "checked guarded refresh should preserve requested EvalMod degree");
     require(executed_guard.refresh.preserve_value_criterion,
             "checked guarded refresh should preserve value");
     require(executed_guard.blocker == "none", "checked guarded refresh should report no blocker after success");
     require(saw_evalmod && evalmod_passed, "EvalMod stage should be present and pass diagnostically");
     require(saw_result, "refresh_result stage should be present");
 
-    std::printf("[test_bootstrap_scalable_refresh] case PASS slots=%zu amplitude=%.3e rotations=%zu stages=%zu\n",
+    std::printf("[test_bootstrap_scalable_refresh] case PASS slots=%zu amplitude=%.3e evalmod=%s rotations=%zu stages=%zu\n",
                 slots,
                 amplitude,
+                m2424::to_string(evalmod_degree),
                 rotation_steps.size(),
                 report.stages.size());
 }
@@ -105,10 +108,11 @@ void run_case(std::size_t slots, double amplitude, double tolerance) {
 int main() {
     bool ok = true;
     try {
-        run_case(4, 1e-5, 1e-3);
-        run_case(8, 1e-5, 1e-3);
-        run_case(16, 1e-5, 1e-3);
-        run_case(4, 5e-5, 1e-3);
+        run_case(4, 1e-5, 1e-3, m2424::EvalModDegree::P3);
+        run_case(8, 1e-5, 1e-3, m2424::EvalModDegree::P3);
+        run_case(16, 1e-5, 1e-3, m2424::EvalModDegree::P3);
+        run_case(4, 5e-5, 1e-3, m2424::EvalModDegree::P3);
+        run_case(4, 1e-5, 1e-3, m2424::EvalModDegree::P3DoubleAngle);
     } catch (const std::exception& error) {
         ok = false;
         std::printf("[test_bootstrap_scalable_refresh] FAIL: %s\n", error.what());
