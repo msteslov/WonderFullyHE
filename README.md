@@ -8,6 +8,10 @@ linear transforms, polynomial evaluation, and profile/security reports.
 Bootstrapping is still experimental. The repository contains implementation
 pieces and diagnostic harnesses for `ModRaise -> CoeffToSlot -> EvalMod ->
 SlotToCoeff`, but full production bootstrapping is not yet a stable API.
+Use `#include "m2424/experimental.hpp"` explicitly when working with bootstrap,
+EvalMod, diagnostic scale-management, or bootstrap-planner internals. The stable
+umbrella header `#include "m2424/m2424.hpp"` intentionally does not include those
+research interfaces.
 
 ## Build
 
@@ -84,7 +88,7 @@ The codebase has reusable bootstrap building blocks:
 - `ModRaise` wrapper over SEAL-level primitives.
 - EvalMod P3/P5/P7 plus a diagnostic `P3DoubleAngle` path.
 - Scale and period planning objects.
-- A public experimental `SlotsToCoeffsFirst/FftLike/P3` refresh path.
+- An explicit experimental `SlotsToCoeffsFirst/FftLike/P3` refresh path.
 
 The current blocker is the period/output-scale model around EvalMod. Existing
 research harnesses are kept behind `M2424_BUILD_RESEARCH_APPS` until that model
