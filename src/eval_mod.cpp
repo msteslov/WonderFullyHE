@@ -87,6 +87,13 @@ double EvalModPolynomial::evaluate_plain(double u) const {
 
 double EvalModPolynomial::evaluate_plain(double u, EvalModDegree degree) const {
     validate_input(u);
+    if (degree == EvalModDegree::P3DoubleAngle) {
+        const double half = 0.5 * u;
+        const double half2 = half * half;
+        const double half3 = half * half2;
+        const double p3 = a1 * half + a3 * half3;
+        return 2.0 * p3 - 4.0 * kPi * kPi * p3 * p3 * p3;
+    }
     const double u2 = u * u;
     const double u3 = u * u2;
     double result = a1 * u + a3 * u3;
@@ -120,6 +127,13 @@ Complex EvalModPolynomial::evaluate_plain(Complex u) const {
 
 Complex EvalModPolynomial::evaluate_plain(Complex u, EvalModDegree degree) const {
     validate_input(u);
+    if (degree == EvalModDegree::P3DoubleAngle) {
+        const Complex half = 0.5 * u;
+        const Complex half2 = half * half;
+        const Complex half3 = half * half2;
+        const Complex p3 = a1 * half + a3 * half3;
+        return 2.0 * p3 - 4.0 * kPi * kPi * p3 * p3 * p3;
+    }
     const Complex u2 = u * u;
     const Complex u3 = u * u2;
     Complex result = a1 * u + a3 * u3;
@@ -169,6 +183,21 @@ Cipher EvalModPolynomial::evaluate(SealAdapter& adapter, const Cipher& input) co
 }
 
 Cipher EvalModPolynomial::evaluate(SealAdapter& adapter, const Cipher& input, EvalModDegree degree) const {
+    if (degree == EvalModDegree::P3DoubleAngle) {
+        const Cipher half = weighted_term(adapter, input, 0.5);
+        const Cipher p3 = evaluate(adapter, half, EvalModDegree::P3);
+        const Cipher p3_squared = multiply_same_level(adapter, p3, p3);
+        const Cipher p3_cubed = multiply_same_level(adapter, adapter.mod_switch_to(p3, p3_squared), p3_squared);
+        Cipher cubic = weighted_term(adapter, p3_cubed, -4.0 * kPi * kPi);
+        const double target_scale_log2 = std::log2(adapter.info(cubic).scale);
+        Cipher linear = weighted_term_to_scale(
+            adapter,
+            adapter.mod_switch_to(p3, p3_cubed),
+            2.0,
+            target_scale_log2);
+        return add_terms(adapter, std::move(linear), std::move(cubic));
+    }
+
     const Cipher u2 = multiply_same_level(adapter, input, input);
     const Cipher u3 = multiply_same_level(adapter, adapter.mod_switch_to(input, u2), u2);
     if (degree == EvalModDegree::P3) {
@@ -198,6 +227,8 @@ const char* to_string(EvalModDegree degree) noexcept {
     switch (degree) {
     case EvalModDegree::P3:
         return "P3";
+    case EvalModDegree::P3DoubleAngle:
+        return "P3DoubleAngle";
     case EvalModDegree::P5:
         return "P5";
     case EvalModDegree::P7:

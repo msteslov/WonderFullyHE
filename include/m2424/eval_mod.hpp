@@ -9,6 +9,7 @@ namespace m2424 {
 
 enum class EvalModDegree {
     P3,
+    P3DoubleAngle,
     P5,
     P7
 };

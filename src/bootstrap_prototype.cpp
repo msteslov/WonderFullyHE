@@ -278,26 +278,52 @@ Cipher BootstrapPrototype::apply_normalization(const Cipher& input, double facto
 }
 
 Cipher apply_output_scale_repair(SealAdapter& adapter, const Cipher& input, double target_scale_log2) {
-    const auto info = adapter.info(input);
-    const double current_scale_log2 = std::log2(info.scale);
+    auto current = input;
+    auto info = adapter.info(current);
+    double current_scale_log2 = std::log2(info.scale);
     if (current_scale_log2 <= target_scale_log2 + 0.5) {
-        return input;
+        return current;
     }
     if (info.chain_index == 0) {
         throw std::runtime_error("cannot repair bootstrap output scale without remaining levels");
     }
     const auto bits = adapter.coeff_modulus_bits();
+    while (true) {
+        if (info.coeff_modulus_size == 0 || info.coeff_modulus_size > bits.size()) {
+            throw std::runtime_error("cannot infer bootstrap output rescale modulus size");
+        }
+        const double next_drop_log2 = static_cast<double>(bits[info.coeff_modulus_size - 1]);
+        if (current_scale_log2 <= target_scale_log2 + next_drop_log2 + 0.5) {
+            break;
+        }
+        if (info.chain_index == 0) {
+            throw std::runtime_error("cannot repair bootstrap output scale without remaining levels");
+        }
+        current = adapter.rescale_to_next(current);
+        info = adapter.info(current);
+        current_scale_log2 = std::log2(info.scale);
+        if (current_scale_log2 <= target_scale_log2 + 0.5) {
+            return current;
+        }
+    }
     if (info.coeff_modulus_size == 0 || info.coeff_modulus_size > bits.size()) {
         throw std::runtime_error("cannot infer bootstrap output rescale modulus size");
     }
     const double next_drop_log2 = static_cast<double>(bits[info.coeff_modulus_size - 1]);
     const double plain_scale_log2 = target_scale_log2 + next_drop_log2 - current_scale_log2;
     if (!std::isfinite(plain_scale_log2) || plain_scale_log2 <= 0.0) {
-        throw std::runtime_error("cannot repair bootstrap output scale");
+        std::ostringstream out;
+        out << "cannot repair bootstrap output scale"
+            << "; current_scale_log2=" << current_scale_log2
+            << "; target_scale_log2=" << target_scale_log2
+            << "; next_drop_log2=" << next_drop_log2
+            << "; required_plain_scale_log2=" << plain_scale_log2
+            << "; chain_index=" << info.chain_index;
+        throw std::runtime_error(out.str());
     }
     return adapter.mul_plain_rescale(
-        input,
-        adapter.encode_scalar_at_scale_like(1.0, std::exp2(plain_scale_log2), input));
+        current,
+        adapter.encode_scalar_at_scale_like(1.0, std::exp2(plain_scale_log2), current));
 }
 
 void mark_stage_structural(BootstrapPrototypeStage& stage) {
@@ -825,8 +851,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     if (expected && expected->size() != slots_) {
         throw std::invalid_argument("expected size must match BootstrapPrototype slots");
     }
-    if (evalmod_degree_ != EvalModDegree::P3) {
-        throw std::invalid_argument("SlotsToCoeffsFirst prototype supports only EvalModDegree::P3");
+    if (evalmod_degree_ != EvalModDegree::P3 && evalmod_degree_ != EvalModDegree::P3DoubleAngle) {
+        throw std::invalid_argument("SlotsToCoeffsFirst prototype supports only EvalModDegree::P3/P3DoubleAngle");
     }
 
     EvalModPolynomial eval_mod;

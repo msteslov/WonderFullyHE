@@ -91,6 +91,20 @@ double arg_double_or(int argc, char** argv, int index, double fallback) {
     return end == argv[index] ? fallback : parsed;
 }
 
+m2424::EvalModDegree arg_evalmod_or(int argc, char** argv, int index, m2424::EvalModDegree fallback) {
+    if (argc <= index) {
+        return fallback;
+    }
+    const std::string value = argv[index];
+    if (value == "p3" || value == "P3") {
+        return m2424::EvalModDegree::P3;
+    }
+    if (value == "da" || value == "double_angle" || value == "P3DoubleAngle") {
+        return m2424::EvalModDegree::P3DoubleAngle;
+    }
+    return fallback;
+}
+
 std::vector<int> repeated_refresh_moduli(int work_bits, std::size_t work_levels) {
     std::vector<int> bits;
     bits.reserve(work_levels + 2);
@@ -113,6 +127,7 @@ int main(int argc, char** argv) {
     const std::size_t cycles = arg_size_or(argc, argv, 2, 3);
     const int work_bits = arg_int_or(argc, argv, 3, 40);
     const double correction_factor = arg_double_or(argc, argv, 4, 1.0);
+    const auto evalmod_degree = arg_evalmod_or(argc, argv, 5, m2424::EvalModDegree::P3);
     constexpr double tolerance = 1e-3;
     constexpr double amplitude = 1e-5;
 
@@ -139,9 +154,10 @@ int main(int argc, char** argv) {
     auto current = adapter.encrypt(adapter.encode(real_part(expected)));
     const auto initial_info = adapter.info(current);
 
-    std::printf("cycle,slots,stage,chain_before,chain_after,scale_before_log2,scale_after_log2,continuation_levels,restore_level,preserve_value,max_abs_error,real_gain,cycle_ms,exception,status\n");
-    std::printf("0,%zu,setup,%zu,%zu,%.6f,%.6f,%zu,true,true,%.6e,%.6f,%.6f,,PASS\n",
+    std::printf("cycle,slots,evalmod,stage,chain_before,chain_after,scale_before_log2,scale_after_log2,continuation_levels,restore_level,preserve_value,max_abs_error,real_gain,cycle_ms,exception,status\n");
+    std::printf("0,%zu,%s,setup,%zu,%zu,%.6f,%.6f,%zu,true,true,%.6e,%.6f,%.6f,,PASS\n",
                 slots,
+                m2424::to_string(evalmod_degree),
                 initial_info.chain_index,
                 initial_info.chain_index,
                 std::log2(initial_info.scale),
@@ -165,7 +181,7 @@ int main(int argc, char** argv) {
                 m2424::BootstrapPrototype prototype(adapter, slots, tolerance);
                 prototype.set_transform_backend(m2424::BootstrapTransformBackend::FftLike);
                 prototype.set_circuit_order(m2424::BootstrapCircuitOrder::SlotsToCoeffsFirst);
-                prototype.set_evalmod_degree(m2424::EvalModDegree::P3);
+                prototype.set_evalmod_degree(evalmod_degree);
                 prototype.set_plain_scale_log2(std::log2(adapter.info(current).scale));
                 prototype.set_output_correction_factor(correction_factor);
                 report = prototype.refresh_cipher_checked(current, expected);
@@ -177,9 +193,10 @@ int main(int argc, char** argv) {
             min_continuation_levels = std::min(min_continuation_levels, report.continuation_levels);
             pass = report.preserve_value_criterion && error <= tolerance;
             all_pass = all_pass && pass;
-            std::printf("%zu,%zu,refresh,%zu,%zu,%.6f,%.6f,%zu,%s,%s,%.6e,%.6f,%.6f,,%s\n",
+            std::printf("%zu,%zu,%s,refresh,%zu,%zu,%.6f,%.6f,%zu,%s,%s,%.6e,%.6f,%.6f,,%s\n",
                         cycle,
                         slots,
+                        m2424::to_string(evalmod_degree),
                         before.chain_index,
                         after.chain_index,
                         std::log2(before.scale),
@@ -195,9 +212,10 @@ int main(int argc, char** argv) {
             exception = error.what();
             sanitize(exception);
             all_pass = false;
-            std::printf("%zu,%zu,refresh,%zu,0,%.6f,0,0,false,false,0,0,%.6f,%s,FAIL\n",
+            std::printf("%zu,%zu,%s,refresh,%zu,0,%.6f,0,0,false,false,0,0,%.6f,%s,FAIL\n",
                         cycle,
                         slots,
+                        m2424::to_string(evalmod_degree),
                         before.chain_index,
                         std::log2(before.scale),
                         cycle_ms,
@@ -206,9 +224,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::printf("summary,%zu,%zu,multi_cycle,0,0,0,0,%zu,false,%s,%.6e,0,0,,%s\n",
-                cycles,
+    std::printf("summary,%zu,%s,multi_cycle,0,0,0,0,%zu,false,%s,%.6e,0,0,,%s\n",
                 slots,
+                m2424::to_string(evalmod_degree),
                 min_continuation_levels,
                 all_pass ? "true" : "false",
                 max_seen_error,
