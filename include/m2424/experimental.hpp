@@ -7,6 +7,7 @@
 #include "m2424/bootstrap_scaling.hpp"
 #include "m2424/diagonal_transform.hpp"
 #include "m2424/eval_mod.hpp"
+#include "m2424/mod1_circuit.hpp"
 
 namespace m2424 {
 
