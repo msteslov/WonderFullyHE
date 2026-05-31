@@ -24,6 +24,22 @@ Microsoft SEAL как CKKS-движок
 
 ## Слои публичного API
 
+## Структура реализации
+
+Стабильный код и research-контуры разделены на уровне сборки и файлов:
+
+- `src/bootstrap.cpp` — публичный `Bootstrapper` и guarded entry points.
+- `src/bootstrap_plan.cpp` — planner/gate layer: уровни, scale, period, Mod1 depth и security budget.
+- `src/bootstrap_scaling.cpp` — scalar decomposition и scale-management primitives.
+- `src/bootstrap_dft.cpp` — FFT-like transform plans для bootstrap linear transforms.
+- `src/bootstrap_prototype.cpp` — общий experimental prototype для dense/reference path.
+- `src/bootstrap_prototype_stc_first.cpp` — experimental `SlotsToCoeffsFirst` circuit.
+- `src/bootstrap_prototype_detail.cpp` — internal report/stage/scale helpers, не публичный API.
+
+Bootstrap research apps не собираются по умолчанию. Они включаются только через
+`-DM2424_BUILD_RESEARCH_APPS=ON`, чтобы default build показывал стабильную
+поверхность библиотеки, а не набор диагностических harnesses.
+
 ### SealAdapter
 
 `SealAdapter` отделяет публичный API библиотеки от Microsoft SEAL. Прямые SEAL-типы скрыты за `Plain` и `Cipher`, а наружу вынесены CKKS-операции, используемые библиотекой:
