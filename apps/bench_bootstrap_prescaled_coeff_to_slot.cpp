@@ -66,7 +66,7 @@ void run_case(const char* profile_name,
         current = adapter.mul_plain_rescale(current, adapter.encode_scalar_like(1.0, current));
     }
     current = adapter.mod_raise_to_first(current);
-    current = coeff_to_slot.apply(adapter, current);
+    current = coeff_to_slot.apply_at_plain_scale(adapter, current, std::exp2(plain_scale_log2));
 
     const auto start_info = adapter.info(current);
     const auto before_normalization = head(adapter.decode_complex(adapter.decrypt(current)), slots);

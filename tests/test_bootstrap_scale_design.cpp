@@ -115,6 +115,7 @@ int main() {
             m2424::BootstrapPeriodMode::ManualPowerOfTwo
         },
         {20.0, 40.0, 160.0},
+        {0.0},
         {40.0, 80.0},
         {40.0, 60.0}
     });

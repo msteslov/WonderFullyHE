@@ -221,6 +221,7 @@ BootstrapScaleDesign make_bootstrap_scale_design(BootstrapPeriodMode period_mode
     design.period_mode = period_mode;
     design.manual_period_log2 = manual_period_log2;
     design.period_log2 = period_log2;
+    design.coeff_to_slot_prescale_log2 = 0.0;
     design.normalization_strategy = normalization_strategy;
     design.plain_scale_log2 = plain_scale_log2;
     design.target_scale_log2 = target_scale_log2;
@@ -400,6 +401,9 @@ BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
     if (request.target_scale_log2_values.empty()) {
         throw std::invalid_argument("bootstrap scale gate search target scale values must not be empty");
     }
+    if (request.coeff_to_slot_prescale_log2_values.empty()) {
+        throw std::invalid_argument("bootstrap scale gate search prescale values must not be empty");
+    }
 
     const auto active_bits = active_coeff_modulus_bits(request.profile, request.slot_domain_info);
     BootstrapRefreshScaleGateSearchResult result;
@@ -408,8 +412,14 @@ BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
     const auto consider = [&](BootstrapPeriodMode period_mode,
                               double manual_period_log2,
                               double period_log2,
+                              double coeff_to_slot_prescale_log2,
                               double plain_scale_log2,
                               double target_scale_log2) {
+        if (!std::isfinite(coeff_to_slot_prescale_log2) || coeff_to_slot_prescale_log2 < 0.0) {
+            throw std::invalid_argument("bootstrap scale gate search prescale must be non-negative and finite");
+        }
+        const double prescaled_max_abs = request.max_abs_before_normalization *
+            std::exp2(-coeff_to_slot_prescale_log2);
         auto design = make_bootstrap_scale_design(
             period_mode,
             manual_period_log2,
@@ -420,9 +430,10 @@ BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
             request.evalmod_degree,
             active_bits,
             request.slot_domain_info,
-            request.max_abs_before_normalization,
+            prescaled_max_abs,
             request.min_chain_remaining,
             request.evalmod_capacity_margin_log2);
+        design.coeff_to_slot_prescale_log2 = coeff_to_slot_prescale_log2;
         ++result.candidates;
 
         const bool ready = design.status == BootstrapScaleDesignStatus::ReadyForEvalModP3;
@@ -437,13 +448,18 @@ BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
             score += design.evalmod_capacity.margin_log2;
             score -= std::abs(design.target_scale_log2 - 40.0);
             score -= 0.01 * design.plain_scale_log2;
+            score -= 0.1 * design.coeff_to_slot_prescale_log2;
         } else {
             score += design.magnitude_ok ? 10'000.0 : 0.0;
             score += design.scale_strategy_ok ? 1'000.0 : 0.0;
             score += design.evalmod_capacity_ok ? 100.0 : 0.0;
+            score -= design.scale_plan.missing_drop_log2;
+            score -= static_cast<double>(design.scale_plan.missing_scalar_levels) * 100.0;
+            score -= static_cast<double>(design.scale_plan.missing_total_levels) * 100.0;
             score -= static_cast<double>(design.required_levels) * 10.0;
             score += static_cast<double>(design.chain_remaining_after_strategy);
             score -= 0.01 * design.plain_scale_log2;
+            score -= 0.1 * design.coeff_to_slot_prescale_log2;
         }
 
         if (result.candidates == 1 || score > best_score) {
@@ -461,13 +477,16 @@ BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
                 throw std::invalid_argument("manual period search requires manual period values");
             }
             for (double manual_period_log2 : request.manual_period_log2_values) {
-                for (double plain_scale_log2 : request.plain_scale_log2_values) {
-                    for (double target_scale_log2 : request.target_scale_log2_values) {
-                        consider(period_mode,
-                                 manual_period_log2,
-                                 manual_period_log2,
-                                 plain_scale_log2,
-                                 target_scale_log2);
+                for (double prescale_log2 : request.coeff_to_slot_prescale_log2_values) {
+                    for (double plain_scale_log2 : request.plain_scale_log2_values) {
+                        for (double target_scale_log2 : request.target_scale_log2_values) {
+                            consider(period_mode,
+                                     manual_period_log2,
+                                     manual_period_log2,
+                                     prescale_log2,
+                                     plain_scale_log2,
+                                     target_scale_log2);
+                        }
                     }
                 }
             }
@@ -480,13 +499,16 @@ BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
             request.profile.coeff_modulus_bits,
             request.before_mod_raise,
             request.after_mod_raise);
-        for (double plain_scale_log2 : request.plain_scale_log2_values) {
-            for (double target_scale_log2 : request.target_scale_log2_values) {
-                consider(period_mode,
-                         0.0,
-                         period_log2,
-                         plain_scale_log2,
-                         target_scale_log2);
+        for (double prescale_log2 : request.coeff_to_slot_prescale_log2_values) {
+            for (double plain_scale_log2 : request.plain_scale_log2_values) {
+                for (double target_scale_log2 : request.target_scale_log2_values) {
+                    consider(period_mode,
+                             0.0,
+                             period_log2,
+                             prescale_log2,
+                             plain_scale_log2,
+                             target_scale_log2);
+                }
             }
         }
     }
