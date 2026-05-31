@@ -180,6 +180,58 @@ int main() {
         {m2424::BootstrapMod1Type::CosDiscrete, 30, 3}
     });
 
+    const auto parameter_ready = m2424::plan_bootstrap_parameters({
+        16,
+        32768,
+        m2424::SecurityLevel::TC128,
+        m2424::BootstrapCircuitOrder::SlotsToCoeffsFirst,
+        m2424::BootstrapTransformBackend::FftLike,
+        0.0,
+        40.0,
+        40.0,
+        40.0,
+        2.0,
+        1,
+        60,
+        40,
+        60,
+        {m2424::BootstrapMod1Type::CosDiscrete, 30, 3}
+    });
+    const auto parameter_unsupported = m2424::plan_bootstrap_parameters({
+        32,
+        32768,
+        m2424::SecurityLevel::TC128,
+        m2424::BootstrapCircuitOrder::SlotsToCoeffsFirst,
+        m2424::BootstrapTransformBackend::FftLike,
+        0.0,
+        40.0,
+        40.0,
+        40.0,
+        2.0,
+        1,
+        60,
+        40,
+        60,
+        {m2424::BootstrapMod1Type::CosDiscrete, 30, 3}
+    });
+    const auto parameter_security_blocked = m2424::plan_bootstrap_parameters({
+        16,
+        16384,
+        m2424::SecurityLevel::TC128,
+        m2424::BootstrapCircuitOrder::SlotsToCoeffsFirst,
+        m2424::BootstrapTransformBackend::DenseDiagonal,
+        252.0,
+        40.0,
+        160.0,
+        60.0,
+        2.0,
+        1,
+        60,
+        40,
+        60,
+        {m2424::BootstrapMod1Type::CosDiscrete, 30, 3}
+    });
+
     m2424::CkksOperationBudget small_budget;
     small_budget.ciphertext_muls = 2;
     const auto fits_refresh_plan = m2424::plan_bootstrap_refresh({
@@ -244,6 +296,12 @@ int main() {
         && openfhe_like_mod1_levels == 13
         && cos_layout.evalmod_levels == lattigo_like_mod1_levels
         && cos_layout.mod1_model.type == m2424::BootstrapMod1Type::CosDiscrete
+        && parameter_ready.status == m2424::BootstrapParameterPlanningStatus::Ready
+        && parameter_ready.blocker == "none"
+        && parameter_ready.expected_output_chain_index == 1
+        && !parameter_ready.rotation_steps.empty()
+        && parameter_unsupported.status == m2424::BootstrapParameterPlanningStatus::BlockedByUnsupportedSlots
+        && parameter_security_blocked.status == m2424::BootstrapParameterPlanningStatus::BlockedBySecurityBudget
         && fits_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh
         && !fits_refresh_plan.needs_refresh
         && required_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::RefreshRequired
@@ -251,11 +309,12 @@ int main() {
         && blocked_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::RefreshPlanBlocked
         && blocked_refresh_plan.needs_refresh;
 
-    std::printf("[test_bootstrap_scale_design] status_cases=%s period=%s scale=%s capacity=%s ready=%s\n",
+    std::printf("[test_bootstrap_scale_design] status_cases=%s period=%s scale=%s capacity=%s ready=%s params=%s\n",
                 ok ? "PASS" : "FAIL",
                 m2424::to_string(period_blocked.status),
                 m2424::to_string(scale_blocked.status),
                 m2424::to_string(capacity_blocked.status),
-                m2424::to_string(ready.status));
+                m2424::to_string(ready.status),
+                m2424::to_string(parameter_ready.status));
     return ok ? 0 : 1;
 }
