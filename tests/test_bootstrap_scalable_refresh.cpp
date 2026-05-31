@@ -37,6 +37,14 @@ int main() {
     const auto plan = bootstrapper.plan(slots);
     const auto report = bootstrapper.refresh_slots_to_coeffs_first_checked(
         current, expected, slots, tolerance);
+    m2424::CkksOperationBudget small_budget;
+    small_budget.plaintext_mul_rescales = 1;
+    const auto skipped_guard = bootstrapper.refresh_slots_to_coeffs_first_checked_guarded(
+        current, expected, small_budget, 1e-9, slots, tolerance);
+    m2424::CkksOperationBudget refresh_budget;
+    refresh_budget.ciphertext_muls = adapter.info(current).chain_index + 1;
+    const auto executed_guard = bootstrapper.refresh_slots_to_coeffs_first_checked_guarded(
+        current, expected, refresh_budget, 1e-9, slots, tolerance);
 
     bool saw_evalmod = false;
     bool evalmod_passed = false;
@@ -57,6 +65,11 @@ int main() {
         && report.inside_evalmod_interval
         && report.preserve_value_criterion
         && report.continuation_levels >= 5
+        && !skipped_guard.refresh_executed
+        && skipped_guard.planning.status == m2424::BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh
+        && executed_guard.refresh_executed
+        && executed_guard.planning.status == m2424::BootstrapRefreshPlanningStatus::RefreshRequired
+        && executed_guard.refresh.preserve_value_criterion
         && saw_evalmod
         && evalmod_passed;
 

@@ -214,6 +214,61 @@ BootstrapPrototypeReport Bootstrapper::refresh_slots_to_coeffs_first_checked(
     return prototype.refresh_cipher_checked(input, expected);
 }
 
+BootstrapGuardedRefreshResult Bootstrapper::refresh_slots_to_coeffs_first_guarded(
+    const Cipher& input,
+    const CkksOperationBudget& operation_budget,
+    double target_error,
+    std::size_t slots,
+    double tolerance,
+    int security_bits,
+    ParameterOptimizeFor optimize_for,
+    std::size_t min_chain_remaining_after_compute) {
+    BootstrapGuardedRefreshResult result;
+    result.planning = plan_refresh_for_budget(input,
+                                              operation_budget,
+                                              target_error,
+                                              slots,
+                                              security_bits,
+                                              optimize_for,
+                                              min_chain_remaining_after_compute);
+    if (result.planning.status != BootstrapRefreshPlanningStatus::RefreshRequired) {
+        result.blocker = result.planning.blocker;
+        return result;
+    }
+    result.refresh = refresh_slots_to_coeffs_first(input, slots, tolerance);
+    result.refresh_executed = true;
+    result.blocker = "none";
+    return result;
+}
+
+BootstrapGuardedRefreshResult Bootstrapper::refresh_slots_to_coeffs_first_checked_guarded(
+    const Cipher& input,
+    const ComplexVector& expected,
+    const CkksOperationBudget& operation_budget,
+    double target_error,
+    std::size_t slots,
+    double tolerance,
+    int security_bits,
+    ParameterOptimizeFor optimize_for,
+    std::size_t min_chain_remaining_after_compute) {
+    BootstrapGuardedRefreshResult result;
+    result.planning = plan_refresh_for_budget(input,
+                                              operation_budget,
+                                              target_error,
+                                              slots,
+                                              security_bits,
+                                              optimize_for,
+                                              min_chain_remaining_after_compute);
+    if (result.planning.status != BootstrapRefreshPlanningStatus::RefreshRequired) {
+        result.blocker = result.planning.blocker;
+        return result;
+    }
+    result.refresh = refresh_slots_to_coeffs_first_checked(input, expected, slots, tolerance);
+    result.refresh_executed = true;
+    result.blocker = "none";
+    return result;
+}
+
 BootstrapRefreshPlanningResult Bootstrapper::plan_refresh_for_budget(
     const Cipher& input,
     const CkksOperationBudget& operation_budget,

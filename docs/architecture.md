@@ -32,7 +32,8 @@ Microsoft SEAL как CKKS-движок
 - `src/bootstrap_plan.cpp` — planner/gate layer: уровни, scale, period, Mod1 depth и security budget.
 - `src/bootstrap_scaling.cpp` — scalar decomposition и scale-management primitives.
 - `src/bootstrap_dft.cpp` — FFT-like transform plans для bootstrap linear transforms.
-- `src/bootstrap_prototype.cpp` — общий experimental prototype для dense/reference path.
+- `src/bootstrap_prototype.cpp` — настройки и dispatch experimental prototype.
+- `src/bootstrap_prototype_dense.cpp` — dense/reference prototype circuit.
 - `src/bootstrap_prototype_stc_first.cpp` — experimental `SlotsToCoeffsFirst` circuit.
 - `src/bootstrap_prototype_detail.cpp` — internal report/stage/scale helpers, не публичный API.
 
@@ -134,6 +135,12 @@ Prescaled `CoeffToSlot` теперь проверяется через `apply_at
 Первая часть этого слоя реализована как `plan_bootstrap_refresh`: она принимает текущий `CipherInfo` и `CkksOperationBudget` следующего вычислительного блока, проверяет хватает ли chain levels без refresh и возвращает `compute_fits_without_refresh`, `refresh_required` или `refresh_plan_blocked`.
 
 `Bootstrapper::plan_refresh_for_budget` применяет этот gate к реальному ciphertext и должен стать входной точкой перед любым будущим guarded refresh.
+
+`Bootstrapper::refresh_slots_to_coeffs_first_guarded(...)` и checked-вариант
+делают этот gate обязательным для scalable experimental path: если следующий
+operation budget помещается без refresh, метод возвращает `refresh_executed=false`;
+если planner возвращает `refresh_required`, запускается `SlotsToCoeffsFirst`
+контур и результат содержит both planning decision and refresh report.
 
 `plan_bootstrap_refresh_scale_gate` является вторым gate для prototype-refresh: принимает факты после `ModRaise -> CoeffToSlot`, считает period/scaling design и блокирует запуск, если normalization scalar, остаток levels или capacity первого `EvalMod` multiplication не проходят.
 
