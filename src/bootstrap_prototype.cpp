@@ -937,7 +937,10 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         current = adapter_.mod_raise_to_first(current);
     });
     after = adapter_.info(current);
-    report.bootstrap_period_log2 = before.coeff_modulus_log2 - stc_first_period_offset_log2_;
+    report.bootstrap_period_log2 =
+        period_mode_ == BootstrapPeriodMode::NoBootstrapPeriod
+            ? 0.0
+            : before.coeff_modulus_log2 - stc_first_period_offset_log2_;
     report.bootstrap_period = finite_exp2_or_zero(report.bootstrap_period_log2);
     report.bootstrap_scaling_factor = finite_exp2_or_zero(-report.bootstrap_period_log2);
     report.stages.push_back(BootstrapPrototypeStage{
@@ -968,7 +971,14 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
         report.max_abs_after_coeff_to_slot = max_abs_value(actual);
         stage_error = max_complex_error(roundtrip_expected, actual);
+        if (period_mode_ == BootstrapPeriodMode::NoBootstrapPeriod
+            && report.max_abs_after_coeff_to_slot > EvalModPolynomial::approximation_bound) {
+            report.bootstrap_period_log2 = std::ceil(
+                std::log2(report.max_abs_after_coeff_to_slot / (0.5 * EvalModPolynomial::approximation_bound)));
+        }
     }
+    report.bootstrap_period = finite_exp2_or_zero(report.bootstrap_period_log2);
+    report.bootstrap_scaling_factor = finite_exp2_or_zero(-report.bootstrap_period_log2);
     auto cts_stage = make_stage("coeff_to_slot_after_raise",
                                 before,
                                 after,

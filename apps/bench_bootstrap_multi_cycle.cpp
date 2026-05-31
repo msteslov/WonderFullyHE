@@ -105,6 +105,26 @@ m2424::EvalModDegree arg_evalmod_or(int argc, char** argv, int index, m2424::Eva
     return fallback;
 }
 
+m2424::BootstrapPeriodMode arg_period_mode_or(int argc,
+                                              char** argv,
+                                              int index,
+                                              m2424::BootstrapPeriodMode fallback) {
+    if (argc <= index) {
+        return fallback;
+    }
+    const std::string value = argv[index];
+    if (value == "none" || value == "no_period" || value == "NoBootstrapPeriod") {
+        return m2424::BootstrapPeriodMode::NoBootstrapPeriod;
+    }
+    if (value == "source" || value == "SourceCoeffModulus") {
+        return m2424::BootstrapPeriodMode::SourceCoeffModulus;
+    }
+    if (value == "total" || value == "TotalCoeffModulus") {
+        return m2424::BootstrapPeriodMode::TotalCoeffModulus;
+    }
+    return fallback;
+}
+
 std::vector<int> repeated_refresh_moduli(int work_bits, std::size_t work_levels) {
     std::vector<int> bits;
     bits.reserve(work_levels + 2);
@@ -128,6 +148,7 @@ int main(int argc, char** argv) {
     const int work_bits = arg_int_or(argc, argv, 3, 40);
     const double correction_factor = arg_double_or(argc, argv, 4, 1.0);
     const auto evalmod_degree = arg_evalmod_or(argc, argv, 5, m2424::EvalModDegree::P3);
+    const auto period_mode = arg_period_mode_or(argc, argv, 6, m2424::BootstrapPeriodMode::TotalCoeffModulus);
     constexpr double tolerance = 1e-3;
     constexpr double amplitude = 1e-5;
 
@@ -154,10 +175,11 @@ int main(int argc, char** argv) {
     auto current = adapter.encrypt(adapter.encode(real_part(expected)));
     const auto initial_info = adapter.info(current);
 
-    std::printf("cycle,slots,evalmod,stage,chain_before,chain_after,scale_before_log2,scale_after_log2,continuation_levels,restore_level,preserve_value,max_abs_error,real_gain,cycle_ms,exception,status\n");
-    std::printf("0,%zu,%s,setup,%zu,%zu,%.6f,%.6f,%zu,true,true,%.6e,%.6f,%.6f,,PASS\n",
+    std::printf("cycle,slots,evalmod,period_mode,stage,chain_before,chain_after,scale_before_log2,scale_after_log2,continuation_levels,restore_level,preserve_value,max_abs_error,real_gain,cycle_ms,exception,status\n");
+    std::printf("0,%zu,%s,%s,setup,%zu,%zu,%.6f,%.6f,%zu,true,true,%.6e,%.6f,%.6f,,PASS\n",
                 slots,
                 m2424::to_string(evalmod_degree),
+                m2424::to_string(period_mode),
                 initial_info.chain_index,
                 initial_info.chain_index,
                 std::log2(initial_info.scale),
@@ -182,6 +204,7 @@ int main(int argc, char** argv) {
                 prototype.set_transform_backend(m2424::BootstrapTransformBackend::FftLike);
                 prototype.set_circuit_order(m2424::BootstrapCircuitOrder::SlotsToCoeffsFirst);
                 prototype.set_evalmod_degree(evalmod_degree);
+                prototype.set_period_mode(period_mode);
                 prototype.set_plain_scale_log2(std::log2(adapter.info(current).scale));
                 prototype.set_output_correction_factor(correction_factor);
                 report = prototype.refresh_cipher_checked(current, expected);
@@ -193,10 +216,11 @@ int main(int argc, char** argv) {
             min_continuation_levels = std::min(min_continuation_levels, report.continuation_levels);
             pass = report.preserve_value_criterion && error <= tolerance;
             all_pass = all_pass && pass;
-            std::printf("%zu,%zu,%s,refresh,%zu,%zu,%.6f,%.6f,%zu,%s,%s,%.6e,%.6f,%.6f,,%s\n",
+            std::printf("%zu,%zu,%s,%s,refresh,%zu,%zu,%.6f,%.6f,%zu,%s,%s,%.6e,%.6f,%.6f,,%s\n",
                         cycle,
                         slots,
                         m2424::to_string(evalmod_degree),
+                        m2424::to_string(period_mode),
                         before.chain_index,
                         after.chain_index,
                         std::log2(before.scale),
@@ -212,10 +236,11 @@ int main(int argc, char** argv) {
             exception = error.what();
             sanitize(exception);
             all_pass = false;
-            std::printf("%zu,%zu,%s,refresh,%zu,0,%.6f,0,0,false,false,0,0,%.6f,%s,FAIL\n",
+            std::printf("%zu,%zu,%s,%s,refresh,%zu,0,%.6f,0,0,false,false,0,0,%.6f,%s,FAIL\n",
                         cycle,
                         slots,
                         m2424::to_string(evalmod_degree),
+                        m2424::to_string(period_mode),
                         before.chain_index,
                         std::log2(before.scale),
                         cycle_ms,
@@ -224,9 +249,10 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::printf("summary,%zu,%s,multi_cycle,0,0,0,0,%zu,false,%s,%.6e,0,0,,%s\n",
+    std::printf("summary,%zu,%s,%s,multi_cycle,0,0,0,0,%zu,false,%s,%.6e,0,0,,%s\n",
                 slots,
                 m2424::to_string(evalmod_degree),
+                m2424::to_string(period_mode),
                 min_continuation_levels,
                 all_pass ? "true" : "false",
                 max_seen_error,
