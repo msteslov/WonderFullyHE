@@ -77,12 +77,41 @@ public:
     BootstrapPrototypeReport refresh_slots_to_coeffs_first(const Cipher& input,
                                                            std::size_t slots,
                                                            double tolerance);
+    BootstrapPrototypeReport refresh_slots_to_coeffs_first(const Cipher& input,
+                                                           std::size_t slots,
+                                                           double tolerance,
+                                                           EvalModDegree evalmod_degree);
     BootstrapPrototypeReport refresh_slots_to_coeffs_first_checked(const Cipher& input,
                                                                    const ComplexVector& expected,
                                                                    std::size_t slots,
                                                                    double tolerance);
+    BootstrapPrototypeReport refresh_slots_to_coeffs_first_checked(const Cipher& input,
+                                                                   const ComplexVector& expected,
+                                                                   std::size_t slots,
+                                                                   double tolerance,
+                                                                   EvalModDegree evalmod_degree);
     BootstrapGuardedRefreshResult refresh_slots_to_coeffs_first_guarded(
         const Cipher& input,
+        const CkksOperationBudget& operation_budget,
+        double target_error,
+        std::size_t slots,
+        double tolerance,
+        int security_bits = 128,
+        ParameterOptimizeFor optimize_for = ParameterOptimizeFor::Speed,
+        std::size_t min_chain_remaining_after_compute = 0);
+    BootstrapGuardedRefreshResult refresh_slots_to_coeffs_first_guarded(
+        const Cipher& input,
+        const CkksOperationBudget& operation_budget,
+        double target_error,
+        std::size_t slots,
+        double tolerance,
+        EvalModDegree evalmod_degree,
+        int security_bits = 128,
+        ParameterOptimizeFor optimize_for = ParameterOptimizeFor::Speed,
+        std::size_t min_chain_remaining_after_compute = 0);
+    BootstrapGuardedRefreshResult refresh_slots_to_coeffs_first_checked_guarded(
+        const Cipher& input,
+        const ComplexVector& expected,
         const CkksOperationBudget& operation_budget,
         double target_error,
         std::size_t slots,
@@ -97,6 +126,7 @@ public:
         double target_error,
         std::size_t slots,
         double tolerance,
+        EvalModDegree evalmod_degree,
         int security_bits = 128,
         ParameterOptimizeFor optimize_for = ParameterOptimizeFor::Speed,
         std::size_t min_chain_remaining_after_compute = 0);
