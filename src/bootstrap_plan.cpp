@@ -93,6 +93,16 @@ const char* to_string(BootstrapLayoutPlanningStatus status) noexcept {
     return "unknown";
 }
 
+const char* to_string(BootstrapMod1Type type) noexcept {
+    switch (type) {
+    case BootstrapMod1Type::LegacySineP3:
+        return "LegacySineP3";
+    case BootstrapMod1Type::CosDiscrete:
+        return "CosDiscrete";
+    }
+    return "unknown";
+}
+
 std::vector<int> active_coeff_modulus_bits(const CkksProfile& profile, const CipherInfo& info) {
     const std::size_t active_size = std::min(info.coeff_modulus_size, profile.coeff_modulus_bits.size());
     return {profile.coeff_modulus_bits.begin(),
@@ -567,6 +577,26 @@ std::size_t estimated_bootstrap_transform_levels(std::size_t slots,
     return make_bootstrap_dft_plan(slots, type, 40.0).layers.size();
 }
 
+std::size_t estimated_bootstrap_mod1_levels(const BootstrapMod1Model& model) {
+    if (model.degree == 0) {
+        throw std::invalid_argument("Mod1 polynomial degree must be positive");
+    }
+    switch (model.type) {
+    case BootstrapMod1Type::LegacySineP3:
+        return 3;
+    case BootstrapMod1Type::CosDiscrete: {
+        std::size_t polynomial_levels = 0;
+        std::size_t covered_degree = 1;
+        while (covered_degree < model.degree) {
+            covered_degree <<= 1;
+            ++polynomial_levels;
+        }
+        return polynomial_levels + model.double_angle;
+    }
+    }
+    return 0;
+}
+
 BootstrapLayoutPlanningResult plan_bootstrap_layout(const BootstrapLayoutPlanningRequest& request) {
     validate_slots(request.slots);
     if (!std::isfinite(request.max_abs_after_coeff_to_slot_log2)) {
@@ -597,7 +627,10 @@ BootstrapLayoutPlanningResult plan_bootstrap_layout(const BootstrapLayoutPlannin
         ? request.coeff_to_slot_levels
         : estimated_bootstrap_transform_levels(request.slots, request.transform_backend,
                                                BootstrapDftType::HomomorphicDecode);
-    result.evalmod_levels = request.evalmod_levels;
+    result.mod1_model = request.mod1_model;
+    result.evalmod_levels = request.evalmod_levels != 0
+        ? request.evalmod_levels
+        : estimated_bootstrap_mod1_levels(request.mod1_model);
     result.slot_to_coeff_levels = request.slot_to_coeff_levels != 0
         ? request.slot_to_coeff_levels
         : estimated_bootstrap_transform_levels(request.slots, request.transform_backend,

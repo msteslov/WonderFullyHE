@@ -150,6 +150,35 @@ int main() {
         60.0,
         2.0
     });
+    const auto lattigo_like_mod1_levels = m2424::estimated_bootstrap_mod1_levels({
+        m2424::BootstrapMod1Type::CosDiscrete,
+        30,
+        3
+    });
+    const auto openfhe_like_mod1_levels = m2424::estimated_bootstrap_mod1_levels({
+        m2424::BootstrapMod1Type::CosDiscrete,
+        90,
+        6
+    });
+    const auto cos_layout = m2424::plan_bootstrap_layout({
+        16,
+        32768,
+        m2424::SecurityLevel::TC128,
+        m2424::BootstrapTransformBackend::FftLike,
+        132.0,
+        40.0,
+        160.0,
+        60.0,
+        2.0,
+        0,
+        0,
+        0,
+        1,
+        60,
+        40,
+        60,
+        {m2424::BootstrapMod1Type::CosDiscrete, 30, 3}
+    });
 
     m2424::CkksOperationBudget small_budget;
     small_budget.ciphertext_muls = 2;
@@ -211,6 +240,10 @@ int main() {
         && fft_layout.coeff_to_slot_levels > dense_layout.coeff_to_slot_levels
         && fft_layout.profile.slots == fft_layout.poly_modulus_degree / 2
         && !fft_layout.blocker.empty()
+        && lattigo_like_mod1_levels == 8
+        && openfhe_like_mod1_levels == 13
+        && cos_layout.evalmod_levels == lattigo_like_mod1_levels
+        && cos_layout.mod1_model.type == m2424::BootstrapMod1Type::CosDiscrete
         && fits_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh
         && !fits_refresh_plan.needs_refresh
         && required_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::RefreshRequired

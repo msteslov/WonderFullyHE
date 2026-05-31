@@ -52,6 +52,19 @@ enum class BootstrapLayoutPlanningStatus {
     BlockedByScaleBudget
 };
 
+enum class BootstrapMod1Type {
+    LegacySineP3,
+    CosDiscrete
+};
+
+struct BootstrapMod1Model {
+    BootstrapMod1Type type{BootstrapMod1Type::LegacySineP3};
+    std::size_t degree{3};
+    std::size_t double_angle{0};
+    std::size_t log_message_ratio{8};
+    double evalmod_log_scale{40.0};
+};
+
 struct BootstrapStageSpec {
     std::string name;
     BootstrapValueDomain input_domain{};
@@ -182,6 +195,7 @@ struct BootstrapLayoutPlanningRequest {
     int first_mod_bits{60};
     int middle_mod_bits{40};
     int last_mod_bits{60};
+    BootstrapMod1Model mod1_model;
 };
 
 struct BootstrapLayoutPlanningResult {
@@ -195,6 +209,7 @@ struct BootstrapLayoutPlanningResult {
     std::size_t normalization_levels{};
     std::size_t scale_squash_levels{};
     std::size_t evalmod_levels{};
+    BootstrapMod1Model mod1_model;
     std::size_t slot_to_coeff_levels{};
     std::size_t residual_levels{};
     std::size_t total_levels{};
@@ -218,6 +233,7 @@ const char* to_string(BootstrapPipelineGate gate) noexcept;
 const char* to_string(BootstrapScaleDesignStatus status) noexcept;
 const char* to_string(BootstrapRefreshPlanningStatus status) noexcept;
 const char* to_string(BootstrapLayoutPlanningStatus status) noexcept;
+const char* to_string(BootstrapMod1Type type) noexcept;
 
 BootstrapPipelinePlan make_research_bootstrap_plan(std::size_t slots);
 BootstrapPipelinePlan make_scalable_bootstrap_plan(std::size_t slots);
@@ -252,6 +268,7 @@ BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
 std::size_t estimated_bootstrap_transform_levels(std::size_t slots,
                                                  BootstrapTransformBackend backend,
                                                  BootstrapDftType type);
+std::size_t estimated_bootstrap_mod1_levels(const BootstrapMod1Model& model);
 BootstrapLayoutPlanningResult plan_bootstrap_layout(const BootstrapLayoutPlanningRequest& request);
 
 } // namespace m2424
