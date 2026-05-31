@@ -98,6 +98,7 @@ BootstrapParametersResult plan_bootstrap_parameters(const BootstrapParametersReq
     layout_request.normalization_plain_scale_log2 = request.normalization_plain_scale_log2;
     layout_request.target_scale_log2 = request.target_scale_log2;
     layout_request.evalmod_capacity_margin_log2 = request.evalmod_capacity_margin_log2;
+    layout_request.evalmod_levels = 0;
     layout_request.residual_levels = request.residual_levels;
     layout_request.first_mod_bits = request.first_mod_bits;
     layout_request.middle_mod_bits = request.middle_mod_bits;
