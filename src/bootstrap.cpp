@@ -5,7 +5,6 @@
 #include <exception>
 #include <utility>
 #include <stdexcept>
-#include <sstream>
 
 namespace m2424 {
 
@@ -56,6 +55,9 @@ static bool has_failing_stage(const BootstrapPrototypeReport& report) {
 }
 
 static std::string guarded_refresh_blocker(const BootstrapPrototypeReport& report, bool require_value_check) {
+    if (report.stages.empty()) {
+        return "refresh_report_empty";
+    }
     if (has_failing_stage(report)) {
         return "refresh_stage_failed";
     }
@@ -67,9 +69,6 @@ static std::string guarded_refresh_blocker(const BootstrapPrototypeReport& repor
     }
     if (require_value_check && !report.preserve_value_criterion) {
         return "refresh_did_not_preserve_value";
-    }
-    if (!report.result_ready()) {
-        return "refresh_result_unavailable";
     }
     return "none";
 }
