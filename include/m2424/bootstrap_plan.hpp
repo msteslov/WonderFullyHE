@@ -52,6 +52,14 @@ enum class BootstrapLayoutPlanningStatus {
     BlockedByScaleBudget
 };
 
+enum class BootstrapParameterPlanningStatus {
+    Ready,
+    BlockedByUnsupportedSlots,
+    BlockedBySecurityBudget,
+    BlockedByEvalModCapacity,
+    BlockedByScaleBudget
+};
+
 enum class BootstrapMod1Type {
     LegacySineP3,
     CosDiscrete
@@ -226,6 +234,37 @@ struct BootstrapLayoutPlanningResult {
     CkksProfile profile;
 };
 
+struct BootstrapParametersRequest {
+    std::size_t slots{16};
+    std::size_t poly_modulus_degree{32768};
+    SecurityLevel security_level{SecurityLevel::TC128};
+    BootstrapCircuitOrder circuit_order{BootstrapCircuitOrder::SlotsToCoeffsFirst};
+    BootstrapTransformBackend transform_backend{BootstrapTransformBackend::FftLike};
+    double max_abs_after_coeff_to_slot_log2{};
+    double transform_output_scale_log2{40.0};
+    double normalization_plain_scale_log2{40.0};
+    double target_scale_log2{40.0};
+    double evalmod_capacity_margin_log2{2.0};
+    std::size_t residual_levels{5};
+    int first_mod_bits{60};
+    int middle_mod_bits{40};
+    int last_mod_bits{60};
+    BootstrapMod1Model mod1_model{BootstrapMod1Type::CosDiscrete, 30, 3, 8, 60.0};
+};
+
+struct BootstrapParametersResult {
+    BootstrapParameterPlanningStatus status{BootstrapParameterPlanningStatus::BlockedByScaleBudget};
+    std::string blocker;
+    BootstrapPipelinePlan pipeline;
+    BootstrapLayoutPlanningResult layout;
+    CkksProfile profile;
+    std::vector<int> rotation_steps;
+    std::size_t required_input_chain_index{};
+    std::size_t expected_output_chain_index{};
+    std::size_t consumed_levels{};
+    double expected_output_scale_log2{};
+};
+
 const char* to_string(BootstrapValueDomain domain) noexcept;
 const char* to_string(BootstrapTransformBackend backend) noexcept;
 const char* to_string(BootstrapScalingStrategy strategy) noexcept;
@@ -233,6 +272,7 @@ const char* to_string(BootstrapPipelineGate gate) noexcept;
 const char* to_string(BootstrapScaleDesignStatus status) noexcept;
 const char* to_string(BootstrapRefreshPlanningStatus status) noexcept;
 const char* to_string(BootstrapLayoutPlanningStatus status) noexcept;
+const char* to_string(BootstrapParameterPlanningStatus status) noexcept;
 const char* to_string(BootstrapMod1Type type) noexcept;
 
 BootstrapPipelinePlan make_research_bootstrap_plan(std::size_t slots);
@@ -270,5 +310,6 @@ std::size_t estimated_bootstrap_transform_levels(std::size_t slots,
                                                  BootstrapDftType type);
 std::size_t estimated_bootstrap_mod1_levels(const BootstrapMod1Model& model);
 BootstrapLayoutPlanningResult plan_bootstrap_layout(const BootstrapLayoutPlanningRequest& request);
+BootstrapParametersResult plan_bootstrap_parameters(const BootstrapParametersRequest& request);
 
 } // namespace m2424
