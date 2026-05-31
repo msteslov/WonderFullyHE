@@ -125,7 +125,9 @@ Prescaled `CoeffToSlot` теперь проверяется через `apply_at
 
 Search учитывает prescale вместе с plaintext scale transform-а. Это важно для dense `CoeffToSlot`: prescale может сделать magnitude algebraically ready, но если transform требует высокий plaintext scale, первый `EvalMod` multiplication снова блокируется по scale capacity.
 
-`plan_bootstrap_layout` считает circuit-level feasibility до ciphertext-прогона: period, normalization levels, scale-squash levels, EvalMod levels, transform levels, residual levels, total modulus bits и security limit. Первый расчёт показывает: dense-like layout требует около `600` bits при лимите `438` для `16384/tc128`; FFT-like `CoeffToSlot` с текущим inverse reference требует около `760` bits и помещается в `32768/tc128`; полностью factorized inverse с таким же числом слоёв требует около `1040` bits и не помещается в `32768/tc128`.
+`plan_bootstrap_layout` считает circuit-level feasibility до ciphertext-прогона: period, normalization levels, scale-squash levels, EvalMod levels, transform levels, residual levels, total modulus bits и security limit. Он возвращает физический `CkksProfile`, где `profile.slots` остаётся полным CKKS slot count (`N/2`), а не числом логических bootstrap slots. Это нужно для корректного кодирования diagonal masks в rotation-based transforms. Первый расчёт показывает: dense-like layout требует около `600` bits при лимите `438` для `16384/tc128`; FFT-like `CoeffToSlot` с текущим inverse reference требует около `760` bits и помещается в `32768/tc128`; полностью factorized inverse с таким же числом слоёв требует около `1040` bits и не помещается в `32768/tc128`.
+
+Физический gate для `ModRaiseFirst + FFT-like CoeffToSlot` показал текущий blocker: после `ModRaise` диагностическая амплитуда доминирует, и один только prescale внутри transform-а не даёт готовый вход `EvalMod` под `32768/tc128`. Поэтому ближайший рабочий путь для refresh — `SlotsToCoeffsFirst`, где сначала выполняется `SlotToCoeff`, затем `ModRaise`, затем обратный `CoeffToSlot` и нормализация перед `EvalMod P3`.
 
 Для `EvalMod` default-полиномом остаётся `P3`, пока нормализованный вход удовлетворяет `|u| <= 2^-10`. На этом интервале математическая ошибка аппроксимации около `1e-14`, поэтому для target `1e-9` bottleneck находится в CKKS scale/noise и линейных трансформах, а не в степени полинома.
 
@@ -188,6 +190,7 @@ poly_modulus_degree = минимальный N, проходящий security
 - `demo_bootstrap_pipeline` печатает отчёт bootstrapping-модуля.
 - `bench_bootstrap_scaling` проверяет представимость normalization scalar после `ModRaise -> CoeffToSlot`.
 - `bench_bootstrap_reference_path` является oracle-harness для маленьких slots и stage-by-stage reference comparison.
+- `bench_bootstrap_layout_physical_gate` проверяет layout-планнер на реальном ciphertext: строит профиль из planner-а, меряет фактическую амплитуду после FFT-like `CoeffToSlot`, перепланирует period/levels и проверяет готовность к `EvalMod P3`.
 - `demo_bootstrap_cipher_path` запускает experimental refresh-путь от существующего ciphertext.
 - `demo_bootstrap_end_to_end` является historical experimental demo и не входит в default CTest.
 - `bench_ckks` измеряет время операций, численную ошибку и размеры сериализованных объектов.

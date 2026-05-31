@@ -209,6 +209,7 @@ int main() {
         && dense_layout.total_levels > dense_layout.normalization_levels
         && dense_layout.security_budget_bits == 438
         && fft_layout.coeff_to_slot_levels > dense_layout.coeff_to_slot_levels
+        && fft_layout.profile.slots == fft_layout.poly_modulus_degree / 2
         && !fft_layout.blocker.empty()
         && fits_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh
         && !fits_refresh_plan.needs_refresh

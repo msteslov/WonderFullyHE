@@ -633,7 +633,7 @@ BootstrapLayoutPlanningResult plan_bootstrap_layout(const BootstrapLayoutPlannin
 
     result.profile.poly_modulus_degree = request.poly_modulus_degree;
     result.profile.scale = std::exp2(std::min(request.target_scale_log2, 60.0));
-    result.profile.slots = request.slots;
+    result.profile.slots = request.poly_modulus_degree / 2;
     result.profile.coeff_modulus_bits.reserve(result.total_levels + 1);
     result.profile.coeff_modulus_bits.push_back(request.first_mod_bits);
     for (std::size_t i = 1; i < result.total_levels; ++i) {

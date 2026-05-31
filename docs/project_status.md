@@ -29,6 +29,7 @@ WonderFullyHE — учебно-исследовательский прототи
 - Низкоуровневый CKKS `ModRaise` для расширения ciphertext к первой RNS-базе.
 - Experimental bootstrapping-конвейер `ModRaise -> CoeffToSlot -> eval_mod_normalization -> EvalMod -> SlotToCoeff` с отчётом по `scale`, `chain_index` и размеру ciphertext.
 - Public architecture layer `BootstrapPipelinePlan`, который отделяет research backend `DenseDiagonal` от целевого scalable backend `FftLike` и фиксирует stage contracts.
+- `plan_bootstrap_layout` строит физический `CkksProfile` из рассчитанного layout. Важно: логические bootstrap slots не сужают `CkksProfile::slots`; профиль оставляет полный CKKS slot count, чтобы diagonal masks и rotation transforms кодировались физически корректно.
 - Scaling gate перед full refresh validation. Найденный leak был в normalization scalar: после `ModRaise -> CoeffToSlot` tiny scalar нельзя применять одним plaintext multiply. Scaling layer теперь поддерживает decomposition на несколько `mul_plain_rescale` шагов; gate имеет PASS-режимы, а следующий blocker находится в full EvalMod/denormalization path.
 - One-case trace отделяет `scalar_pass` от `evalmod_ready`: `NoBootstrapPeriod` является diagnostic baseline, а full validation не запускается без реального period-mode, который одновременно scalar-correct и попадает в интервал EvalMod.
 - Period-model gate показал следующий blocker: реальные period-mode могут попасть в EvalMod interval, но пока не дают одновременно достаточный уровень и безопасный scale перед P3.
@@ -50,6 +51,7 @@ WonderFullyHE — учебно-исследовательский прототи
 - Расширение калибровочной модели `ops_profile -> calibrated_loss_bits`; для target `1e-9` текущий быстрый ориентир — 45-битные рабочие модули при `scale_log2 = 45`.
 - `BootstrapPlanner` как обязательный gate перед refresh: проверка уровней, scale, period window, EvalMod interval и error budget до ciphertext-прогона.
 - Factorized FFT-like backend для `CoeffToSlot/SlotToCoeff`; текущий dense diagonal backend остаётся reference для малых `slots`.
+- Перевод основного refresh-пути на `SlotsToCoeffsFirst`: текущий `ModRaiseFirst` физически раздувает амплитуду после raise и блокирует EvalMod-capacity даже при prescale.
 - Оптимизация rotation keys, BSGS/hoisting и кеширования plaintext-диагоналей.
 
 ## Ограничения
