@@ -21,3 +21,7 @@ set(M2424_TESTS
 foreach(target IN LISTS M2424_TESTS)
     m2424_add_test(${target})
 endforeach()
+
+add_executable(diagnose_bootstrap_invariants diagnose_bootstrap_invariants.cpp)
+target_compile_features(diagnose_bootstrap_invariants PRIVATE cxx_std_17)
+target_link_libraries(diagnose_bootstrap_invariants PRIVATE m2424)

@@ -39,6 +39,16 @@ CkksProfile boot_deep_ckks() {
                        16384};
 }
 
+CkksProfile precision_boot_deep_ckks() {
+    return CkksProfile{32768,
+                       {60,
+                        50, 50, 50, 50, 50, 50, 50, 50,
+                        50, 50, 50, 50, 50, 50, 50,
+                        60},
+                       std::pow(2.0, 50),
+                       16384};
+}
+
 std::vector<std::pair<std::string, CkksProfile>> all() {
     return {
         {"fast_demo_ckks", fast_demo_ckks()},
@@ -47,7 +57,8 @@ std::vector<std::pair<std::string, CkksProfile>> all() {
         {"depth_ckks", depth_ckks()},
         {"high_precision_ckks", high_precision_ckks()},
         {"boot_ckks", boot_ckks()},
-        {"boot_deep_ckks", boot_deep_ckks()}
+        {"boot_deep_ckks", boot_deep_ckks()},
+        {"precision_boot_deep_ckks", precision_boot_deep_ckks()}
     };
 }
 

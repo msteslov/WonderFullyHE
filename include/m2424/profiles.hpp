@@ -15,6 +15,7 @@ CkksProfile depth_ckks();
 CkksProfile high_precision_ckks();
 CkksProfile boot_ckks();
 CkksProfile boot_deep_ckks();
+CkksProfile precision_boot_deep_ckks();
 
 std::vector<std::pair<std::string, CkksProfile>> all();
 CkksProfile by_name(const std::string& name);
