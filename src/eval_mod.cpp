@@ -36,6 +36,27 @@ Cipher weighted_term(SealAdapter& adapter, const Cipher& value, double coefficie
     return adapter.mul_plain_rescale(value, adapter.encode_scalar_like(coefficient, value));
 }
 
+Cipher squash_scale(SealAdapter& adapter, Cipher value, double max_scale_log2) {
+    while (std::log2(adapter.info(value).scale) > max_scale_log2 + 0.5) {
+        if (adapter.info(value).chain_index == 0) {
+            throw std::runtime_error("not enough levels to squash EvalMod scale");
+        }
+        value = adapter.rescale_to_next(value);
+    }
+    return value;
+}
+
+template <class Fn>
+Cipher evalmod_step(const char* name, Fn&& fn) {
+    try {
+        return fn();
+    } catch (const std::exception& e) {
+        std::ostringstream out;
+        out << "EvalMod " << name << " failed: " << e.what();
+        throw std::runtime_error(out.str());
+    }
+}
+
 double next_rescale_drop_log2(SealAdapter& adapter, const Cipher& value) {
     const auto info = adapter.info(value);
     const auto bits = adapter.coeff_modulus_bits();
@@ -184,18 +205,35 @@ Cipher EvalModPolynomial::evaluate(SealAdapter& adapter, const Cipher& input) co
 
 Cipher EvalModPolynomial::evaluate(SealAdapter& adapter, const Cipher& input, EvalModDegree degree) const {
     if (degree == EvalModDegree::P3DoubleAngle) {
-        const Cipher half = weighted_term(adapter, input, 0.5);
-        const Cipher p3 = evaluate(adapter, half, EvalModDegree::P3);
-        const Cipher p3_squared = multiply_same_level(adapter, p3, p3);
-        const Cipher p3_cubed = multiply_same_level(adapter, adapter.mod_switch_to(p3, p3_squared), p3_squared);
-        Cipher cubic = weighted_term(adapter, p3_cubed, -4.0 * kPi * kPi);
+        const Cipher half = evalmod_step("P3DoubleAngle half-scale", [&] {
+            return weighted_term(adapter, input, 0.5);
+        });
+        const Cipher p3 = evalmod_step("P3DoubleAngle inner P3", [&] {
+            return evaluate(adapter, half, EvalModDegree::P3);
+        });
+        const Cipher p3_scaled = evalmod_step("P3DoubleAngle scale squash", [&] {
+            return squash_scale(adapter, p3, 60.0);
+        });
+        const Cipher p3_squared = evalmod_step("P3DoubleAngle square", [&] {
+            return multiply_same_level(adapter, p3_scaled, p3_scaled);
+        });
+        const Cipher p3_cubed = evalmod_step("P3DoubleAngle cube", [&] {
+            return multiply_same_level(adapter, adapter.mod_switch_to(p3_scaled, p3_squared), p3_squared);
+        });
+        Cipher cubic = evalmod_step("P3DoubleAngle cubic weight", [&] {
+            return weighted_term(adapter, p3_cubed, -4.0 * kPi * kPi);
+        });
         const double target_scale_log2 = std::log2(adapter.info(cubic).scale);
-        Cipher linear = weighted_term_to_scale(
-            adapter,
-            adapter.mod_switch_to(p3, p3_cubed),
-            2.0,
-            target_scale_log2);
-        return add_terms(adapter, std::move(linear), std::move(cubic));
+        Cipher linear = evalmod_step("P3DoubleAngle linear weight", [&] {
+            return weighted_term_to_scale(
+                adapter,
+                adapter.mod_switch_to(p3_scaled, p3_cubed),
+                2.0,
+                target_scale_log2);
+        });
+        return evalmod_step("P3DoubleAngle add", [&] {
+            return add_terms(adapter, std::move(linear), std::move(cubic));
+        });
     }
 
     const Cipher u2 = multiply_same_level(adapter, input, input);

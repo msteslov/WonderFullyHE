@@ -5,6 +5,7 @@
 #include "m2424/mod1_circuit.hpp"
 
 #include <cmath>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -24,6 +25,16 @@ BootstrapMod1Model mod1_model_for(EvalModDegree degree, double plain_scale_log2)
         throw std::invalid_argument("SlotsToCoeffsFirst prototype supports only P3/P3DoubleAngle until CosDiscrete encrypted Mod1 is implemented");
     }
     throw std::invalid_argument("unknown EvalMod degree");
+}
+
+std::string stage_context(const char* stage, const CipherInfo& before) {
+    std::ostringstream out;
+    out << "STC-first " << stage
+        << " failed"
+        << "; before_chain=" << before.chain_index
+        << "; before_scale_log2=" << std::log2(before.scale)
+        << "; before_coeff_modulus_log2=" << before.coeff_modulus_log2;
+    return out.str();
 }
 
 } // namespace
@@ -192,9 +203,13 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     report.denormalization_scalar_representable = true;
 
     before = adapter_.info(current);
-    stage_ms = elapsed_ms([&] {
-        current = apply_normalization(current, report.normalization_factor);
-    });
+    try {
+        stage_ms = elapsed_ms([&] {
+            current = apply_normalization(current, report.normalization_factor);
+        });
+    } catch (const std::exception& e) {
+        throw std::runtime_error(stage_context("eval_mod_normalization", before) + "; reason=" + e.what());
+    }
     after = adapter_.info(current);
     stage_error = 0.0;
     if (expected) {
@@ -218,9 +233,13 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         eval_expected = mod1.evaluate_plain(normalized_expected);
     }
     before = adapter_.info(current);
-    stage_ms = elapsed_ms([&] {
-        current = mod1.evaluate(adapter_, current);
-    });
+    try {
+        stage_ms = elapsed_ms([&] {
+            current = mod1.evaluate(adapter_, current);
+        });
+    } catch (const std::exception& e) {
+        throw std::runtime_error(stage_context("eval_mod", before) + "; reason=" + e.what());
+    }
     after = adapter_.info(current);
     stage_error = 0.0;
     if (expected) {
@@ -244,9 +263,13 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
             eval_expected = scaled(eval_expected, output_correction_factor_);
         }
         before = adapter_.info(current);
-        stage_ms = elapsed_ms([&] {
-            current = apply_normalization(current, output_correction_factor_);
-        });
+        try {
+            stage_ms = elapsed_ms([&] {
+                current = apply_normalization(current, output_correction_factor_);
+            });
+        } catch (const std::exception& e) {
+            throw std::runtime_error(stage_context("output_correction", before) + "; reason=" + e.what());
+        }
         after = adapter_.info(current);
         stage_error = 0.0;
         if (expected) {
@@ -267,9 +290,13 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     }
 
     before = adapter_.info(current);
-    stage_ms = elapsed_ms([&] {
-        current = apply_output_scale_repair(adapter_, current, plain_scale_log2_);
-    });
+    try {
+        stage_ms = elapsed_ms([&] {
+            current = apply_output_scale_repair(adapter_, current, plain_scale_log2_);
+        });
+    } catch (const std::exception& e) {
+        throw std::runtime_error(stage_context("output_scale_repair", before) + "; reason=" + e.what());
+    }
     after = adapter_.info(current);
     stage_error = 0.0;
     if (expected) {

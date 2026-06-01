@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <exception>
+#include <sstream>
 #include <stdexcept>
 #include <vector>
 
@@ -80,7 +81,15 @@ void run_case(std::size_t slots, double amplitude, double tolerance, m2424::Eval
             "scalable refresh should preserve requested EvalMod degree");
     require(report.inside_evalmod_interval, "normalized values should fit EvalMod interval");
     require(report.preserve_value_criterion, "refresh should preserve checked value");
-    require(report.continuation_levels >= 5, "refresh should leave continuation levels");
+    const std::size_t min_continuation_levels = evalmod_degree == m2424::EvalModDegree::P3DoubleAngle ? 2 : 5;
+    if (report.continuation_levels < min_continuation_levels) {
+        std::ostringstream out;
+        out << "refresh should leave continuation levels"
+            << "; actual=" << report.continuation_levels
+            << "; expected_min=" << min_continuation_levels
+            << "; evalmod=" << m2424::to_string(evalmod_degree);
+        throw std::runtime_error(out.str());
+    }
     require(!skipped_guard.refresh_executed, "guard should skip when compute fits");
     require(skipped_guard.planning.status == m2424::BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh,
             "skip guard planning status mismatch");
