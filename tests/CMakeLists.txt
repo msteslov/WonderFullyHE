@@ -9,6 +9,7 @@ set(M2424_TESTS
     test_accuracy
     test_adapter_failures
     test_bootstrap_dft
+    test_bootstrap_layout_v2
     test_bootstrap_precision_model
     test_bootstrap_scalable_refresh
     test_bootstrap_scale_design

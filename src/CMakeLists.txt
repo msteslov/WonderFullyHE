@@ -3,6 +3,7 @@ add_library(m2424
     abft.cpp
     bootstrap.cpp
     bootstrap_dft.cpp
+    bootstrap_layout_v2.cpp
     bootstrap_parameters.cpp
     bootstrap_plan.cpp
     bootstrap_precision_model.cpp
