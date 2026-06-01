@@ -1,6 +1,8 @@
 #include "m2424/eval_mod.hpp"
 
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -98,6 +100,23 @@ Cipher add_terms(SealAdapter& adapter, Cipher lhs, Cipher rhs) {
         throw std::runtime_error(out.str());
     }
     return adapter.add(lhs, rhs);
+}
+
+bool evalmod_diagnostics_enabled() {
+    const char* value = std::getenv("M2424_DIAG_EVALMOD");
+    return value != nullptr && value[0] != '\0' && value[0] != '0';
+}
+
+void print_evalmod_info(SealAdapter& adapter, const char* label, const Cipher& value) {
+    if (!evalmod_diagnostics_enabled()) {
+        return;
+    }
+    const auto info = adapter.info(value);
+    std::printf("[eval_mod] %s chain=%zu scale_log2=%.6f coeff_modulus_log2=%.0f\n",
+                label,
+                info.chain_index,
+                std::log2(info.scale),
+                info.coeff_modulus_log2);
 }
 
 } // namespace
@@ -237,12 +256,19 @@ Cipher EvalModPolynomial::evaluate(SealAdapter& adapter, const Cipher& input, Ev
     }
 
     const Cipher u2 = multiply_same_level(adapter, input, input);
+    print_evalmod_info(adapter, "P3 input", input);
+    print_evalmod_info(adapter, "P3 u2", u2);
     const Cipher u3 = multiply_same_level(adapter, adapter.mod_switch_to(input, u2), u2);
+    print_evalmod_info(adapter, "P3 u3", u3);
     if (degree == EvalModDegree::P3) {
-        Cipher cubic = weighted_term(adapter, u3, a3);
-        const double target_scale_log2 = std::log2(adapter.info(cubic).scale);
+        const double target_scale_log2 = std::log2(adapter.info(input).scale);
+        Cipher cubic = weighted_term_to_scale(adapter, u3, a3, target_scale_log2);
+        print_evalmod_info(adapter, "P3 cubic_weighted", cubic);
         Cipher linear = weighted_term_to_scale(adapter, adapter.mod_switch_to(input, u3), a1, target_scale_log2);
-        return add_terms(adapter, std::move(linear), std::move(cubic));
+        print_evalmod_info(adapter, "P3 linear_weighted", linear);
+        Cipher result = add_terms(adapter, std::move(linear), std::move(cubic));
+        print_evalmod_info(adapter, "P3 add_result", result);
+        return result;
     }
 
     const Cipher u5 = multiply_same_level(adapter, u3, adapter.mod_switch_to(u2, u3));

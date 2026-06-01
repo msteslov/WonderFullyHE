@@ -1,4 +1,5 @@
 #include "m2424/bootstrap.hpp"
+#include "m2424/eval_mod.hpp"
 #include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
 
@@ -72,8 +73,9 @@ double stage_error_or_nan(const m2424::BootstrapPrototypeReport& report, const c
     return stage == nullptr ? std::nan("") : stage->max_abs_error;
 }
 
-void print_stage(const m2424::BootstrapPrototypeStage& stage) {
-    std::printf("[diagnose_bootstrap_one_cycle_precision] stage=%s status=%s chain_before=%zu chain_after=%zu scale_before_log2=%.6f scale_after_log2=%.6f max_error=%.12e duration_ms=%.3f\n",
+void print_stage(m2424::EvalModDegree degree, const m2424::BootstrapPrototypeStage& stage) {
+    std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s stage=%s status=%s chain_before=%zu chain_after=%zu scale_before_log2=%.6f scale_after_log2=%.6f max_error=%.12e duration_ms=%.3f\n",
+                m2424::to_string(degree),
                 stage.name.c_str(),
                 stage.status.c_str(),
                 stage.chain_before,
@@ -114,38 +116,48 @@ std::string classify_exception_stage(const std::string& message) {
 }
 
 bool run_cycle(std::size_t cycle,
+               m2424::EvalModDegree degree,
                m2424::SealAdapter& adapter,
                const m2424::ComplexVector& expected,
                m2424::Cipher& current) {
-    std::printf("[diagnose_bootstrap_one_cycle_precision] cycle=%zu step=baseline\n", cycle);
+    std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu step=baseline\n",
+                m2424::to_string(degree),
+                cycle);
     std::fflush(stdout);
     const auto before_info = adapter.info(current);
     const double baseline_error = decoded_max_error(adapter, current, expected);
 
     m2424::Bootstrapper bootstrapper(adapter);
-    std::printf("[diagnose_bootstrap_one_cycle_precision] cycle=%zu step=refresh\n", cycle);
+    std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu step=refresh\n",
+                m2424::to_string(degree),
+                cycle);
     std::fflush(stdout);
     m2424::BootstrapPrototypeReport report;
     try {
         report = bootstrapper.refresh_slots_to_coeffs_first_checked(
-            current, expected, kSlots, kTolerance, m2424::EvalModDegree::P3DoubleAngle);
+            current, expected, kSlots, kTolerance, degree);
     } catch (const std::exception& error) {
         const std::string reason = error.what();
-        std::printf("[diagnose_bootstrap_one_cycle_precision] cycle=%zu status=BLOCKED first_failing_stage=%s reason=%s\n",
+        std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu baseline_error=%.12e status=BLOCKED first_failing_stage=%s reason=%s\n",
+                    m2424::to_string(degree),
                     cycle,
+                    baseline_error,
                     classify_exception_stage(reason).c_str(),
                     reason.c_str());
         return false;
     }
 
-    std::printf("[diagnose_bootstrap_one_cycle_precision] cycle=%zu step=final_decrypt\n", cycle);
+    std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu step=final_decrypt\n",
+                m2424::to_string(degree),
+                cycle);
     std::fflush(stdout);
     const auto actual = head(adapter.decode_complex(adapter.decrypt(report.result)));
     const double final_max_error = max_error(expected, actual);
     const double final_mean_error = mean_error(expected, actual);
     const auto after_info = adapter.info(report.result);
 
-    std::printf("[diagnose_bootstrap_one_cycle_precision] cycle=%zu baseline_error=%.12e slot_to_coeff_first_error=%.12e mod_raise_drift=%.12e coeff_to_slot_after_raise_error=%.12e eval_mod_normalization_error=%.12e eval_mod_error=%.12e output_scale_repair_error=%.12e refresh_result_error=%.12e final_max_error=%.12e final_mean_error=%.12e input_chain=%zu output_chain=%zu input_scale_log2=%.6f output_scale_log2=%.6f continuation_levels=%zu inside_evalmod_interval=%s preserve_value_criterion=%s restore_level_criterion=%s stages=%zu\n",
+    std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu baseline_error=%.12e slot_to_coeff_first_error=%.12e mod_raise_drift=%.12e coeff_to_slot_after_raise_error=%.12e eval_mod_normalization_error=%.12e eval_mod_error=%.12e output_scale_repair_error=%.12e refresh_result_error=%.12e final_max_error=%.12e final_mean_error=%.12e input_chain=%zu output_chain=%zu input_scale_log2=%.6f output_scale_log2=%.6f continuation_levels=%zu inside_evalmod_interval=%s preserve_value_criterion=%s restore_level_criterion=%s stages=%zu\n",
+                m2424::to_string(degree),
                 cycle,
                 baseline_error,
                 stage_error_or_nan(report, "slot_to_coeff_first"),
@@ -168,30 +180,38 @@ bool run_cycle(std::size_t cycle,
                 report.stages.size());
 
     for (const auto& stage : report.stages) {
-        print_stage(stage);
+        print_stage(degree, stage);
     }
 
     std::string first_failure;
     if (has_failed_stage(report, first_failure)) {
-        std::printf("[diagnose_bootstrap_one_cycle_precision] cycle=%zu status=BLOCKED first_failing_stage=%s reason=stage_status_FAIL\n",
+        std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu status=BLOCKED first_failing_stage=%s reason=stage_status_FAIL\n",
+                    m2424::to_string(degree),
                     cycle,
                     first_failure.c_str());
         return false;
     }
     if (!report.inside_evalmod_interval) {
-        std::printf("[diagnose_bootstrap_one_cycle_precision] cycle=%zu status=BLOCKED first_failing_stage=eval_mod_interval\n", cycle);
+        std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu status=BLOCKED first_failing_stage=eval_mod_interval\n",
+                    m2424::to_string(degree),
+                    cycle);
         return false;
     }
     if (!report.preserve_value_criterion) {
-        std::printf("[diagnose_bootstrap_one_cycle_precision] cycle=%zu status=BLOCKED first_failing_stage=preserve_value_criterion\n", cycle);
+        std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu status=BLOCKED first_failing_stage=preserve_value_criterion\n",
+                    m2424::to_string(degree),
+                    cycle);
         return false;
     }
     if (!report.restore_level_criterion) {
-        std::printf("[diagnose_bootstrap_one_cycle_precision] cycle=%zu status=BLOCKED first_failing_stage=restore_level_criterion\n", cycle);
+        std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu status=BLOCKED first_failing_stage=restore_level_criterion\n",
+                    m2424::to_string(degree),
+                    cycle);
         return false;
     }
     if (final_max_error > kTolerance) {
-        std::printf("[diagnose_bootstrap_one_cycle_precision] cycle=%zu status=BLOCKED first_failing_stage=final_error max_error=%.12e tolerance=%.12e\n",
+        std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu status=BLOCKED first_failing_stage=final_error max_error=%.12e tolerance=%.12e\n",
+                    m2424::to_string(degree),
                     cycle,
                     final_max_error,
                     kTolerance);
@@ -199,27 +219,40 @@ bool run_cycle(std::size_t cycle,
     }
 
     current = report.result;
-    std::printf("[diagnose_bootstrap_one_cycle_precision] cycle=%zu status=PASS\n", cycle);
+    std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu status=PASS\n",
+                m2424::to_string(degree),
+                cycle);
     return true;
+}
+
+bool run_evalmod_degree(m2424::EvalModDegree degree) {
+    const auto expected = make_expected();
+    const auto rotation_steps = m2424::Bootstrapper::scalable_refresh_rotation_steps(kSlots);
+    auto adapter = m2424::SealAdapter::create(m2424::profiles::precision_boot_ultra_ckks_59());
+    adapter.keygen(rotation_steps, true);
+    auto current = adapter.encrypt(adapter.encode_complex(expected));
+
+    if (!run_cycle(1, degree, adapter, expected, current)) {
+        return false;
+    }
+    if (degree != m2424::EvalModDegree::P3) {
+        return true;
+    }
+    if (!run_cycle(2, degree, adapter, expected, current)) {
+        return false;
+    }
+    return run_cycle(3, degree, adapter, expected, current);
 }
 
 } // namespace
 
 int main() {
     try {
-        const auto expected = make_expected();
-        const auto rotation_steps = m2424::Bootstrapper::scalable_refresh_rotation_steps(kSlots);
-        auto adapter = m2424::SealAdapter::create(m2424::profiles::precision_boot_ultra_ckks_59());
-        adapter.keygen(rotation_steps, true);
-        auto current = adapter.encrypt(adapter.encode_complex(expected));
-
-        if (!run_cycle(1, adapter, expected, current)) {
-            return 0;
+        const bool p3_passed = run_evalmod_degree(m2424::EvalModDegree::P3);
+        (void)run_evalmod_degree(m2424::EvalModDegree::P3DoubleAngle);
+        if (p3_passed) {
+            std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=P3 status=PRECISION_V0_CANDIDATE\n");
         }
-        if (!run_cycle(2, adapter, expected, current)) {
-            return 0;
-        }
-        (void)run_cycle(3, adapter, expected, current);
         return 0;
     } catch (const std::exception& error) {
         std::printf("[diagnose_bootstrap_one_cycle_precision] FAIL: %s\n", error.what());
