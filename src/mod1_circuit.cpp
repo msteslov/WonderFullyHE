@@ -30,6 +30,33 @@ EvalModDegree legacy_degree(const BootstrapMod1Model& model) {
     return model.double_angle == 0 ? EvalModDegree::P3 : EvalModDegree::P3DoubleAngle;
 }
 
+EvalModDegree cos_discrete_degree(const BootstrapMod1Model& model) {
+    if (model.double_angle == 1 && model.degree == 3) {
+        return EvalModDegree::P3DoubleAngle;
+    }
+    if (model.double_angle != 0) {
+        throw std::runtime_error("encrypted CosDiscrete Mod1 double-angle is implemented only for degree 3");
+    }
+    switch (model.degree) {
+    case 3:
+        return EvalModDegree::P3;
+    case 5:
+        return EvalModDegree::P5;
+    case 7:
+        return EvalModDegree::P7;
+    default:
+        throw std::runtime_error("encrypted CosDiscrete Mod1 supports only degree 3/5/7");
+    }
+}
+
+bool cos_discrete_encrypted_available(const BootstrapMod1Model& model) noexcept {
+    if (model.double_angle == 1) {
+        return model.degree == 3;
+    }
+    return model.double_angle == 0
+        && (model.degree == 3 || model.degree == 5 || model.degree == 7);
+}
+
 double sine_mod1_reference(double input) {
     if (!std::isfinite(input)) {
         throw std::invalid_argument("Mod1 input must be finite");
@@ -60,7 +87,7 @@ std::size_t Mod1Circuit::estimated_levels() const {
 
 bool Mod1Circuit::encrypted_evaluation_available() const noexcept {
     return model_.type == BootstrapMod1Type::LegacySineP3
-        || (model_.type == BootstrapMod1Type::CosDiscrete && model_.degree == 3 && model_.double_angle <= 1);
+        || (model_.type == BootstrapMod1Type::CosDiscrete && cos_discrete_encrypted_available(model_));
 }
 
 double Mod1Circuit::evaluate_plain(double input) const {
@@ -108,8 +135,7 @@ Cipher Mod1Circuit::evaluate(SealAdapter& adapter, const Cipher& input) const {
     if (model_.type == BootstrapMod1Type::LegacySineP3) {
         return EvalModPolynomial{}.evaluate(adapter, input, legacy_degree(model_));
     }
-    const EvalModDegree degree = model_.double_angle == 0 ? EvalModDegree::P3 : EvalModDegree::P3DoubleAngle;
-    return EvalModPolynomial{}.evaluate(adapter, input, degree);
+    return EvalModPolynomial{}.evaluate(adapter, input, cos_discrete_degree(model_));
 }
 
 } // namespace m2424

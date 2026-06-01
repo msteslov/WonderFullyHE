@@ -1,4 +1,6 @@
 #include "m2424/mod1_circuit.hpp"
+#include "m2424/profiles.hpp"
+#include "m2424/seal_adapter.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -24,6 +26,26 @@ bool close(m2424::Complex lhs, m2424::Complex rhs, double tolerance) {
     return std::abs(lhs - rhs) <= tolerance;
 }
 
+void require_cos_encrypted_matches_plain(const m2424::BootstrapMod1Model& model,
+                                         double tolerance) {
+    m2424::Mod1Circuit circuit(model);
+    require(circuit.encrypted_evaluation_available(), "CosDiscrete encrypted evaluation should be available");
+
+    auto adapter = m2424::SealAdapter::create(m2424::profiles::boot_deep_ckks());
+    adapter.keygen(true, false);
+
+    const m2424::ComplexVector input{{1.0e-5, 0.0}, {-1.5e-5, 0.5e-5}, {0.75e-5, -0.25e-5}};
+    const auto expected = circuit.evaluate_plain(input);
+    const auto encrypted = circuit.evaluate(adapter, adapter.encrypt(adapter.encode_complex(input)));
+    const auto actual = adapter.decode_complex(adapter.decrypt(encrypted));
+
+    for (std::size_t i = 0; i < input.size(); ++i) {
+        if (!close(actual[i], expected[i], tolerance)) {
+            throw std::runtime_error("encrypted CosDiscrete output does not match plaintext reference");
+        }
+    }
+}
+
 } // namespace
 
 int main() {
@@ -32,6 +54,8 @@ int main() {
         m2424::Mod1Circuit legacy({m2424::BootstrapMod1Type::LegacySineP3, 3, 0, 8, 40.0});
         m2424::Mod1Circuit legacy_da({m2424::BootstrapMod1Type::LegacySineP3, 3, 1, 8, 40.0});
         m2424::Mod1Circuit cos3({m2424::BootstrapMod1Type::CosDiscrete, 3, 1, 8, 40.0});
+        m2424::Mod1Circuit cos5({m2424::BootstrapMod1Type::CosDiscrete, 5, 0, 8, 40.0});
+        m2424::Mod1Circuit cos7({m2424::BootstrapMod1Type::CosDiscrete, 7, 0, 8, 40.0});
         m2424::Mod1Circuit cos30({m2424::BootstrapMod1Type::CosDiscrete, 31, 3, 8, 60.0});
 
         const double x = 1.0e-4;
@@ -64,6 +88,8 @@ int main() {
             && legacy.encrypted_evaluation_available()
             && legacy_da.encrypted_evaluation_available()
             && cos3.encrypted_evaluation_available()
+            && cos5.encrypted_evaluation_available()
+            && cos7.encrypted_evaluation_available()
             && !cos30.encrypted_evaluation_available()
             && cos30.estimated_levels() == 8
             && close(legacy_value, x, 1e-8)
@@ -75,6 +101,17 @@ int main() {
             && invalid_model_threw;
 
         ok = conditions;
+        if (ok) {
+            require_cos_encrypted_matches_plain(
+                {m2424::BootstrapMod1Type::CosDiscrete, 3, 0, 8, 40.0},
+                1e-6);
+            require_cos_encrypted_matches_plain(
+                {m2424::BootstrapMod1Type::CosDiscrete, 5, 0, 8, 40.0},
+                1e-6);
+            require_cos_encrypted_matches_plain(
+                {m2424::BootstrapMod1Type::CosDiscrete, 7, 0, 8, 40.0},
+                1e-6);
+        }
     } catch (const std::exception& error) {
         ok = false;
         std::printf("[test_mod1_circuit] FAIL: %s\n", error.what());
