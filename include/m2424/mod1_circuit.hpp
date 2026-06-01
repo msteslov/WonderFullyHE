@@ -2,6 +2,7 @@
 
 #include "m2424/bootstrap_plan.hpp"
 #include "m2424/eval_mod.hpp"
+#include "m2424/mod1_approximation.hpp"
 
 #include <cstddef>
 #include <vector>
@@ -13,6 +14,7 @@ public:
     explicit Mod1Circuit(BootstrapMod1Model model);
 
     const BootstrapMod1Model& model() const noexcept;
+    const Mod1Approximation& approximation() const noexcept;
     std::size_t estimated_levels() const;
     bool encrypted_evaluation_available() const noexcept;
 
@@ -25,6 +27,7 @@ public:
 
 private:
     BootstrapMod1Model model_;
+    Mod1Approximation approximation_;
 };
 
 } // namespace m2424

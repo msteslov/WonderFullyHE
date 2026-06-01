@@ -15,6 +15,7 @@ add_library(m2424
     eval_mod.cpp
     linear_transform.cpp
     m2424.cpp
+    mod1_approximation.cpp
     mod1_circuit.cpp
     operation_budget.cpp
     parameter_planner.cpp

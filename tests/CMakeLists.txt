@@ -11,6 +11,7 @@ set(M2424_TESTS
     test_bootstrap_dft
     test_bootstrap_scalable_refresh
     test_bootstrap_scale_design
+    test_mod1_approximation
     test_mod1_circuit
     test_operation_budget
     test_parameter_planner

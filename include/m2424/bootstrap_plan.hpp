@@ -62,6 +62,8 @@ enum class BootstrapParameterPlanningStatus {
 
 enum class BootstrapMod1Type {
     LegacySineP3,
+    // Experimental small-degree sine-polynomial path. This is not a full
+    // high-degree CosDiscrete bootstrap approximation.
     CosDiscrete
 };
 

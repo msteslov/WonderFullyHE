@@ -73,12 +73,17 @@ Complex sine_mod1_reference(Complex input) {
 
 } // namespace
 
-Mod1Circuit::Mod1Circuit(BootstrapMod1Model model) : model_(model) {
+Mod1Circuit::Mod1Circuit(BootstrapMod1Model model)
+    : model_(model), approximation_(make_mod1_approximation(model)) {
     validate_model(model_);
 }
 
 const BootstrapMod1Model& Mod1Circuit::model() const noexcept {
     return model_;
+}
+
+const Mod1Approximation& Mod1Circuit::approximation() const noexcept {
+    return approximation_;
 }
 
 std::size_t Mod1Circuit::estimated_levels() const {
@@ -91,17 +96,11 @@ bool Mod1Circuit::encrypted_evaluation_available() const noexcept {
 }
 
 double Mod1Circuit::evaluate_plain(double input) const {
-    if (model_.type == BootstrapMod1Type::LegacySineP3) {
-        return EvalModPolynomial{}.evaluate_plain(input, legacy_degree(model_));
-    }
-    return sine_mod1_reference(input);
+    return evaluate_mod1_plain_with_double_angle(approximation_, input);
 }
 
 Complex Mod1Circuit::evaluate_plain(Complex input) const {
-    if (model_.type == BootstrapMod1Type::LegacySineP3) {
-        return EvalModPolynomial{}.evaluate_plain(input, legacy_degree(model_));
-    }
-    return sine_mod1_reference(input);
+    return evaluate_mod1_plain_with_double_angle(approximation_, input);
 }
 
 std::vector<double> Mod1Circuit::evaluate_plain(const std::vector<double>& input) const {
