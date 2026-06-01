@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <exception>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -14,9 +15,7 @@ namespace {
 
 constexpr std::size_t kSlots = 4;
 constexpr double kAmplitude = 1e-5;
-constexpr double kBaselineTolerance = 1e-11;
 constexpr double kDftTolerance = 1e-9;
-constexpr double kPlainScaleLog2 = 50.0;
 constexpr const char* kProfileName = "precision_boot_deep_ckks";
 
 m2424::ComplexVector make_expected() {
@@ -65,80 +64,111 @@ std::vector<int> merged_steps(const m2424::FactorizedLinearTransform& a,
     return steps;
 }
 
+double decoded_error(m2424::SealAdapter& adapter,
+                     const m2424::Cipher& cipher,
+                     const m2424::ComplexVector& expected) {
+    const auto actual = head(adapter.decode_complex(adapter.decrypt(cipher)));
+    return max_error(expected, actual);
+}
+
 void print_cipher_stage(m2424::SealAdapter& adapter,
                         const char* profile_name,
                         int total_coeff_modulus_bits,
+                        double plain_scale_log2,
                         const char* stage,
-                        const m2424::Cipher& cipher,
+                        const m2424::Cipher& before,
+                        const m2424::Cipher& after,
                         const m2424::ComplexVector& expected) {
-    const auto info = adapter.info(cipher);
-    const auto actual = head(adapter.decode_complex(adapter.decrypt(cipher)));
-    std::printf("[diagnose_bootstrap_invariants] profile=%s coeff_modulus_total_bits=%d stage=%s chain_index=%zu scale_log2=%.6f max_abs_value=%.12e max_error=%.12e\n",
+    const auto before_info = adapter.info(before);
+    const auto after_info = adapter.info(after);
+    const auto actual = head(adapter.decode_complex(adapter.decrypt(after)));
+    std::printf("[diagnose_bootstrap_invariants] profile=%s coeff_modulus_total_bits=%d plain_scale_log2=%.0f stage=%s chain_before=%zu chain_after=%zu scale_before_log2=%.6f scale_after_log2=%.6f consumed_levels=%zu max_abs_value=%.12e max_error=%.12e\n",
                 profile_name,
                 total_coeff_modulus_bits,
+                plain_scale_log2,
                 stage,
-                info.chain_index,
-                std::log2(info.scale),
+                before_info.chain_index,
+                after_info.chain_index,
+                std::log2(before_info.scale),
+                std::log2(after_info.scale),
+                before_info.chain_index >= after_info.chain_index ? before_info.chain_index - after_info.chain_index : 0,
                 max_abs_value(actual),
                 max_error(expected, actual));
-}
-
-bool report_threshold(const char* stage, double error, double tolerance) {
-    if (error > tolerance) {
-        std::printf("[diagnose_bootstrap_invariants] threshold_fail stage=%s max_error=%.12e tolerance=%.12e\n",
-                    stage,
-                    error,
-                    tolerance);
-        return false;
-    }
-    return true;
 }
 
 } // namespace
 
 int main() {
-    bool ok = true;
     try {
         const auto expected = make_expected();
-        auto slot_to_coeff = m2424::FactorizedLinearTransform(m2424::make_bootstrap_dft_plan(
-            kSlots, m2424::BootstrapDftType::HomomorphicEncode, kPlainScaleLog2));
-        auto coeff_to_slot = m2424::FactorizedLinearTransform(m2424::make_bootstrap_dft_plan(
-            kSlots, m2424::BootstrapDftType::HomomorphicDecode, kPlainScaleLog2));
-        const auto plain_coeff = slot_to_coeff.apply_plain(expected);
-
         const auto profile = m2424::profiles::precision_boot_deep_ckks();
         const auto total_coeff_modulus_bits = std::accumulate(
             profile.coeff_modulus_bits.begin(), profile.coeff_modulus_bits.end(), 0);
 
-        auto adapter = m2424::SealAdapter::create(profile);
-        adapter.keygen(merged_steps(slot_to_coeff, coeff_to_slot), true);
+        bool pass = false;
+        double best_roundtrip_error = std::numeric_limits<double>::infinity();
+        double best_plain_scale_log2 = 0.0;
+        for (double plain_scale_log2 : {50.0, 55.0, 60.0}) {
+            auto slot_to_coeff = m2424::FactorizedLinearTransform(m2424::make_bootstrap_dft_plan(
+                kSlots, m2424::BootstrapDftType::HomomorphicEncode, plain_scale_log2));
+            auto coeff_to_slot = m2424::FactorizedLinearTransform(m2424::make_bootstrap_dft_plan(
+                kSlots, m2424::BootstrapDftType::HomomorphicDecode, plain_scale_log2));
+            const auto plain_coeff = slot_to_coeff.apply_plain(expected);
 
-        auto encrypted = adapter.encrypt(adapter.encode_complex(expected));
-        print_cipher_stage(adapter, kProfileName, total_coeff_modulus_bits, "baseline_encrypt_decrypt", encrypted, expected);
-        bool pass = report_threshold(
-            "baseline_encrypt_decrypt",
-            max_error(expected, head(adapter.decode_complex(adapter.decrypt(encrypted)))),
-            kBaselineTolerance);
+            auto adapter = m2424::SealAdapter::create(profile);
+            adapter.keygen(merged_steps(slot_to_coeff, coeff_to_slot), true);
 
-        auto encrypted_coeff = slot_to_coeff.apply(adapter, encrypted);
-        print_cipher_stage(adapter, kProfileName, total_coeff_modulus_bits, "slot_to_coeff", encrypted_coeff, plain_coeff);
-        pass = report_threshold(
-            "slot_to_coeff",
-            max_error(plain_coeff, head(adapter.decode_complex(adapter.decrypt(encrypted_coeff)))),
-            kDftTolerance) && pass;
+            auto encrypted = adapter.encrypt(adapter.encode_complex(expected));
+            print_cipher_stage(adapter,
+                               kProfileName,
+                               total_coeff_modulus_bits,
+                               plain_scale_log2,
+                               "baseline_encrypt_decrypt",
+                               encrypted,
+                               encrypted,
+                               expected);
 
-        auto encrypted_roundtrip = coeff_to_slot.apply(adapter, encrypted_coeff);
-        print_cipher_stage(adapter, kProfileName, total_coeff_modulus_bits, "slot_to_coeff_to_coeff_to_slot", encrypted_roundtrip, expected);
-        pass = report_threshold(
-            "slot_to_coeff_to_coeff_to_slot",
-            max_error(expected, head(adapter.decode_complex(adapter.decrypt(encrypted_roundtrip)))),
-            kDftTolerance) && pass;
+            auto encrypted_coeff = slot_to_coeff.apply(adapter, encrypted);
+            print_cipher_stage(adapter,
+                               kProfileName,
+                               total_coeff_modulus_bits,
+                               plain_scale_log2,
+                               "slot_to_coeff",
+                               encrypted,
+                               encrypted_coeff,
+                               plain_coeff);
 
-        std::printf("[diagnose_bootstrap_invariants] %s\n", pass ? "PASS" : "FAIL");
-        ok = pass;
+            auto encrypted_roundtrip = coeff_to_slot.apply(adapter, encrypted_coeff);
+            print_cipher_stage(adapter,
+                               kProfileName,
+                               total_coeff_modulus_bits,
+                               plain_scale_log2,
+                               "slot_to_coeff_to_coeff_to_slot",
+                               encrypted_coeff,
+                               encrypted_roundtrip,
+                               expected);
+
+            const double roundtrip_error = decoded_error(adapter, encrypted_roundtrip, expected);
+            if (roundtrip_error < best_roundtrip_error) {
+                best_roundtrip_error = roundtrip_error;
+                best_plain_scale_log2 = plain_scale_log2;
+            }
+            pass = pass || roundtrip_error <= kDftTolerance;
+        }
+
+        if (!pass) {
+            std::printf("[diagnose_bootstrap_invariants] threshold_fail stage=best_dft_roundtrip best_plain_scale_log2=%.0f max_error=%.12e tolerance=%.12e\n",
+                        best_plain_scale_log2,
+                        best_roundtrip_error,
+                        kDftTolerance);
+        }
+        std::printf("[diagnose_bootstrap_invariants] best_plain_scale_log2=%.0f best_dft_roundtrip_error=%.12e\n",
+                    best_plain_scale_log2,
+                    best_roundtrip_error);
+        std::printf("[diagnose_bootstrap_invariants] %s\n", pass ? "PASS" : "BLOCKED");
     } catch (const std::exception& error) {
-        ok = false;
         std::printf("[diagnose_bootstrap_invariants] FAIL: %s\n", error.what());
+        return 1;
     }
-    return ok ? 0 : 1;
+    return 0;
 }

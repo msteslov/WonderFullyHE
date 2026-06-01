@@ -204,6 +204,34 @@ std::vector<BootstrapDftLayer> make_layers(std::size_t slots,
     return layers;
 }
 
+std::vector<BootstrapDftLayer> make_layers_from_matrices(std::size_t slots,
+                                                         BootstrapDftType type,
+                                                         double plain_scale_log2,
+                                                         const std::vector<std::size_t>& levels,
+                                                         double scaling_log2,
+                                                         std::vector<ComplexMatrix> matrices) {
+    if (matrices.empty()) {
+        matrices.push_back(identity_matrix(slots));
+    }
+    const std::size_t layer_count = matrices.size();
+    const double layer_scaling_log2 = scaling_log2 / static_cast<double>(layer_count);
+    const double layer_scale = std::exp2(layer_scaling_log2);
+
+    std::vector<BootstrapDftLayer> layers;
+    layers.reserve(matrices.size());
+    for (std::size_t i = 0; i < matrices.size(); ++i) {
+        const auto level_budget_index = levels[std::min(i, levels.size() - 1)];
+        layers.push_back(BootstrapDftLayer{
+            type == BootstrapDftType::HomomorphicDecode ? "small_slots4_coeff_to_slots" : "small_slots4_slots_to_coeffs",
+            DiagonalLinearTransform::from_matrix(scaled_matrix(std::move(matrices[i]), layer_scale)),
+            plain_scale_log2,
+            layer_scaling_log2,
+            level_budget_index
+        });
+    }
+    return layers;
+}
+
 } // namespace
 
 const char* to_string(BootstrapCircuitOrder order) noexcept {
@@ -312,6 +340,47 @@ BootstrapDftPlan make_bootstrap_dft_plan(std::size_t slots,
     plan.scaling_log2 = scaling_log2;
     plan.plain_scale_log2 = plain_scale_log2;
     plan.layers = make_layers(slots, type, plain_scale_log2, plan.levels, scaling_log2);
+    return plan;
+}
+
+BootstrapDftPlan make_small_slots4_stc_plan(double plain_scale_log2,
+                                            std::vector<std::size_t> levels,
+                                            double scaling_log2) {
+    constexpr std::size_t slots = 4;
+    validate_plan_inputs(slots, plain_scale_log2, levels, scaling_log2);
+    auto decode_layers = compose_adjacent_layers(factor_eval_layers(canonical_roots(slots)));
+    std::vector<ComplexMatrix> matrices;
+    matrices.reserve(decode_layers.size());
+    for (auto it = decode_layers.rbegin(); it != decode_layers.rend(); ++it) {
+        matrices.push_back(invert_matrix(*it));
+    }
+
+    BootstrapDftPlan plan;
+    plan.slots = slots;
+    plan.type = BootstrapDftType::HomomorphicEncode;
+    plan.levels = std::move(levels);
+    plan.scaling_log2 = scaling_log2;
+    plan.plain_scale_log2 = plain_scale_log2;
+    plan.layers = make_layers_from_matrices(
+        slots, plan.type, plain_scale_log2, plan.levels, scaling_log2, std::move(matrices));
+    return plan;
+}
+
+BootstrapDftPlan make_small_slots4_cts_plan(double plain_scale_log2,
+                                            std::vector<std::size_t> levels,
+                                            double scaling_log2) {
+    constexpr std::size_t slots = 4;
+    validate_plan_inputs(slots, plain_scale_log2, levels, scaling_log2);
+    auto matrices = compose_adjacent_layers(factor_eval_layers(canonical_roots(slots)));
+
+    BootstrapDftPlan plan;
+    plan.slots = slots;
+    plan.type = BootstrapDftType::HomomorphicDecode;
+    plan.levels = std::move(levels);
+    plan.scaling_log2 = scaling_log2;
+    plan.plain_scale_log2 = plain_scale_log2;
+    plan.layers = make_layers_from_matrices(
+        slots, plan.type, plain_scale_log2, plan.levels, scaling_log2, std::move(matrices));
     return plan;
 }
 

@@ -78,4 +78,12 @@ BootstrapDftPlan make_bootstrap_dft_plan(std::size_t slots,
                                          std::vector<std::size_t> levels = {1},
                                          double scaling_log2 = 0.0);
 
+BootstrapDftPlan make_small_slots4_stc_plan(double plain_scale_log2,
+                                            std::vector<std::size_t> levels = {1},
+                                            double scaling_log2 = 0.0);
+
+BootstrapDftPlan make_small_slots4_cts_plan(double plain_scale_log2,
+                                            std::vector<std::size_t> levels = {1},
+                                            double scaling_log2 = 0.0);
+
 } // namespace m2424
