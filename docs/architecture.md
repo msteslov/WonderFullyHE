@@ -162,6 +162,8 @@ FFT-like `CoeffToSlot` применяет попарное composition сосе�
 
 Для `EvalMod` default-полиномом остаётся `P3`, пока нормализованный вход удовлетворяет `|u| <= 2^-10`. На этом интервале математическая ошибка аппроксимации около `1e-14`, поэтому для target `1e-9` bottleneck находится в CKKS scale/noise и линейных трансформах, а не в степени полинома.
 
+Для экспериментального slots=4 precision path добавлен отдельный calibrated gate. Он считает recurrence `e_{k+1} <= A e_k + b` и проверяет, может ли rotation/key-switch noise попасть в budget до запуска EvalMod. Диагностический профиль `precision_boot_ultra_ckks_59` использует `scale = 2^59` и `14 * 60`-битную chain только для проверки гипотезы scale-limited noise; он не является финальным bootstrap profile. Фактическая проверка показала, что rotation noise на `2^59` падает ниже `1e-10`, но `SmallSlots4Butterfly` пока не становится лучшим DFT path: он семантически совпадает с reference STC/CTS, однако расходует больше rescale stages, и его encrypted roundtrip хуже `FftLike`/`DenseDiagonal`. Поэтому STC-first prototype не переключается на этот backend автоматически.
+
 ### Parameter planning
 
 Ручные профили не должны быть основным способом выбора параметров. Модуль `parameter_planner` строит профиль по требованиям:

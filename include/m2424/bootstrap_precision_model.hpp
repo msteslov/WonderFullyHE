@@ -18,6 +18,22 @@ struct BootstrapStageErrorBudget {
     double modraise_budget{};
 };
 
+struct BootstrapErrorRecurrence {
+    double target_total_error{};
+    std::size_t cycles{};
+    double amplification{};
+    double per_cycle_budget{};
+    double dft_roundtrip_budget{};
+    double rotation_budget{};
+};
+
+struct CalibratedRotationNoiseModel {
+    double measured_scale_log2{};
+    double measured_rotation_error{};
+    double target_rotation_error{};
+    double safety_bits{};
+};
+
 struct DftPrecisionMeasurement {
     std::string profile_name;
     std::size_t slots{};
@@ -71,6 +87,12 @@ struct BootstrapPrecisionPlanningResult {
 
 BootstrapStageErrorBudget make_bootstrap_error_budget(double target_total_error,
                                                       std::size_t cycles);
+
+BootstrapErrorRecurrence make_bootstrap_error_recurrence(double target_total_error,
+                                                        std::size_t cycles,
+                                                        double amplification);
+
+double required_ciphertext_scale_log2(const CalibratedRotationNoiseModel& model);
 
 DftPrecisionFit fit_dft_precision_floor(const std::vector<DftPrecisionMeasurement>& measurements,
                                         double target_roundtrip_error);

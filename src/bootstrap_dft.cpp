@@ -250,6 +250,8 @@ const char* to_string(BootstrapTransformBackend backend) noexcept {
         return "DenseDiagonal";
     case BootstrapTransformBackend::FftLike:
         return "FftLike";
+    case BootstrapTransformBackend::SmallSlots4Butterfly:
+        return "SmallSlots4Butterfly";
     }
     return "unknown";
 }
@@ -372,6 +374,47 @@ BootstrapDftPlan make_small_slots4_cts_plan(double plain_scale_log2,
     constexpr std::size_t slots = 4;
     validate_plan_inputs(slots, plain_scale_log2, levels, scaling_log2);
     auto matrices = compose_adjacent_layers(factor_eval_layers(canonical_roots(slots)));
+
+    BootstrapDftPlan plan;
+    plan.slots = slots;
+    plan.type = BootstrapDftType::HomomorphicDecode;
+    plan.levels = std::move(levels);
+    plan.scaling_log2 = scaling_log2;
+    plan.plain_scale_log2 = plain_scale_log2;
+    plan.layers = make_layers_from_matrices(
+        slots, plan.type, plain_scale_log2, plan.levels, scaling_log2, std::move(matrices));
+    return plan;
+}
+
+BootstrapDftPlan make_small_slots4_butterfly_stc_plan(double plain_scale_log2,
+                                                      std::vector<std::size_t> levels,
+                                                      double scaling_log2) {
+    constexpr std::size_t slots = 4;
+    validate_plan_inputs(slots, plain_scale_log2, levels, scaling_log2);
+    auto decode_layers = factor_eval_layers(canonical_roots(slots));
+    std::vector<ComplexMatrix> matrices;
+    matrices.reserve(decode_layers.size());
+    for (auto it = decode_layers.rbegin(); it != decode_layers.rend(); ++it) {
+        matrices.push_back(invert_matrix(*it));
+    }
+
+    BootstrapDftPlan plan;
+    plan.slots = slots;
+    plan.type = BootstrapDftType::HomomorphicEncode;
+    plan.levels = std::move(levels);
+    plan.scaling_log2 = scaling_log2;
+    plan.plain_scale_log2 = plain_scale_log2;
+    plan.layers = make_layers_from_matrices(
+        slots, plan.type, plain_scale_log2, plan.levels, scaling_log2, std::move(matrices));
+    return plan;
+}
+
+BootstrapDftPlan make_small_slots4_butterfly_cts_plan(double plain_scale_log2,
+                                                      std::vector<std::size_t> levels,
+                                                      double scaling_log2) {
+    constexpr std::size_t slots = 4;
+    validate_plan_inputs(slots, plain_scale_log2, levels, scaling_log2);
+    auto matrices = factor_eval_layers(canonical_roots(slots));
 
     BootstrapDftPlan plan;
     plan.slots = slots;

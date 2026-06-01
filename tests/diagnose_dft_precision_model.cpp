@@ -3,10 +3,12 @@
 #include "m2424/seal_adapter.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <exception>
 #include <numeric>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -14,8 +16,15 @@ namespace {
 
 constexpr std::size_t kSlots = 4;
 constexpr double kAmplitude = 1e-5;
+constexpr double kPlainScaleLog2 = 59.0;
 constexpr double kTargetRoundtripError = 2e-10;
-constexpr const char* kProfileName = "precision_boot_deep_ckks";
+
+struct PlanCost {
+    std::size_t rotation_count{};
+    std::size_t plaintext_multiplication_count{};
+    std::size_t addition_count{};
+    std::size_t rescale_count{};
+};
 
 m2424::ComplexVector make_expected() {
     m2424::ComplexVector expected;
@@ -51,6 +60,50 @@ double decoded_error(m2424::SealAdapter& adapter,
     return max_error(expected, head(adapter.decode_complex(adapter.decrypt(cipher))));
 }
 
+m2424::BootstrapDftPlan make_dense_plan(m2424::BootstrapDftType type, double plain_scale_log2) {
+    m2424::BootstrapDftPlan plan;
+    plan.slots = kSlots;
+    plan.type = type;
+    plan.levels = {1};
+    plan.plain_scale_log2 = plain_scale_log2;
+    plan.scaling_log2 = 0.0;
+    const auto matrix = type == m2424::BootstrapDftType::HomomorphicDecode
+        ? m2424::canonical_embedding_matrix(kSlots)
+        : m2424::invert_matrix(m2424::canonical_embedding_matrix(kSlots));
+    plan.layers.push_back(m2424::BootstrapDftLayer{
+        type == m2424::BootstrapDftType::HomomorphicDecode ? "dense_coeff_to_slots" : "dense_slots_to_coeffs",
+        m2424::DiagonalLinearTransform::from_matrix(matrix),
+        plain_scale_log2,
+        0.0,
+        1
+    });
+    return plan;
+}
+
+m2424::FactorizedLinearTransform make_stc(const std::string& backend) {
+    if (backend == "FftLike") {
+        return m2424::FactorizedLinearTransform(m2424::make_bootstrap_dft_plan(
+            kSlots, m2424::BootstrapDftType::HomomorphicEncode, kPlainScaleLog2));
+    }
+    if (backend == "DenseDiagonal") {
+        return m2424::FactorizedLinearTransform(make_dense_plan(
+            m2424::BootstrapDftType::HomomorphicEncode, kPlainScaleLog2));
+    }
+    return m2424::FactorizedLinearTransform(m2424::make_small_slots4_butterfly_stc_plan(kPlainScaleLog2));
+}
+
+m2424::FactorizedLinearTransform make_cts(const std::string& backend) {
+    if (backend == "FftLike") {
+        return m2424::FactorizedLinearTransform(m2424::make_bootstrap_dft_plan(
+            kSlots, m2424::BootstrapDftType::HomomorphicDecode, kPlainScaleLog2));
+    }
+    if (backend == "DenseDiagonal") {
+        return m2424::FactorizedLinearTransform(make_dense_plan(
+            m2424::BootstrapDftType::HomomorphicDecode, kPlainScaleLog2));
+    }
+    return m2424::FactorizedLinearTransform(m2424::make_small_slots4_butterfly_cts_plan(kPlainScaleLog2));
+}
+
 std::vector<int> merged_steps(const m2424::FactorizedLinearTransform& a,
                               const m2424::FactorizedLinearTransform& b) {
     auto steps = a.rotation_steps();
@@ -61,22 +114,27 @@ std::vector<int> merged_steps(const m2424::FactorizedLinearTransform& a,
     return steps;
 }
 
-void print_steps(const char* label, const std::vector<int>& steps) {
-    std::printf("[diagnose_dft_precision_model] %s=", label);
+PlanCost cost_of(const m2424::FactorizedLinearTransform& stc,
+                 const m2424::FactorizedLinearTransform& cts) {
+    PlanCost cost;
+    cost.rotation_count = merged_steps(stc, cts).size();
+    for (const auto* plan : {&stc.plan(), &cts.plan()}) {
+        for (const auto& layer : plan->layers) {
+            const auto terms = layer.transform.terms().size();
+            cost.plaintext_multiplication_count += terms;
+            cost.addition_count += terms == 0 ? 0 : terms - 1;
+            cost.rescale_count += 1;
+        }
+    }
+    return cost;
+}
+
+void print_steps(const char* backend, const char* label, const std::vector<int>& steps) {
+    std::printf("[diagnose_dft_precision_model] backend=%s %s=", backend, label);
     for (std::size_t i = 0; i < steps.size(); ++i) {
         std::printf("%s%d", i == 0 ? "" : ",", steps[i]);
     }
     std::printf("\n");
-}
-
-void print_cost(const char* label, const m2424::BootstrapDftCost& cost) {
-    std::printf("[diagnose_dft_precision_model] cost=%s layers=%zu diagonal_terms=%zu rotations=%zu plaintext_muls=%zu rescales=%zu\n",
-                label,
-                cost.layer_count,
-                cost.diagonal_term_count,
-                cost.rotation_count,
-                cost.plaintext_multiplication_count,
-                cost.rescale_count);
 }
 
 } // namespace
@@ -84,106 +142,96 @@ void print_cost(const char* label, const m2424::BootstrapDftCost& cost) {
 int main() {
     try {
         const auto expected = make_expected();
-        const auto profile = m2424::profiles::precision_boot_deep_ckks();
-        const auto total_bits = std::accumulate(profile.coeff_modulus_bits.begin(),
-                                                profile.coeff_modulus_bits.end(),
-                                                0);
-        (void)total_bits;
+        const auto profile = m2424::profiles::precision_boot_ultra_ckks_59();
+        const auto ref_stc = m2424::FactorizedLinearTransform(m2424::make_bootstrap_dft_plan(
+            kSlots, m2424::BootstrapDftType::HomomorphicEncode, kPlainScaleLog2));
+        const auto ref_cts = m2424::FactorizedLinearTransform(m2424::make_bootstrap_dft_plan(
+            kSlots, m2424::BootstrapDftType::HomomorphicDecode, kPlainScaleLog2));
+        const auto ref_stc_expected = ref_stc.apply_plain(expected);
+        const auto ref_cts_expected = ref_cts.apply_plain(ref_stc_expected);
+        std::string best_backend;
+        double best_roundtrip_error = std::numeric_limits<double>::infinity();
+        double small_slots4_roundtrip_error = std::numeric_limits<double>::infinity();
+        bool small_slots4_semantic_ok = false;
 
-        const auto run_mode = [&](const char* mode, bool small_slots4) {
-        std::vector<m2424::DftPrecisionMeasurement> measurements;
-        for (double plain_scale_log2 : {50.0, 55.0, 60.0}) {
-            auto slot_to_coeff = m2424::FactorizedLinearTransform(
-                small_slots4
-                    ? m2424::make_small_slots4_stc_plan(plain_scale_log2)
-                    : m2424::make_bootstrap_dft_plan(
-                        kSlots, m2424::BootstrapDftType::HomomorphicEncode, plain_scale_log2));
-            auto coeff_to_slot = m2424::FactorizedLinearTransform(
-                small_slots4
-                    ? m2424::make_small_slots4_cts_plan(plain_scale_log2)
-                    : m2424::make_bootstrap_dft_plan(
-                        kSlots, m2424::BootstrapDftType::HomomorphicDecode, plain_scale_log2));
-            const auto plain_coeff = slot_to_coeff.apply_plain(expected);
-            const auto rotations = merged_steps(slot_to_coeff, coeff_to_slot);
+        for (const std::string backend : {"FftLike", "DenseDiagonal", "SmallSlots4Butterfly"}) {
+            auto stc = make_stc(backend);
+            auto cts = make_cts(backend);
+            const auto rotations = merged_steps(stc, cts);
+            const auto cost = cost_of(stc, cts);
+            print_steps(backend.c_str(), "slot_to_coeff_rotation_steps", stc.rotation_steps());
+            print_steps(backend.c_str(), "coeff_to_slot_rotation_steps", cts.rotation_steps());
 
-            if (plain_scale_log2 == 50.0) {
-                std::printf("[diagnose_dft_precision_model] mode=%s\n", mode);
-                print_steps("slot_to_coeff_rotation_steps", slot_to_coeff.rotation_steps());
-                print_steps("coeff_to_slot_rotation_steps", coeff_to_slot.rotation_steps());
-                if (!small_slots4) {
-                    print_cost("slot_to_coeff",
-                               m2424::estimate_bootstrap_dft_cost(kSlots,
-                                                                  m2424::BootstrapDftType::HomomorphicEncode,
-                                                                  plain_scale_log2));
-                    print_cost("coeff_to_slot",
-                               m2424::estimate_bootstrap_dft_cost(kSlots,
-                                                                  m2424::BootstrapDftType::HomomorphicDecode,
-                                                                  plain_scale_log2));
-                }
-            }
+            const auto plain_stc = stc.apply_plain(expected);
+            const auto plain_cts = cts.apply_plain(ref_stc_expected);
+            const double plain_stc_reference_error = max_error(ref_stc_expected, plain_stc);
+            const double plain_cts_reference_error = max_error(ref_cts_expected, plain_cts);
+            const bool semantic_ok = plain_stc_reference_error <= 1e-12 && plain_cts_reference_error <= 1e-12;
 
             auto adapter = m2424::SealAdapter::create(profile);
             adapter.keygen(rotations, true);
-
+            const auto start = std::chrono::steady_clock::now();
             const auto encrypted = adapter.encrypt(adapter.encode_complex(expected));
             const auto input_info = adapter.info(encrypted);
             const double baseline_error = decoded_error(adapter, encrypted, expected);
 
-            const auto encrypted_coeff = slot_to_coeff.apply(adapter, encrypted);
-            const auto coeff_info = adapter.info(encrypted_coeff);
-            const double stc_error = decoded_error(adapter, encrypted_coeff, plain_coeff);
+            const auto encrypted_stc = stc.apply(adapter, encrypted);
+            const auto stc_info = adapter.info(encrypted_stc);
+            const double encrypted_stc_error = decoded_error(adapter, encrypted_stc, ref_stc_expected);
 
-            const auto encrypted_roundtrip = coeff_to_slot.apply(adapter, encrypted_coeff);
+            const auto encrypted_cts_reference_input = adapter.encrypt(adapter.encode_complex(ref_stc_expected));
+            const auto encrypted_cts_reference = cts.apply(adapter, encrypted_cts_reference_input);
+            const double encrypted_cts_error = decoded_error(adapter, encrypted_cts_reference, ref_cts_expected);
+
+            const auto encrypted_roundtrip = cts.apply(adapter, encrypted_stc);
             const auto output_info = adapter.info(encrypted_roundtrip);
             const double roundtrip_error = decoded_error(adapter, encrypted_roundtrip, expected);
+            const auto finish = std::chrono::steady_clock::now();
+            const double runtime_ms = std::chrono::duration<double, std::milli>(finish - start).count();
 
-            m2424::DftPrecisionMeasurement measurement;
-            measurement.profile_name = kProfileName;
-            measurement.slots = kSlots;
-            measurement.ciphertext_scale_log2 = std::log2(input_info.scale);
-            measurement.transform_plain_scale_log2 = plain_scale_log2;
-            measurement.rotation_count = rotations.size();
-            measurement.input_chain_index = input_info.chain_index;
-            measurement.output_chain_index = output_info.chain_index;
-            measurement.consumed_levels = input_info.chain_index >= output_info.chain_index
-                ? input_info.chain_index - output_info.chain_index
-                : 0;
-            measurement.baseline_error = baseline_error;
-            measurement.slot_to_coeff_error = stc_error;
-            measurement.roundtrip_error = roundtrip_error;
-            measurements.push_back(measurement);
-
-            std::printf("[diagnose_dft_precision_model] mode=%s profile=%s slots=%zu ciphertext_scale_log2=%.6f transform_plain_scale_log2=%.0f rotation_count=%zu baseline_error=%.12e slot_to_coeff_error=%.12e roundtrip_error=%.12e input_chain=%zu output_chain=%zu consumed_levels=%zu status=%s\n",
-                        mode,
-                        measurement.profile_name.c_str(),
-                        measurement.slots,
-                        measurement.ciphertext_scale_log2,
-                        measurement.transform_plain_scale_log2,
-                        measurement.rotation_count,
-                        measurement.baseline_error,
-                        measurement.slot_to_coeff_error,
-                        measurement.roundtrip_error,
-                        measurement.input_chain_index,
-                        measurement.output_chain_index,
-                        measurement.consumed_levels,
-                        measurement.roundtrip_error <= kTargetRoundtripError ? "PASS" : "BLOCKED");
-            (void)coeff_info;
+            const bool pass = semantic_ok && roundtrip_error <= kTargetRoundtripError;
+            if (roundtrip_error < best_roundtrip_error) {
+                best_roundtrip_error = roundtrip_error;
+                best_backend = backend;
+            }
+            if (backend == "SmallSlots4Butterfly") {
+                small_slots4_roundtrip_error = roundtrip_error;
+                small_slots4_semantic_ok = semantic_ok;
+            }
+            std::printf("[diagnose_dft_precision_model] backend=%s profile=precision_boot_ultra_ckks_59 ciphertext_scale_log2=%.6f transform_plain_scale_log2=%.0f baseline_error=%.12e plain_stc_reference_error=%.12e plain_cts_reference_error=%.12e encrypted_stc_error=%.12e encrypted_cts_error=%.12e roundtrip_error=%.12e rotation_count=%zu plaintext_muls=%zu additions=%zu rescales=%zu input_chain=%zu stc_chain=%zu output_chain=%zu consumed_levels=%zu input_scale_log2=%.6f output_scale_log2=%.6f runtime_ms=%.3f status=%s\n",
+                        backend.c_str(),
+                        std::log2(input_info.scale),
+                        kPlainScaleLog2,
+                        baseline_error,
+                        plain_stc_reference_error,
+                        plain_cts_reference_error,
+                        encrypted_stc_error,
+                        encrypted_cts_error,
+                        roundtrip_error,
+                        cost.rotation_count,
+                        cost.plaintext_multiplication_count,
+                        cost.addition_count,
+                        cost.rescale_count,
+                        input_info.chain_index,
+                        stc_info.chain_index,
+                        output_info.chain_index,
+                        input_info.chain_index >= output_info.chain_index ? input_info.chain_index - output_info.chain_index : 0,
+                        std::log2(input_info.scale),
+                        std::log2(output_info.scale),
+                        runtime_ms,
+                        pass ? "PASS" : (semantic_ok ? "BLOCKED" : "SEMANTIC_FAIL"));
         }
-
-        const auto fit = m2424::fit_dft_precision_floor(measurements, kTargetRoundtripError);
-        std::printf("[diagnose_dft_precision_model] mode=%s fit A=%.12e noise_floor=%.12e predicted_best_error=%.12e best_plain_scale_log2=%.0f target_roundtrip_error=%.12e floor_blocks_target=%s blocker=%s\n",
-                    mode,
-                    fit.quantization_coefficient,
-                    fit.noise_floor,
-                    fit.predicted_best_error,
-                    fit.best_plain_scale_log2,
+        const bool small_slots4_pass = small_slots4_semantic_ok && small_slots4_roundtrip_error <= kTargetRoundtripError;
+        std::printf("[diagnose_dft_precision_model] summary target_roundtrip_error=%.12e best_backend=%s best_roundtrip_error=%.12e small_slots4_roundtrip_error=%.12e small_slots4_semantic_ok=%s phase5_status=%s%s\n",
                     kTargetRoundtripError,
-                    fit.floor_blocks_target ? "true" : "false",
-                    fit.blocker.c_str());
-        };
-
-        run_mode("standard", false);
-        run_mode("small_slots4", true);
+                    best_backend.c_str(),
+                    best_roundtrip_error,
+                    small_slots4_roundtrip_error,
+                    small_slots4_semantic_ok ? "true" : "false",
+                    small_slots4_pass && best_backend == "SmallSlots4Butterfly" ? "PASS" : "BLOCKED",
+                    small_slots4_pass && best_backend == "SmallSlots4Butterfly"
+                        ? ""
+                        : " blocker=SmallSlots4Butterfly is semantically equivalent but is not the lowest-error DFT path; stop before bootstrap integration.");
         return 0;
     } catch (const std::exception& error) {
         std::printf("[diagnose_dft_precision_model] FAIL: %s\n", error.what());

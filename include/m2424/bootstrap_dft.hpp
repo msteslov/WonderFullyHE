@@ -16,7 +16,8 @@ enum class BootstrapCircuitOrder {
 
 enum class BootstrapTransformBackend {
     DenseDiagonal,
-    FftLike
+    FftLike,
+    SmallSlots4Butterfly
 };
 
 enum class BootstrapDftType {
@@ -85,5 +86,13 @@ BootstrapDftPlan make_small_slots4_stc_plan(double plain_scale_log2,
 BootstrapDftPlan make_small_slots4_cts_plan(double plain_scale_log2,
                                             std::vector<std::size_t> levels = {1},
                                             double scaling_log2 = 0.0);
+
+BootstrapDftPlan make_small_slots4_butterfly_stc_plan(double plain_scale_log2,
+                                                      std::vector<std::size_t> levels = {1},
+                                                      double scaling_log2 = 0.0);
+
+BootstrapDftPlan make_small_slots4_butterfly_cts_plan(double plain_scale_log2,
+                                                      std::vector<std::size_t> levels = {1},
+                                                      double scaling_log2 = 0.0);
 
 } // namespace m2424

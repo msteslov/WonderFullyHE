@@ -72,6 +72,23 @@ scale_log2 = 50
 
 Главное правило: `scale_log2` должен быть согласован с битностью рабочих модулей. Длина chain задаёт доступную глубину, но сама по себе не улучшает точность фиксированной операции.
 
+Для bootstrapping этого правила недостаточно. Refresh-круг должен проходить error recurrence:
+
+```text
+e_{k+1} <= A * e_k + b
+```
+
+Для `target_total_error = 1e-9`, `cycles = 3`, `A = 1.2` допустимый per-cycle вклад находится около `2e-10..3e-10`, DFT roundtrip budget — около `1e-10..2e-10`, а один rotation/key-switch должен быть порядка `2e-11..5e-11`. Поэтому обычная модель `work_bits = result_bits + calibrated_loss_bits` применима к leveled CKKS arithmetic, но не доказывает bootstrapping precision.
+
+Текущий calibrated scale check использует формулу:
+
+```text
+required_scale_log2 =
+    measured_scale_log2 + log2(measured_error / target_error) + safety_bits
+```
+
+Измерение `precision_boot_deep_ckks` при `scale = 2^50` давало worst rotation/key-switch около `7e-9`; для целевого rotation budget `3e-11` и safety `1.5` модель требует масштаб около `2^59.4`. Профиль `precision_boot_ultra_ckks_59` добавлен только как diagnostic profile для проверки этой scale/noise модели: `N = 32768`, `14 * 60` bits, `scale = 2^59`, `slots = 16384`. Это не финальный production/bootstrap profile; если gates проходят, финальный segmented bootstrap layout должен выводиться отдельно через layout planner.
+
 ## Цепочка модулей
 
 Быстрый профиль:

@@ -45,6 +45,8 @@ WonderFullyHE — учебно-исследовательский прототи
 - Benchmark `bench_parameter_planner` для проверки выбранных planner-ом профилей на реальном SEAL-прогоне.
 - Benchmark строительных блоков bootstrapping: plaintext multiplication, linear transform, slot summation, polynomial evaluation.
 - Benchmark параллельной обработки независимых ciphertext с разделением setup/runtime.
+- Calibrated bootstrap precision model: recurrence `e_{k+1} <= A e_k + b`, rotation scale model и diagnostic profile `precision_boot_ultra_ckks_59` для проверки `scale = 2^59` на Microsoft SEAL.
+- Manual diagnostics для slots=4 DFT precision: `precision_boot_ultra_ckks_59` снижает rotation/key-switch noise ниже `1e-10`, а current `FftLike`/`DenseDiagonal` DFT roundtrip проходит `2e-10` gate в диагностическом прогоне. `SmallSlots4Butterfly` семантически совпадает с reference STC/CTS, но не выбран для refresh, потому что его больший rescale depth даёт худшую encrypted roundtrip error.
 - Security report по CKKS-профилям относительно лимитов Microsoft SEAL `tc128`, `tc192` и `tc256`.
 - CMake alias target `m2424::m2424` для подключения библиотеки через `add_subdirectory`.
 - CMake-сборка, smoke-тесты, GitLab CI и GitHub Actions CI.
@@ -54,7 +56,7 @@ WonderFullyHE — учебно-исследовательский прототи
 - Расширение калибровочной модели `ops_profile -> calibrated_loss_bits`; для target `1e-9` текущий быстрый ориентир — 45-битные рабочие модули при `scale_log2 = 45`.
 - `BootstrapPlanner` как обязательный gate перед refresh: проверка уровней, scale, period window, EvalMod interval и error budget до ciphertext-прогона.
 - Factorized FFT-like backend для `CoeffToSlot/SlotToCoeff`; текущий dense diagonal backend остаётся reference для малых `slots`.
-- Довести `SlotsToCoeffsFirst` от guarded refresh до полноценного level-refresh: сейчас путь сохраняет значение, проходит `EvalMod P3` на `boot_deep_ckks` и поддерживает повторные циклы; для `slots=16` остаток после круга поднят примерно до `8` уровней, следующий фокус — заменить текущий modular-reduction/rounding path, потому что простое увеличение modulus bits до 57 не снижает ошибку ниже `1e-5`.
+- Довести `SlotsToCoeffsFirst` от guarded refresh до полноценного level-refresh: сейчас путь сохраняет значение, проходит `EvalMod P3` на `boot_deep_ckks` и поддерживает повторные циклы; для `slots=4` следующий gate — перенос successful DFT precision result в refresh path без переключения на `SmallSlots4Butterfly`, пока этот backend не станет lowest-error candidate.
 - Следующий blocker: сырой `post_refresh_mod_raise` поднимает chain, но нарушает tolerance, поэтому нужен корректный output scaling/denormalization перед post-raise, а не простой structural raise.
 - Оптимизация rotation keys, BSGS/hoisting и кеширования plaintext-диагоналей.
 
@@ -63,4 +65,5 @@ WonderFullyHE — учебно-исследовательский прототи
 - ABFT-модуль контролирует вычислительную согласованность, но не заменяет криптографическую аутентификацию результата.
 - Для реального внешнего применения требуется отдельное управление ключами, формат обмена данными и анализ side-channel рисков.
 - Full bootstrapping пока не является стабильным API: текущий код имеет stage-by-stage gates и oracle-harness, но не гарантирует бесконечное число операций с ошибкой `1e-9`.
+- `precision_boot_ultra_ckks_59` является diagnostic scale/noise profile, а не production bootstrap profile. Финальный профиль должен выводиться из segmented bootstrap layout после прохождения DFT, ModRaise, EvalMod и multi-cycle gates.
 - Повышать степень `EvalMod` выше `P3` не является текущим способом улучшить точность: при `|u| <= 2^-10` ошибка `P3` уже меньше целевого порога, а bottleneck находится в scale/noise/transforms.

@@ -1,4 +1,5 @@
 #include "m2424/bootstrap_dft.hpp"
+#include "m2424/bootstrap_precision_model.hpp"
 #include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
 
@@ -6,7 +7,9 @@
 #include <cmath>
 #include <cstdio>
 #include <exception>
+#include <numeric>
 #include <set>
+#include <string>
 #include <vector>
 
 namespace {
@@ -14,6 +17,9 @@ namespace {
 constexpr std::size_t kSlots = 4;
 constexpr double kAmplitude = 1e-5;
 constexpr double kPlainScaleLog2 = 60.0;
+constexpr double kMeasuredScaleLog2 = 50.0;
+constexpr double kMeasuredWorstRotationError = 7.1e-9;
+constexpr double kTargetRotationError = 1e-10;
 
 m2424::ComplexVector make_expected() {
     m2424::ComplexVector expected;
@@ -80,62 +86,104 @@ std::vector<int> required_steps() {
     return {steps.begin(), steps.end()};
 }
 
+std::size_t total_bits(const m2424::CkksProfile& profile) {
+    return static_cast<std::size_t>(std::accumulate(
+        profile.coeff_modulus_bits.begin(), profile.coeff_modulus_bits.end(), 0));
+}
+
+double predicted_rotation_error(double scale_log2) {
+    return kMeasuredWorstRotationError * std::exp2(kMeasuredScaleLog2 - scale_log2);
+}
+
+void run_profile(const char* profile_name, const m2424::CkksProfile& profile) {
+    const auto expected = make_expected();
+    const auto steps = required_steps();
+    auto adapter = m2424::SealAdapter::create(profile);
+    adapter.keygen(steps, true);
+
+    const auto encrypted = adapter.encrypt(adapter.encode_complex(expected));
+    const auto input_info = adapter.info(encrypted);
+    const double baseline_error = decoded_error(adapter, encrypted, expected);
+
+    double worst_rotate_error = 0.0;
+    double worst_rotate_back_error = 0.0;
+    for (int step : steps) {
+        const auto rotated = adapter.rotate(encrypted, step);
+        const auto expected_rotated = rotate_plain_head(expected, step);
+        const double rotate_error = decoded_error(adapter, rotated, expected_rotated);
+        const auto roundtrip = adapter.rotate(rotated, -step);
+        const double rotate_back_error = decoded_error(adapter, roundtrip, expected);
+        worst_rotate_error = std::max(worst_rotate_error, rotate_error);
+        worst_rotate_back_error = std::max(worst_rotate_back_error, rotate_back_error);
+        const auto rotated_info = adapter.info(rotated);
+        const auto roundtrip_info = adapter.info(roundtrip);
+        std::printf("[diagnose_rotation_noise_floor] profile=%s step=%d rotate_chain=%zu rotate_scale_log2=%.6f rotate_error=%.12e roundtrip_chain=%zu roundtrip_scale_log2=%.6f rotate_back_error=%.12e\n",
+                    profile_name,
+                    step,
+                    rotated_info.chain_index,
+                    std::log2(rotated_info.scale),
+                    rotate_error,
+                    roundtrip_info.chain_index,
+                    std::log2(roundtrip_info.scale),
+                    rotate_back_error);
+    }
+
+    const double predicted = predicted_rotation_error(std::log2(input_info.scale));
+    const double ratio = predicted > 0.0 ? worst_rotate_error / predicted : 0.0;
+    const bool pass = worst_rotate_error <= kTargetRotationError;
+    std::printf("[diagnose_rotation_noise_floor] profile=%s total_coeff_modulus_bits=%zu ciphertext_scale_log2=%.6f baseline_error=%.12e worst_rotate_error=%.12e worst_rotate_back_error=%.12e predicted_worst_rotate_error=%.12e measured_predicted_ratio=%.6f status=%s%s\n",
+                profile_name,
+                total_bits(profile),
+                std::log2(input_info.scale),
+                baseline_error,
+                worst_rotate_error,
+                worst_rotate_back_error,
+                predicted,
+                ratio,
+                pass ? "PASS" : "BLOCKED",
+                pass ? "" : " blocker=rotation/key-switch noise is not decode-scale-limited in current SEAL setup; current target is blocked by key-switch noise.");
+
+    if (!steps.empty()) {
+        const int step = steps.front();
+        auto current = encrypted;
+        auto expected_current = expected;
+        for (std::size_t count : {1UL, 2UL, 4UL}) {
+            current = encrypted;
+            expected_current = expected;
+            for (std::size_t i = 0; i < count; ++i) {
+                current = adapter.rotate(current, step);
+                expected_current = rotate_plain_head(expected_current, step);
+            }
+            const auto info = adapter.info(current);
+            std::printf("[diagnose_rotation_noise_floor] profile=%s repeated_step=%d count=%zu chain_index=%zu scale_log2=%.6f max_error=%.12e\n",
+                        profile_name,
+                        step,
+                        count,
+                        info.chain_index,
+                        std::log2(info.scale),
+                        decoded_error(adapter, current, expected_current));
+        }
+    }
+}
+
 } // namespace
 
 int main() {
     try {
-        const auto expected = make_expected();
-        const auto profile = m2424::profiles::precision_boot_deep_ckks();
-        const auto steps = required_steps();
-        auto adapter = m2424::SealAdapter::create(profile);
-        adapter.keygen(steps, true);
-
-        const auto encrypted = adapter.encrypt(adapter.encode_complex(expected));
-        const auto input_info = adapter.info(encrypted);
-        const double baseline_error = decoded_error(adapter, encrypted, expected);
-        std::printf("[diagnose_rotation_noise_floor] stage=baseline chain_index=%zu scale_log2=%.6f max_error=%.12e\n",
-                    input_info.chain_index,
-                    std::log2(input_info.scale),
-                    baseline_error);
-
-        for (int step : steps) {
-            const auto rotated = adapter.rotate(encrypted, step);
-            const auto rotated_info = adapter.info(rotated);
-            const auto expected_rotated = rotate_plain_head(expected, step);
-            const double rotate_error = decoded_error(adapter, rotated, expected_rotated);
-            const auto roundtrip = adapter.rotate(rotated, -step);
-            const auto roundtrip_info = adapter.info(roundtrip);
-            const double roundtrip_error = decoded_error(adapter, roundtrip, expected);
-            std::printf("[diagnose_rotation_noise_floor] step=%d rotate_chain=%zu rotate_scale_log2=%.6f rotate_error=%.12e roundtrip_chain=%zu roundtrip_scale_log2=%.6f rotate_back_error=%.12e\n",
-                        step,
-                        rotated_info.chain_index,
-                        std::log2(rotated_info.scale),
-                        rotate_error,
-                        roundtrip_info.chain_index,
-                        std::log2(roundtrip_info.scale),
-                        roundtrip_error);
-        }
-
-        if (!steps.empty()) {
-            const int step = steps.front();
-            auto current = encrypted;
-            auto expected_current = expected;
-            for (std::size_t count : {1UL, 2UL, 4UL}) {
-                current = encrypted;
-                expected_current = expected;
-                for (std::size_t i = 0; i < count; ++i) {
-                    current = adapter.rotate(current, step);
-                    expected_current = rotate_plain_head(expected_current, step);
-                }
-                const auto info = adapter.info(current);
-                std::printf("[diagnose_rotation_noise_floor] repeated_step=%d count=%zu chain_index=%zu scale_log2=%.6f max_error=%.12e\n",
-                            step,
-                            count,
-                            info.chain_index,
-                            std::log2(info.scale),
-                            decoded_error(adapter, current, expected_current));
-            }
-        }
+        const m2424::CalibratedRotationNoiseModel model{
+            kMeasuredScaleLog2,
+            kMeasuredWorstRotationError,
+            3e-11,
+            1.5
+        };
+        std::printf("[diagnose_rotation_noise_floor] required_ciphertext_scale_log2=%.6f measured_scale_log2=%.6f measured_rotation_error=%.12e target_rotation_error=%.12e safety_bits=%.6f\n",
+                    m2424::required_ciphertext_scale_log2(model),
+                    model.measured_scale_log2,
+                    model.measured_rotation_error,
+                    model.target_rotation_error,
+                    model.safety_bits);
+        run_profile("precision_boot_deep_ckks", m2424::profiles::precision_boot_deep_ckks());
+        run_profile("precision_boot_ultra_ckks_59", m2424::profiles::precision_boot_ultra_ckks_59());
         return 0;
     } catch (const std::exception& error) {
         std::printf("[diagnose_rotation_noise_floor] FAIL: %s\n", error.what());

@@ -61,6 +61,49 @@ BootstrapStageErrorBudget make_bootstrap_error_budget(double target_total_error,
     return budget;
 }
 
+BootstrapErrorRecurrence make_bootstrap_error_recurrence(double target_total_error,
+                                                        std::size_t cycles,
+                                                        double amplification) {
+    validate_positive_finite(target_total_error, "target_total_error");
+    validate_positive_finite(amplification, "amplification");
+    if (cycles == 0) {
+        throw std::invalid_argument("cycles must be positive");
+    }
+
+    double accumulated_amplification = 0.0;
+    double factor = 1.0;
+    for (std::size_t i = 0; i < cycles; ++i) {
+        accumulated_amplification += factor;
+        factor *= amplification;
+    }
+    if (!std::isfinite(accumulated_amplification) || accumulated_amplification <= 0.0) {
+        throw std::runtime_error("bootstrap recurrence amplification is not finite");
+    }
+
+    BootstrapErrorRecurrence recurrence;
+    recurrence.target_total_error = target_total_error;
+    recurrence.cycles = cycles;
+    recurrence.amplification = amplification;
+    recurrence.per_cycle_budget = target_total_error / accumulated_amplification;
+    recurrence.dft_roundtrip_budget = recurrence.per_cycle_budget * 0.5;
+    recurrence.rotation_budget = recurrence.dft_roundtrip_budget * 0.25;
+    return recurrence;
+}
+
+double required_ciphertext_scale_log2(const CalibratedRotationNoiseModel& model) {
+    validate_positive_finite(model.measured_rotation_error, "measured_rotation_error");
+    validate_positive_finite(model.target_rotation_error, "target_rotation_error");
+    if (!std::isfinite(model.measured_scale_log2)) {
+        throw std::invalid_argument("measured_scale_log2 must be finite");
+    }
+    if (!std::isfinite(model.safety_bits) || model.safety_bits < 0.0) {
+        throw std::invalid_argument("safety_bits must be non-negative and finite");
+    }
+    return model.measured_scale_log2
+        + std::log2(model.measured_rotation_error / model.target_rotation_error)
+        + model.safety_bits;
+}
+
 DftPrecisionFit fit_dft_precision_floor(const std::vector<DftPrecisionMeasurement>& measurements,
                                         double target_roundtrip_error) {
     validate_positive_finite(target_roundtrip_error, "target_roundtrip_error");

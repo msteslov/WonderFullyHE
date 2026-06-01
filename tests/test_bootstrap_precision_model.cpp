@@ -38,6 +38,24 @@ int main() {
     }
     ok = ok && threw;
 
+    const auto recurrence = m2424::make_bootstrap_error_recurrence(1e-9, 3, 1.2);
+    ok = ok && recurrence.cycles == 3;
+    ok = ok && near(recurrence.amplification, 1.2, 1e-15);
+    ok = ok && recurrence.per_cycle_budget > 2e-10 && recurrence.per_cycle_budget < 3e-10;
+    ok = ok && recurrence.dft_roundtrip_budget > 1e-10 && recurrence.dft_roundtrip_budget < 2e-10;
+    ok = ok && recurrence.rotation_budget > 2e-11 && recurrence.rotation_budget < 5e-11;
+    ok = ok && recurrence.rotation_budget < recurrence.dft_roundtrip_budget;
+
+    const m2424::CalibratedRotationNoiseModel rotation_model{
+        50.0,
+        7.1e-9,
+        3e-11,
+        1.5
+    };
+    const double required_scale = m2424::required_ciphertext_scale_log2(rotation_model);
+    ok = ok && required_scale > 59.0 && required_scale < 60.5;
+    ok = ok && required_scale > 50.0;
+
     const std::vector<m2424::DftPrecisionMeasurement> current_measurements{
         {"precision_boot_deep_ckks", 4, 50.0, 50.0, 2, 15, 12, 3, 1.97e-11, 3.07e-9, 1.79e-8},
         {"precision_boot_deep_ckks", 4, 50.0, 55.0, 2, 15, 12, 3, 1.10e-11, 1.28e-9, 2.52e-9},
@@ -67,6 +85,7 @@ int main() {
     ok = ok && !planning.feasible;
     ok = ok && planning.dft_fit.floor_blocks_target;
     ok = ok && !planning.blocker.empty();
+    ok = ok && std::log2(request.candidate_profiles.front().scale) < required_scale;
 
     const m2424::ComplexVector sample{
         {1e-5, -2e-6},
@@ -82,6 +101,27 @@ int main() {
         small_plain_error = std::max(small_plain_error, std::abs(small_roundtrip[i] - sample[i]));
     }
     ok = ok && small_plain_error <= 1e-12;
+
+    const auto ref_stc = m2424::FactorizedLinearTransform(m2424::make_bootstrap_dft_plan(
+        4, m2424::BootstrapDftType::HomomorphicEncode, 60.0));
+    const auto ref_cts = m2424::FactorizedLinearTransform(m2424::make_bootstrap_dft_plan(
+        4, m2424::BootstrapDftType::HomomorphicDecode, 60.0));
+    const auto butterfly_stc = m2424::FactorizedLinearTransform(
+        m2424::make_small_slots4_butterfly_stc_plan(60.0));
+    const auto butterfly_cts = m2424::FactorizedLinearTransform(
+        m2424::make_small_slots4_butterfly_cts_plan(60.0));
+    const auto ref_stc_out = ref_stc.apply_plain(sample);
+    const auto butterfly_stc_out = butterfly_stc.apply_plain(sample);
+    const auto ref_cts_out = ref_cts.apply_plain(sample);
+    const auto butterfly_cts_out = butterfly_cts.apply_plain(sample);
+    double butterfly_stc_error = 0.0;
+    double butterfly_cts_error = 0.0;
+    for (std::size_t i = 0; i < sample.size(); ++i) {
+        butterfly_stc_error = std::max(butterfly_stc_error, std::abs(butterfly_stc_out[i] - ref_stc_out[i]));
+        butterfly_cts_error = std::max(butterfly_cts_error, std::abs(butterfly_cts_out[i] - ref_cts_out[i]));
+    }
+    ok = ok && butterfly_stc_error <= 1e-12;
+    ok = ok && butterfly_cts_error <= 1e-12;
 
     if (!ok) {
         std::cerr << "bootstrap precision model test failed\n";
