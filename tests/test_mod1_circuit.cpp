@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <exception>
+#include <string>
 #include <stdexcept>
 #include <vector>
 
@@ -78,6 +79,7 @@ int main() {
         m2424::Mod1Circuit cos3({m2424::BootstrapMod1Type::CosDiscrete, 3, 1, 8, 40.0});
         m2424::Mod1Circuit cos5({m2424::BootstrapMod1Type::CosDiscrete, 5, 0, 8, 40.0});
         m2424::Mod1Circuit cos7({m2424::BootstrapMod1Type::CosDiscrete, 7, 0, 8, 40.0});
+        m2424::Mod1Circuit cos15({m2424::BootstrapMod1Type::CosDiscrete, 15, 0, 8, 40.0});
         m2424::Mod1Circuit cos30({m2424::BootstrapMod1Type::CosDiscrete, 31, 3, 8, 60.0});
 
         const double x = 1.0e-4;
@@ -103,6 +105,17 @@ int main() {
             invalid_model_threw = true;
         }
 
+        bool unsupported_degree_threw = false;
+        try {
+            auto adapter = m2424::SealAdapter::create(m2424::profiles::boot_deep_ckks());
+            adapter.keygen(true, false);
+            const m2424::ComplexVector input{{1.0e-5, 0.0}};
+            (void)cos15.evaluate_with_report(adapter, adapter.encrypt(adapter.encode_complex(input)));
+        } catch (const std::runtime_error& error) {
+            unsupported_degree_threw =
+                std::string(error.what()).find("requires optimized evaluator") != std::string::npos;
+        }
+
         const bool conditions =
             legacy.model().type == m2424::BootstrapMod1Type::LegacySineP3
             && legacy.estimated_levels() == 3
@@ -112,6 +125,7 @@ int main() {
             && cos3.encrypted_evaluation_available()
             && cos5.encrypted_evaluation_available()
             && cos7.encrypted_evaluation_available()
+            && !cos15.encrypted_evaluation_available()
             && !cos30.encrypted_evaluation_available()
             && cos30.estimated_levels() == 8
             && close(legacy_value, x, 1e-8)
@@ -120,7 +134,8 @@ int main() {
             && close(cos_complex, complex_reference, 1e-15)
             && plain_output.size() == plain_input.size()
             && complex_output.size() == complex_input.size()
-            && invalid_model_threw;
+            && invalid_model_threw
+            && unsupported_degree_threw;
 
         ok = conditions;
         if (ok) {
