@@ -249,7 +249,7 @@ struct BootstrapParametersRequest {
     int first_mod_bits{60};
     int middle_mod_bits{40};
     int last_mod_bits{60};
-    BootstrapMod1Model mod1_model{BootstrapMod1Type::CosDiscrete, 30, 3, 8, 60.0};
+    BootstrapMod1Model mod1_model{BootstrapMod1Type::CosDiscrete, 31, 3, 8, 60.0};
 };
 
 struct BootstrapParametersResult {

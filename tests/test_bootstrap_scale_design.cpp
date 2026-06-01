@@ -152,12 +152,12 @@ int main() {
     });
     const auto lattigo_like_mod1_levels = m2424::estimated_bootstrap_mod1_levels({
         m2424::BootstrapMod1Type::CosDiscrete,
-        30,
+        31,
         3
     });
     const auto openfhe_like_mod1_levels = m2424::estimated_bootstrap_mod1_levels({
         m2424::BootstrapMod1Type::CosDiscrete,
-        90,
+        91,
         6
     });
     const auto cos_layout = m2424::plan_bootstrap_layout({
@@ -177,7 +177,7 @@ int main() {
         60,
         40,
         60,
-        {m2424::BootstrapMod1Type::CosDiscrete, 30, 3}
+        {m2424::BootstrapMod1Type::CosDiscrete, 31, 3}
     });
 
     const auto parameter_ready = m2424::plan_bootstrap_parameters({
@@ -195,7 +195,7 @@ int main() {
         60,
         40,
         60,
-        {m2424::BootstrapMod1Type::CosDiscrete, 30, 3}
+        {m2424::BootstrapMod1Type::CosDiscrete, 31, 3}
     });
     const auto parameter_unsupported = m2424::plan_bootstrap_parameters({
         32,
@@ -212,7 +212,7 @@ int main() {
         60,
         40,
         60,
-        {m2424::BootstrapMod1Type::CosDiscrete, 30, 3}
+        {m2424::BootstrapMod1Type::CosDiscrete, 31, 3}
     });
     const auto parameter_security_blocked = m2424::plan_bootstrap_parameters({
         16,
@@ -229,7 +229,7 @@ int main() {
         60,
         40,
         60,
-        {m2424::BootstrapMod1Type::CosDiscrete, 30, 3}
+        {m2424::BootstrapMod1Type::CosDiscrete, 31, 3}
     });
 
     m2424::CkksOperationBudget small_budget;
