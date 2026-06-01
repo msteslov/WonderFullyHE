@@ -37,6 +37,28 @@ std::string stage_context(const char* stage, const CipherInfo& before) {
     return out.str();
 }
 
+Cipher drop_level_preserving_scale(SealAdapter& adapter, const Cipher& input) {
+    const auto info = adapter.info(input);
+    if (info.chain_index == 0) {
+        throw std::runtime_error("cannot drop level at the end of the modulus chain");
+    }
+    const auto bits = adapter.coeff_modulus_bits();
+    if (info.coeff_modulus_size == 0 || info.coeff_modulus_size > bits.size()) {
+        throw std::runtime_error("cannot infer next rescale modulus size");
+    }
+    const double current_scale_log2 = std::log2(info.scale);
+    // Encode 1.0 near the next dropped prime so rescale preserves the ciphertext scale.
+    const double plain_scale_log2 = static_cast<double>(bits[info.coeff_modulus_size - 1]);
+    if (!std::isfinite(current_scale_log2)
+        || !std::isfinite(plain_scale_log2)
+        || plain_scale_log2 <= 0.0) {
+        throw std::runtime_error("cannot compute value-preserving level drop scale");
+    }
+    return adapter.mul_plain_rescale(
+        input,
+        adapter.encode_scalar_at_scale_like(1.0, std::exp2(plain_scale_log2), input));
+}
+
 } // namespace
 
 BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_first_impl(
@@ -80,9 +102,20 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     auto after = before;
     double stage_ms = 0.0;
     ComplexVector current_expected = expected ? *expected : ComplexVector{};
+    auto decode_head_for_stage = [&](const Cipher& cipher, const char* stage) {
+        try {
+            return head(adapter_.decode_complex(adapter_.decrypt(cipher)), slots_);
+        } catch (const std::exception& e) {
+            throw std::runtime_error(stage_context(stage, adapter_.info(cipher)) + "; diagnostic_decrypt=" + e.what());
+        }
+    };
 
-    while (adapter_.info(current).chain_index > stc_first_target_chain_index_) {
-        current = adapter_.mul_plain_rescale(current, adapter_.encode_scalar_like(1.0, current));
+    try {
+        while (adapter_.info(current).chain_index > stc_first_target_chain_index_) {
+            current = drop_level_preserving_scale(adapter_, current);
+        }
+    } catch (const std::exception& e) {
+        throw std::runtime_error(stage_context("stc_first_level_drop", adapter_.info(current)) + "; reason=" + e.what());
     }
     after = adapter_.info(current);
     report.stages.push_back(BootstrapPrototypeStage{
@@ -105,13 +138,17 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         coeff_expected = slot_to_coeff.apply_plain(current_expected);
     }
     before = adapter_.info(current);
-    stage_ms = elapsed_ms([&] {
-        current = slot_to_coeff.apply(adapter_, current);
-    });
+    try {
+        stage_ms = elapsed_ms([&] {
+            current = slot_to_coeff.apply(adapter_, current);
+        });
+    } catch (const std::exception& e) {
+        throw std::runtime_error(stage_context("slot_to_coeff_first", before) + "; reason=" + e.what());
+    }
     after = adapter_.info(current);
     double stage_error = 0.0;
     if (expected) {
-        const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        const auto actual = decode_head_for_stage(current, "slot_to_coeff_first");
         stage_error = max_complex_error(coeff_expected, actual);
     }
     auto stc_stage = make_stage("slot_to_coeff_first",
@@ -127,6 +164,10 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     report.stages.push_back(stc_stage);
 
     before = adapter_.info(current);
+    ComplexVector coeff_before_mod_raise;
+    if (expected) {
+        coeff_before_mod_raise = decode_head_for_stage(current, "mod_raise_before");
+    }
     stage_ms = elapsed_ms([&] {
         current = adapter_.mod_raise_to_first(current);
     });
@@ -137,6 +178,11 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
             : before.coeff_modulus_log2 - stc_first_period_offset_log2_;
     report.bootstrap_period = finite_exp2_or_zero(report.bootstrap_period_log2);
     report.bootstrap_scaling_factor = finite_exp2_or_zero(-report.bootstrap_period_log2);
+    stage_error = 0.0;
+    if (expected) {
+        const auto coeff_after_mod_raise = decode_head_for_stage(current, "mod_raise");
+        stage_error = max_complex_error(coeff_before_mod_raise, coeff_after_mod_raise);
+    }
     report.stages.push_back(BootstrapPrototypeStage{
         "mod_raise",
         "STRUCTURAL",
@@ -148,7 +194,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         after.coeff_modulus_log2,
         before.scale,
         after.scale,
-        0.0,
+        stage_error,
         stage_ms
     });
 
@@ -157,12 +203,16 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         roundtrip_expected = coeff_to_slot.apply_plain(coeff_expected);
     }
     before = adapter_.info(current);
-    stage_ms = elapsed_ms([&] {
-        current = coeff_to_slot.apply(adapter_, current);
-    });
+    try {
+        stage_ms = elapsed_ms([&] {
+            current = coeff_to_slot.apply(adapter_, current);
+        });
+    } catch (const std::exception& e) {
+        throw std::runtime_error(stage_context("coeff_to_slot_after_raise", before) + "; reason=" + e.what());
+    }
     after = adapter_.info(current);
     if (expected) {
-        const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        const auto actual = decode_head_for_stage(current, "coeff_to_slot_after_raise");
         report.max_abs_after_coeff_to_slot = max_abs_value(actual);
         stage_error = max_complex_error(roundtrip_expected, actual);
         if (period_mode_ == BootstrapPeriodMode::NoBootstrapPeriod
@@ -187,7 +237,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
 
     ComplexVector normalized_expected;
     if (expected) {
-        normalized_expected = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        normalized_expected = decode_head_for_stage(current, "eval_mod_normalization_reference");
         for (auto& value : normalized_expected) {
             value *= report.bootstrap_scaling_factor;
         }
@@ -213,7 +263,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     after = adapter_.info(current);
     stage_error = 0.0;
     if (expected) {
-        const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        const auto actual = decode_head_for_stage(current, "eval_mod_normalization");
         stage_error = max_complex_error(normalized_expected, actual);
     }
     auto norm_stage = make_stage("eval_mod_normalization",
@@ -243,7 +293,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     after = adapter_.info(current);
     stage_error = 0.0;
     if (expected) {
-        const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        const auto actual = decode_head_for_stage(current, "eval_mod");
         stage_error = max_complex_error(eval_expected, actual);
     }
     auto eval_stage = make_stage("eval_mod",
@@ -273,7 +323,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         after = adapter_.info(current);
         stage_error = 0.0;
         if (expected) {
-            const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+            const auto actual = decode_head_for_stage(current, "output_correction");
             stage_error = max_complex_error(eval_expected, actual);
         }
         auto correction_stage = make_stage("output_correction",
@@ -300,7 +350,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     after = adapter_.info(current);
     stage_error = 0.0;
     if (expected) {
-        const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        const auto actual = decode_head_for_stage(current, "output_scale_repair");
         stage_error = max_complex_error(*expected, actual);
     }
     if (after.chain_index != before.chain_index || std::fabs(std::log2(after.scale) - std::log2(before.scale)) > 0.5) {
@@ -319,7 +369,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
 
     double preserve_error = 0.0;
     if (expected) {
-        const auto actual = head(adapter_.decode_complex(adapter_.decrypt(current)), slots_);
+        const auto actual = decode_head_for_stage(current, "refresh_result");
         preserve_error = max_complex_error(*expected, actual);
     }
     const auto final_info = adapter_.info(current);
@@ -351,7 +401,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         after = adapter_.info(post_refresh_result);
         stage_error = 0.0;
         if (expected) {
-            const auto actual = head(adapter_.decode_complex(adapter_.decrypt(post_refresh_result)), slots_);
+            const auto actual = decode_head_for_stage(post_refresh_result, "post_refresh_mod_raise");
             stage_error = max_complex_error(*expected, actual);
             preserve_error = stage_error;
         }
