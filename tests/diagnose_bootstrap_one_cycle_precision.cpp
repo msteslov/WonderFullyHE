@@ -1,4 +1,5 @@
 #include "m2424/bootstrap.hpp"
+#include "m2424/bootstrap_prototype.hpp"
 #include "m2424/eval_mod.hpp"
 #include "m2424/profiles.hpp"
 #include "m2424/seal_adapter.hpp"
@@ -74,16 +75,30 @@ double stage_error_or_nan(const m2424::BootstrapPrototypeReport& report, const c
 }
 
 void print_stage(m2424::EvalModDegree degree, const m2424::BootstrapPrototypeStage& stage) {
-    std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s stage=%s status=%s chain_before=%zu chain_after=%zu scale_before_log2=%.6f scale_after_log2=%.6f max_error=%.12e duration_ms=%.3f\n",
+    std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s stage=%s status=%s chain_before=%zu chain_after=%zu coeff_log2_before=%.0f coeff_log2_after=%.0f scale_before_log2=%.6f scale_after_log2=%.6f max_error=%.12e duration_ms=%.3f",
                 m2424::to_string(degree),
                 stage.name.c_str(),
                 stage.status.c_str(),
                 stage.chain_before,
                 stage.chain_after,
+                stage.coeff_modulus_log2_before,
+                stage.coeff_modulus_log2_after,
                 std::log2(stage.scale_before),
                 std::log2(stage.scale_after),
                 stage.max_abs_error,
                 stage.duration_ms);
+    if (stage.gain.available) {
+        std::printf(" gain_real=%.12e gain_imag=%.12e gain_abs=%.12e gain_arg=%.12e residual_error=%.12e gain_max_error=%.12e max_abs_expected=%.12e max_abs_actual=%.12e",
+                    stage.gain.gain.real(),
+                    stage.gain.gain.imag(),
+                    stage.gain.gain_abs,
+                    stage.gain.gain_arg,
+                    stage.gain.residual_error,
+                    stage.gain.max_error,
+                    stage.gain.max_abs_expected,
+                    stage.gain.max_abs_actual);
+    }
+    std::printf("\n");
 }
 
 bool has_failed_stage(const m2424::BootstrapPrototypeReport& report, std::string& first_failure) {
@@ -127,15 +142,22 @@ bool run_cycle(std::size_t cycle,
     const auto before_info = adapter.info(current);
     const double baseline_error = decoded_max_error(adapter, current, expected);
 
-    m2424::Bootstrapper bootstrapper(adapter);
     std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu step=refresh\n",
                 m2424::to_string(degree),
                 cycle);
     std::fflush(stdout);
     m2424::BootstrapPrototypeReport report;
     try {
-        report = bootstrapper.refresh_slots_to_coeffs_first_checked(
-            current, expected, kSlots, kTolerance, degree);
+        m2424::BootstrapPrototype prototype(adapter, kSlots, kTolerance);
+        prototype.set_transform_backend(m2424::BootstrapTransformBackend::FftLike);
+        prototype.set_circuit_order(m2424::BootstrapCircuitOrder::SlotsToCoeffsFirst);
+        prototype.set_evalmod_degree(degree);
+        prototype.set_plain_scale_log2(std::log2(adapter.info(current).scale));
+        if (degree == m2424::EvalModDegree::P3) {
+            prototype.set_evalmod_policy(m2424::EvalModEvaluationPolicy::LinearWhenCubicNegligible);
+            prototype.set_period_mode(m2424::BootstrapPeriodMode::NoBootstrapPeriod);
+        }
+        report = prototype.refresh_cipher_checked(current, expected);
     } catch (const std::exception& error) {
         const std::string reason = error.what();
         std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu baseline_error=%.12e status=BLOCKED first_failing_stage=%s reason=%s\n",
@@ -156,7 +178,7 @@ bool run_cycle(std::size_t cycle,
     const double final_mean_error = mean_error(expected, actual);
     const auto after_info = adapter.info(report.result);
 
-    std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu baseline_error=%.12e slot_to_coeff_first_error=%.12e mod_raise_drift=%.12e coeff_to_slot_after_raise_error=%.12e eval_mod_normalization_error=%.12e eval_mod_error=%.12e output_scale_repair_error=%.12e refresh_result_error=%.12e final_max_error=%.12e final_mean_error=%.12e input_chain=%zu output_chain=%zu input_scale_log2=%.6f output_scale_log2=%.6f continuation_levels=%zu inside_evalmod_interval=%s preserve_value_criterion=%s restore_level_criterion=%s stages=%zu\n",
+    std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu baseline_error=%.12e slot_to_coeff_first_error=%.12e mod_raise_drift=%.12e coeff_to_slot_after_raise_error=%.12e eval_mod_normalization_error=%.12e eval_mod_error=%.12e output_scale_repair_error=%.12e refresh_result_error=%.12e final_max_error=%.12e final_mean_error=%.12e input_chain=%zu output_chain=%zu input_scale_log2=%.6f output_scale_log2=%.6f bootstrap_period_log2=%.6f normalization_factor_log2=%.6f continuation_levels=%zu inside_evalmod_interval=%s preserve_value_criterion=%s restore_level_criterion=%s stages=%zu\n",
                 m2424::to_string(degree),
                 cycle,
                 baseline_error,
@@ -173,6 +195,8 @@ bool run_cycle(std::size_t cycle,
                 after_info.chain_index,
                 std::log2(before_info.scale),
                 std::log2(after_info.scale),
+                report.bootstrap_period_log2,
+                report.normalization_factor_log2,
                 report.continuation_levels,
                 report.inside_evalmod_interval ? "true" : "false",
                 report.preserve_value_criterion ? "true" : "false",

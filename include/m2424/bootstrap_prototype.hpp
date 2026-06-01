@@ -7,6 +7,7 @@
 #include "m2424/seal_adapter.hpp"
 
 #include <cstddef>
+#include <complex>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,22 @@ enum class BootstrapDenormalizationPosition {
     AfterSlotToCoeff
 };
 
+enum class EvalModEvaluationPolicy {
+    Polynomial,
+    LinearWhenCubicNegligible
+};
+
+struct BootstrapGainDiagnostic {
+    bool available{};
+    std::complex<double> gain{};
+    double gain_abs{};
+    double gain_arg{};
+    double residual_error{};
+    double max_error{};
+    double max_abs_expected{};
+    double max_abs_actual{};
+};
+
 struct BootstrapPrototypeStage {
     std::string name;
     std::string status;
@@ -35,6 +52,7 @@ struct BootstrapPrototypeStage {
     double scale_after{};
     double max_abs_error{};
     double duration_ms{};
+    BootstrapGainDiagnostic gain;
 };
 
 struct BootstrapPrototypeReport {
@@ -60,6 +78,7 @@ struct BootstrapPrototypeReport {
     BootstrapNormalizationMode normalization_mode{BootstrapNormalizationMode::PlainMultiplyRescale};
     BootstrapDenormalizationPosition denormalization_position{BootstrapDenormalizationPosition::AfterSlotToCoeff};
     EvalModDegree evalmod_degree{EvalModDegree::P7};
+    EvalModEvaluationPolicy evalmod_policy{EvalModEvaluationPolicy::Polynomial};
     double max_abs_input{};
     double max_abs_after_coeff_to_slot{};
     double max_abs_after_normalization{};
@@ -87,6 +106,7 @@ public:
     void set_normalization_mode(BootstrapNormalizationMode mode) noexcept;
     void set_denormalization_position(BootstrapDenormalizationPosition position) noexcept;
     void set_evalmod_degree(EvalModDegree degree) noexcept;
+    void set_evalmod_policy(EvalModEvaluationPolicy policy) noexcept;
     void set_period_mode(BootstrapPeriodMode mode) noexcept;
     void set_circuit_order(BootstrapCircuitOrder order) noexcept;
     void set_transform_backend(BootstrapTransformBackend backend) noexcept;
@@ -111,6 +131,7 @@ private:
     BootstrapNormalizationMode normalization_mode_{BootstrapNormalizationMode::PlainMultiplyRescale};
     BootstrapDenormalizationPosition denormalization_position_{BootstrapDenormalizationPosition::AfterSlotToCoeff};
     EvalModDegree evalmod_degree_{EvalModDegree::P7};
+    EvalModEvaluationPolicy evalmod_policy_{EvalModEvaluationPolicy::Polynomial};
     BootstrapPeriodMode period_mode_{BootstrapPeriodMode::TotalCoeffModulus};
     BootstrapCircuitOrder circuit_order_{BootstrapCircuitOrder::ModRaiseFirst};
     BootstrapTransformBackend transform_backend_{BootstrapTransformBackend::DenseDiagonal};
@@ -126,5 +147,6 @@ private:
 
 const char* to_string(BootstrapNormalizationMode mode) noexcept;
 const char* to_string(BootstrapDenormalizationPosition position) noexcept;
+const char* to_string(EvalModEvaluationPolicy policy) noexcept;
 
 } // namespace m2424

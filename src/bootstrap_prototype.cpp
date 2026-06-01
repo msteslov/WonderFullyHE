@@ -113,6 +113,10 @@ void BootstrapPrototype::set_evalmod_degree(EvalModDegree degree) noexcept {
     evalmod_degree_ = degree;
 }
 
+void BootstrapPrototype::set_evalmod_policy(EvalModEvaluationPolicy policy) noexcept {
+    evalmod_policy_ = policy;
+}
+
 void BootstrapPrototype::set_period_mode(BootstrapPeriodMode mode) noexcept {
     period_mode_ = mode;
 }
@@ -159,6 +163,16 @@ void BootstrapPrototype::set_stc_first_period_offset_log2(double value) {
         throw std::invalid_argument("STC-first period offset log2 must be finite");
     }
     stc_first_period_offset_log2_ = value;
+}
+
+const char* to_string(EvalModEvaluationPolicy policy) noexcept {
+    switch (policy) {
+    case EvalModEvaluationPolicy::Polynomial:
+        return "Polynomial";
+    case EvalModEvaluationPolicy::LinearWhenCubicNegligible:
+        return "LinearWhenCubicNegligible";
+    }
+    return "Unknown";
 }
 
 Cipher BootstrapPrototype::apply_normalization(const Cipher& input, double factor) const {

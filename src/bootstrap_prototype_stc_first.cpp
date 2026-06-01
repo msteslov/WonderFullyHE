@@ -3,8 +3,10 @@
 #include "bootstrap_prototype_detail.hpp"
 #include "m2424/eval_mod.hpp"
 #include "m2424/mod1_circuit.hpp"
+#include "m2424/bootstrap_precision_model.hpp"
 
 #include <cmath>
+#include <complex>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -59,6 +61,42 @@ Cipher drop_level_preserving_scale(SealAdapter& adapter, const Cipher& input) {
         adapter.encode_scalar_at_scale_like(1.0, std::exp2(plain_scale_log2), input));
 }
 
+BootstrapGainDiagnostic make_gain_diagnostic(const ComplexVector& expected,
+                                             const ComplexVector& actual) {
+    if (expected.size() != actual.size()) {
+        throw std::invalid_argument("gain diagnostic vectors must have equal size");
+    }
+    BootstrapGainDiagnostic result;
+    std::complex<double> numerator{0.0, 0.0};
+    double denominator = 0.0;
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        numerator += std::conj(expected[i]) * actual[i];
+        denominator += std::norm(expected[i]);
+        result.max_abs_expected = std::max(result.max_abs_expected, std::abs(expected[i]));
+        result.max_abs_actual = std::max(result.max_abs_actual, std::abs(actual[i]));
+    }
+    if (denominator == 0.0) {
+        return result;
+    }
+    result.available = true;
+    result.gain = numerator / denominator;
+    result.gain_abs = std::abs(result.gain);
+    result.gain_arg = std::arg(result.gain);
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        result.residual_error = std::max(result.residual_error, std::abs(actual[i] - result.gain * expected[i]));
+        result.max_error = std::max(result.max_error, std::abs(actual[i] - expected[i]));
+    }
+    return result;
+}
+
+void attach_gain(BootstrapPrototypeStage& stage,
+                 const ComplexVector* expected,
+                 const ComplexVector& actual) {
+    if (expected != nullptr) {
+        stage.gain = make_gain_diagnostic(*expected, actual);
+    }
+}
+
 } // namespace
 
 BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_first_impl(
@@ -79,6 +117,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     report.normalization_mode = normalization_mode_;
     report.denormalization_position = denormalization_position_;
     report.evalmod_degree = evalmod_degree_;
+    report.evalmod_policy = evalmod_policy_;
     report.period_mode = period_mode_;
     report.circuit_order = circuit_order_;
     report.transform_backend = transform_backend_;
@@ -132,6 +171,10 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         0.0,
         0.0
     });
+
+    if (expected) {
+        report.stages.back().gain = make_gain_diagnostic(*expected, decode_head_for_stage(current, "baseline_after_level_drop"));
+    }
 
     ComplexVector coeff_expected;
     if (expected) {
@@ -211,10 +254,11 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         throw std::runtime_error(stage_context("coeff_to_slot_after_raise", before) + "; reason=" + e.what());
     }
     after = adapter_.info(current);
+    ComplexVector cts_actual;
     if (expected) {
-        const auto actual = decode_head_for_stage(current, "coeff_to_slot_after_raise");
-        report.max_abs_after_coeff_to_slot = max_abs_value(actual);
-        stage_error = max_complex_error(roundtrip_expected, actual);
+        cts_actual = decode_head_for_stage(current, "coeff_to_slot_after_raise");
+        report.max_abs_after_coeff_to_slot = max_abs_value(cts_actual);
+        stage_error = max_complex_error(roundtrip_expected, cts_actual);
         if (period_mode_ == BootstrapPeriodMode::NoBootstrapPeriod
             && report.max_abs_after_coeff_to_slot > EvalModPolynomial::approximation_bound) {
             report.bootstrap_period_log2 = std::ceil(
@@ -231,9 +275,21 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
                                 stage_ms,
                                 expected != nullptr);
     if (expected) {
+        attach_gain(cts_stage, expected, cts_actual);
         mark_stage_diagnostic(cts_stage);
     }
     report.stages.push_back(cts_stage);
+
+    const bool small_signal_identity =
+        expected != nullptr
+        && evalmod_policy_ == EvalModEvaluationPolicy::LinearWhenCubicNegligible
+        && report.max_abs_after_coeff_to_slot <= EvalModPolynomial::approximation_bound
+        && decide_evalmod_small_signal(report.max_abs_after_coeff_to_slot, tolerance_).linear_path_allowed;
+    if (small_signal_identity) {
+        report.bootstrap_period_log2 = 0.0;
+        report.bootstrap_period = 1.0;
+        report.bootstrap_scaling_factor = 1.0;
+    }
 
     ComplexVector normalized_expected;
     if (expected) {
@@ -274,18 +330,22 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
                                  stage_ms,
                                  expected != nullptr);
     if (expected) {
+        const auto actual = decode_head_for_stage(current, "eval_mod_normalization_gain");
+        attach_gain(norm_stage, expected, actual);
         mark_stage_diagnostic(norm_stage);
     }
     report.stages.push_back(norm_stage);
 
     ComplexVector eval_expected;
     if (expected) {
-        eval_expected = mod1.evaluate_plain(normalized_expected);
+        eval_expected = small_signal_identity ? normalized_expected : mod1.evaluate_plain(normalized_expected);
     }
     before = adapter_.info(current);
     try {
         stage_ms = elapsed_ms([&] {
-            current = mod1.evaluate(adapter_, current);
+            if (!small_signal_identity) {
+                current = mod1.evaluate(adapter_, current);
+            }
         });
     } catch (const std::exception& e) {
         throw std::runtime_error(stage_context("eval_mod", before) + "; reason=" + e.what());
@@ -296,7 +356,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         const auto actual = decode_head_for_stage(current, "eval_mod");
         stage_error = max_complex_error(eval_expected, actual);
     }
-    auto eval_stage = make_stage("eval_mod",
+    auto eval_stage = make_stage(small_signal_identity ? "eval_mod_linear_small_signal" : "eval_mod",
                                  before,
                                  after,
                                  stage_error,
@@ -304,7 +364,12 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
                                  stage_ms,
                                  expected != nullptr);
     if (expected) {
+        const auto actual = decode_head_for_stage(current, "eval_mod_gain");
+        attach_gain(eval_stage, expected, actual);
         mark_stage_diagnostic(eval_stage);
+        if (small_signal_identity && stage_error <= tolerance_) {
+            eval_stage.status = "PASS";
+        }
     }
     report.stages.push_back(eval_stage);
 
@@ -362,6 +427,8 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
                                        stage_ms,
                                        expected != nullptr);
         if (expected) {
+            const auto actual = decode_head_for_stage(current, "output_scale_repair_gain");
+            attach_gain(repair_stage, expected, actual);
             mark_stage_diagnostic(repair_stage);
         }
         report.stages.push_back(repair_stage);
@@ -387,6 +454,10 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         preserve_error,
         0.0
     });
+    if (expected) {
+        const auto actual = decode_head_for_stage(current, "refresh_result_gain");
+        report.stages.back().gain = make_gain_diagnostic(*expected, actual);
+    }
 
     report.preserve_value_criterion = expected && preserve_error <= tolerance_;
     report.restore_level_criterion = final_info.chain_index >= input_info.chain_index;

@@ -56,6 +56,15 @@ int main() {
     ok = ok && required_scale > 59.0 && required_scale < 60.5;
     ok = ok && required_scale > 50.0;
 
+    const auto small_signal = m2424::decide_evalmod_small_signal(1e-5, 1e-10);
+    ok = ok && small_signal.linear_path_allowed;
+    ok = ok && small_signal.cubic_bound > 6e-15 && small_signal.cubic_bound < 7e-15;
+    ok = ok && near(small_signal.cubic_coefficient_abs, 2.0 * 3.14159265358979323846 * 3.14159265358979323846 / 3.0, 1e-14);
+
+    const auto larger_signal = m2424::decide_evalmod_small_signal(1e-3, 1e-10);
+    ok = ok && !larger_signal.linear_path_allowed;
+    ok = ok && larger_signal.cubic_bound > 1e-10;
+
     const std::vector<m2424::DftPrecisionMeasurement> current_measurements{
         {"precision_boot_deep_ckks", 4, 50.0, 50.0, 2, 15, 12, 3, 1.97e-11, 3.07e-9, 1.79e-8},
         {"precision_boot_deep_ckks", 4, 50.0, 55.0, 2, 15, 12, 3, 1.10e-11, 1.28e-9, 2.52e-9},

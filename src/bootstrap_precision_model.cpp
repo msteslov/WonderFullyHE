@@ -104,6 +104,22 @@ double required_ciphertext_scale_log2(const CalibratedRotationNoiseModel& model)
         + model.safety_bits;
 }
 
+EvalModSmallSignalDecision decide_evalmod_small_signal(double max_abs_input,
+                                                       double evalmod_budget) {
+    validate_positive_finite(evalmod_budget, "evalmod_budget");
+    if (!std::isfinite(max_abs_input) || max_abs_input < 0.0) {
+        throw std::invalid_argument("max_abs_input must be non-negative and finite");
+    }
+    constexpr double kPi = 3.141592653589793238462643383279502884;
+    EvalModSmallSignalDecision decision;
+    decision.max_abs_input = max_abs_input;
+    decision.evalmod_budget = evalmod_budget;
+    decision.cubic_coefficient_abs = 2.0 * kPi * kPi / 3.0;
+    decision.cubic_bound = decision.cubic_coefficient_abs * max_abs_input * max_abs_input * max_abs_input;
+    decision.linear_path_allowed = decision.cubic_bound <= evalmod_budget;
+    return decision;
+}
+
 DftPrecisionFit fit_dft_precision_floor(const std::vector<DftPrecisionMeasurement>& measurements,
                                         double target_roundtrip_error) {
     validate_positive_finite(target_roundtrip_error, "target_roundtrip_error");

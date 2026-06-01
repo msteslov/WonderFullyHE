@@ -34,6 +34,14 @@ struct CalibratedRotationNoiseModel {
     double safety_bits{};
 };
 
+struct EvalModSmallSignalDecision {
+    double max_abs_input{};
+    double evalmod_budget{};
+    double cubic_coefficient_abs{};
+    double cubic_bound{};
+    bool linear_path_allowed{};
+};
+
 struct DftPrecisionMeasurement {
     std::string profile_name;
     std::size_t slots{};
@@ -93,6 +101,9 @@ BootstrapErrorRecurrence make_bootstrap_error_recurrence(double target_total_err
                                                         double amplification);
 
 double required_ciphertext_scale_log2(const CalibratedRotationNoiseModel& model);
+
+EvalModSmallSignalDecision decide_evalmod_small_signal(double max_abs_input,
+                                                       double evalmod_budget);
 
 DftPrecisionFit fit_dft_precision_floor(const std::vector<DftPrecisionMeasurement>& measurements,
                                         double target_roundtrip_error);
