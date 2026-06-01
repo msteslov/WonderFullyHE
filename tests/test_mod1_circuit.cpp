@@ -60,6 +60,7 @@ int main() {
         const bool conditions =
             legacy.model().type == m2424::BootstrapMod1Type::LegacySineP3
             && legacy.estimated_levels() == 3
+            && legacy_da.estimated_levels() == 6
             && legacy.encrypted_evaluation_available()
             && legacy_da.encrypted_evaluation_available()
             && cos3.encrypted_evaluation_available()
