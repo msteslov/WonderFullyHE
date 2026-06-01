@@ -585,6 +585,15 @@ std::size_t estimated_bootstrap_mod1_levels(const BootstrapMod1Model& model) {
     case BootstrapMod1Type::LegacySineP3:
         return model.double_angle == 0 ? 3 : 6;
     case BootstrapMod1Type::CosDiscrete: {
+        if (model.degree == 3) {
+            return 3 + model.double_angle;
+        }
+        if (model.degree == 5) {
+            return 4 + model.double_angle;
+        }
+        if (model.degree == 7) {
+            return 5 + model.double_angle;
+        }
         std::size_t polynomial_levels = 0;
         std::size_t covered_degree = 1;
         while (covered_degree < model.degree) {

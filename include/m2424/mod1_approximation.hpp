@@ -8,6 +8,12 @@
 
 namespace m2424 {
 
+enum class PolynomialEvaluationStrategy {
+    DirectOddPowers,
+    PatersonStockmeyer,
+    BabyStepGiantStep
+};
+
 struct Mod1Approximation {
     BootstrapMod1Type type{BootstrapMod1Type::LegacySineP3};
     std::size_t polynomial_degree{3};
@@ -17,9 +23,11 @@ struct Mod1Approximation {
     double evalmod_log_scale{40.0};
     std::vector<double> coefficients;
     std::size_t estimated_depth{};
+    PolynomialEvaluationStrategy strategy{PolynomialEvaluationStrategy::DirectOddPowers};
     std::string construction_note;
 };
 
+const char* to_string(PolynomialEvaluationStrategy strategy) noexcept;
 Mod1Approximation make_mod1_approximation(const BootstrapMod1Model& model);
 
 double evaluate_polynomial_plain(const Mod1Approximation& approximation, double input);

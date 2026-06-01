@@ -128,13 +128,30 @@ ComplexVector Mod1Circuit::evaluate_plain(const ComplexVector& input) const {
 }
 
 Cipher Mod1Circuit::evaluate(SealAdapter& adapter, const Cipher& input) const {
+    return evaluate_with_report(adapter, input).result;
+}
+
+Mod1EncryptedEvaluation Mod1Circuit::evaluate_with_report(SealAdapter& adapter, const Cipher& input) const {
     if (!encrypted_evaluation_available()) {
-        throw std::runtime_error("encrypted CosDiscrete Mod1 circuit is not implemented for this model");
+        throw std::runtime_error(
+            "encrypted Mod1 circuit is not implemented for this model; degree >= 15 requires optimized evaluator");
     }
+    const auto before = adapter.info(input);
+    Mod1EncryptedEvaluation evaluation;
+    evaluation.strategy = approximation_.strategy;
+    evaluation.input_chain_index = before.chain_index;
     if (model_.type == BootstrapMod1Type::LegacySineP3) {
-        return EvalModPolynomial{}.evaluate(adapter, input, legacy_degree(model_));
+        evaluation.result = EvalModPolynomial{}.evaluate(adapter, input, legacy_degree(model_));
+    } else {
+        evaluation.result = EvalModPolynomial{}.evaluate(adapter, input, cos_discrete_degree(model_));
     }
-    return EvalModPolynomial{}.evaluate(adapter, input, cos_discrete_degree(model_));
+    const auto after = adapter.info(evaluation.result);
+    evaluation.output_chain_index = after.chain_index;
+    evaluation.consumed_levels = before.chain_index >= after.chain_index
+        ? before.chain_index - after.chain_index
+        : 0;
+    evaluation.output_scale_log2 = std::log2(after.scale);
+    return evaluation;
 }
 
 } // namespace m2424

@@ -41,6 +41,8 @@ int main() {
                 "Mod1 approximation input bound should cover plaintext validation matrix");
         require(approximation.coefficients.size() == 32,
                 "Mod1 approximation coefficients should be inspectable");
+        require(approximation.strategy == m2424::PolynomialEvaluationStrategy::PatersonStockmeyer,
+                "degree-31 approximation must not use direct odd powers");
         require(!approximation.construction_note.empty(),
                 "Mod1 approximation construction note should be explicit");
 
@@ -82,10 +84,11 @@ int main() {
         }
         require(invalid_scale_threw, "invalid Mod1 scale should throw");
 
-        std::printf("[test_mod1_approximation] PASS max_error=%.3e max_complex_error=%.3e coeffs=%zu note=%s\n",
+        std::printf("[test_mod1_approximation] PASS max_error=%.3e max_complex_error=%.3e coeffs=%zu strategy=%s note=%s\n",
                     max_error,
                     max_complex_error,
                     approximation.coefficients.size(),
+                    m2424::to_string(approximation.strategy),
                     approximation.construction_note.c_str());
     } catch (const std::exception& error) {
         ok = false;

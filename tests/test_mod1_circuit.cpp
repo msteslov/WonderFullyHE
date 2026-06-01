@@ -36,14 +36,36 @@ void require_cos_encrypted_matches_plain(const m2424::BootstrapMod1Model& model,
 
     const m2424::ComplexVector input{{1.0e-5, 0.0}, {-1.5e-5, 0.5e-5}, {0.75e-5, -0.25e-5}};
     const auto expected = circuit.evaluate_plain(input);
-    const auto encrypted = circuit.evaluate(adapter, adapter.encrypt(adapter.encode_complex(input)));
-    const auto actual = adapter.decode_complex(adapter.decrypt(encrypted));
+    const auto encrypted_input = adapter.encrypt(adapter.encode_complex(input));
+    const auto input_info = adapter.info(encrypted_input);
+    const auto evaluation = circuit.evaluate_with_report(adapter, encrypted_input);
+    const auto actual = adapter.decode_complex(adapter.decrypt(evaluation.result));
 
+    double max_error = 0.0;
     for (std::size_t i = 0; i < input.size(); ++i) {
-        if (!close(actual[i], expected[i], tolerance)) {
-            throw std::runtime_error("encrypted CosDiscrete output does not match plaintext reference");
-        }
+        max_error = std::max(max_error, std::abs(actual[i] - expected[i]));
     }
+    require(max_error <= tolerance, "encrypted CosDiscrete output does not match plaintext reference");
+    require(evaluation.strategy == m2424::PolynomialEvaluationStrategy::DirectOddPowers,
+            "small-degree CosDiscrete should use direct odd powers");
+    require(evaluation.input_chain_index == input_info.chain_index,
+            "Mod1 report input chain mismatch");
+    require(evaluation.output_chain_index <= evaluation.input_chain_index,
+            "Mod1 report output chain mismatch");
+    require(evaluation.consumed_levels <= circuit.estimated_levels(),
+            "Mod1 actual levels exceed estimate");
+    require(std::isfinite(evaluation.output_scale_log2),
+            "Mod1 report output scale must be finite");
+
+    std::printf("[test_mod1_circuit] encrypted model=%s degree=%zu max_abs_error=%.3e input_chain=%zu output_chain=%zu consumed_levels=%zu output_scale_log2=%.2f strategy=%s\n",
+                m2424::to_string(model.type),
+                model.degree,
+                max_error,
+                evaluation.input_chain_index,
+                evaluation.output_chain_index,
+                evaluation.consumed_levels,
+                evaluation.output_scale_log2,
+                m2424::to_string(evaluation.strategy));
 }
 
 } // namespace

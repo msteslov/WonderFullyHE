@@ -140,6 +140,7 @@ Mod1Approximation make_mod1_approximation(const BootstrapMod1Model& model) {
         }
         approximation.coefficients = sine_coefficients_for_degree(3);
         approximation.estimated_depth = model.double_angle == 0 ? 3 : 6;
+        approximation.strategy = PolynomialEvaluationStrategy::DirectOddPowers;
         approximation.construction_note = "legacy sine P3 approximation; not CosDiscrete";
         return approximation;
     }
@@ -151,12 +152,27 @@ Mod1Approximation make_mod1_approximation(const BootstrapMod1Model& model) {
         approximation.input_bound = 0.125;
         approximation.coefficients = sine_coefficients_for_degree(model.degree);
         approximation.estimated_depth = direct_odd_power_depth(model.degree) + model.double_angle;
+        approximation.strategy = model.degree <= 7
+            ? PolynomialEvaluationStrategy::DirectOddPowers
+            : PolynomialEvaluationStrategy::PatersonStockmeyer;
         approximation.construction_note =
             "small-degree sine-polynomial placeholder for CosDiscrete; real CosDiscrete is not implemented";
         return approximation;
     }
 
     throw std::invalid_argument("unknown Mod1 approximation type");
+}
+
+const char* to_string(PolynomialEvaluationStrategy strategy) noexcept {
+    switch (strategy) {
+    case PolynomialEvaluationStrategy::DirectOddPowers:
+        return "DirectOddPowers";
+    case PolynomialEvaluationStrategy::PatersonStockmeyer:
+        return "PatersonStockmeyer";
+    case PolynomialEvaluationStrategy::BabyStepGiantStep:
+        return "BabyStepGiantStep";
+    }
+    return "unknown";
 }
 
 double evaluate_polynomial_plain(const Mod1Approximation& approximation, double input) {

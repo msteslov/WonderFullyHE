@@ -9,6 +9,15 @@
 
 namespace m2424 {
 
+struct Mod1EncryptedEvaluation {
+    Cipher result;
+    PolynomialEvaluationStrategy strategy{PolynomialEvaluationStrategy::DirectOddPowers};
+    std::size_t input_chain_index{};
+    std::size_t output_chain_index{};
+    std::size_t consumed_levels{};
+    double output_scale_log2{};
+};
+
 class Mod1Circuit {
 public:
     explicit Mod1Circuit(BootstrapMod1Model model);
@@ -24,6 +33,7 @@ public:
     ComplexVector evaluate_plain(const ComplexVector& input) const;
 
     Cipher evaluate(SealAdapter& adapter, const Cipher& input) const;
+    Mod1EncryptedEvaluation evaluate_with_report(SealAdapter& adapter, const Cipher& input) const;
 
 private:
     BootstrapMod1Model model_;
