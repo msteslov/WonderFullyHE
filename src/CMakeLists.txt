@@ -13,6 +13,7 @@ add_library(m2424
     bootstrap_prototype_stc_first.cpp
     bootstrap_scaling.cpp
     bootstrap_stc_modup.cpp
+    bootstrap_stc_reference.cpp
     checked_evaluator.cpp
     diagonal_transform.cpp
     eval_mod.cpp

@@ -13,6 +13,7 @@ set(M2424_TESTS
     test_bootstrap_precision_model
     test_bootstrap_scalable_refresh
     test_bootstrap_scale_design
+    test_bootstrap_stc_reference
     test_mod1_approximation
     test_mod1_circuit
     test_operation_budget
@@ -47,3 +48,7 @@ target_link_libraries(diagnose_bootstrap_lattice_invariant PRIVATE m2424)
 add_executable(diagnose_stc_scaled_modup_lattice diagnose_stc_scaled_modup_lattice.cpp)
 target_compile_features(diagnose_stc_scaled_modup_lattice PRIVATE cxx_std_17)
 target_link_libraries(diagnose_stc_scaled_modup_lattice PRIVATE m2424)
+
+add_executable(diagnose_bootstrap_encrypted_vs_reference diagnose_bootstrap_encrypted_vs_reference.cpp)
+target_compile_features(diagnose_bootstrap_encrypted_vs_reference PRIVATE cxx_std_17)
+target_link_libraries(diagnose_bootstrap_encrypted_vs_reference PRIVATE m2424)

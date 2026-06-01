@@ -164,6 +164,10 @@ FFT-like `CoeffToSlot` применяет попарное composition сосе�
 
 Для экспериментального slots=4 precision path добавлен отдельный calibrated gate. Он считает recurrence `e_{k+1} <= A e_k + b` и проверяет, может ли rotation/key-switch noise попасть в budget до запуска EvalMod. Диагностический профиль `precision_boot_ultra_ckks_59` использует `scale = 2^59` и `14 * 60`-битную chain только для проверки гипотезы scale-limited noise; он не является финальным bootstrap profile. Фактическая проверка показала, что rotation noise на `2^59` падает ниже `1e-10`, но `SmallSlots4Butterfly` пока не становится лучшим DFT path: он семантически совпадает с reference STC/CTS, однако расходует больше rescale stages, и его encrypted roundtrip хуже `FftLike`/`DenseDiagonal`. Поэтому STC-first prototype не переключается на этот backend автоматически.
 
+Pre-EvalMod lattice invariant теперь отделён от EvalMod. Reference layer `bootstrap_stc_reference` строит plaintext-модель `z_ref = P*(k + gamma*m)` с deterministic `k=0`, где `P = 2^modup_period_log2`, `gamma` применяется в slot-domain, а real/imag части редуцируются независимо по `Z[i]`. Unit test доказывает `(z_ref/P) mod Z[i] = gamma*m` для `slots=4` real-only и complex с ошибкой `<= 1e-12`. Это фиксирует математику, которую должен повторить encrypted `ScaleDown -> ModUp -> CoeffToSlot`.
+
+Текущий encrypted path сравнивается с reference через `diagnose_bootstrap_encrypted_vs_reference`. На `precision_boot_ultra_ckks_59` rotation и DFT уже находятся в budget, но encrypted fractional form после `STC -> ScaleDown/ModUp -> CTS` не совпадает с reference: ошибка остаётся порядка `1e-5`, и diagnostic классифицирует это как transform/ModUp semantic mismatch. Поэтому повышение степени `EvalMod`, CosDiscrete или изменение tolerance не являются корректным следующим шагом: сначала encrypted ModUp должен начать производить reference lattice form.
+
 ### Parameter planning
 
 Ручные профили не должны быть основным способом выбора параметров. Модуль `parameter_planner` строит профиль по требованиям:
