@@ -23,10 +23,9 @@ m2424::ComplexVector make_expected() {
     for (std::size_t i = 0; i < kSlots; ++i) {
         const double x = static_cast<double>(i + 1);
         const double real_sign = (i % 2 == 0) ? 1.0 : -1.0;
-        const double imag_sign = (i % 3 == 0) ? -1.0 : 1.0;
         expected.push_back({
             real_sign * kAmplitude * (0.25 + 0.1 * std::sin(x)),
-            imag_sign * kAmplitude * (0.15 + 0.05 * std::cos(0.5 * x))
+            0.0
         });
     }
     return expected;
@@ -98,6 +97,9 @@ void print_stage(m2424::EvalModDegree degree, const m2424::BootstrapPrototypeSta
                     stage.gain.max_abs_expected,
                     stage.gain.max_abs_actual);
     }
+    if (!stage.note.empty()) {
+        std::printf(" note=\"%s\"", stage.note.c_str());
+    }
     std::printf("\n");
 }
 
@@ -115,8 +117,9 @@ std::string classify_exception_stage(const std::string& message) {
     const std::vector<std::pair<std::string, std::string>> stages{
         {"stc_first_level_drop", "stc_first_level_drop"},
         {"slot_to_coeff_first", "slot_to_coeff_first"},
-        {"mod_raise", "mod_raise"},
-        {"coeff_to_slot_after_raise", "coeff_to_slot_after_raise"},
+        {"bootstrap_scale_down_to_q", "bootstrap_scale_down_to_q"},
+        {"bootstrap_modup_to_Q", "bootstrap_modup_to_Q"},
+        {"coeff_to_slot_after_modup", "coeff_to_slot_after_modup"},
         {"eval_mod_normalization", "eval_mod_normalization"},
         {"eval_mod", "eval_mod"},
         {"output_scale_repair", "output_scale_repair"},
@@ -149,7 +152,7 @@ bool run_cycle(std::size_t cycle,
     m2424::BootstrapPrototypeReport report;
     try {
         m2424::BootstrapPrototype prototype(adapter, kSlots, kTolerance);
-        prototype.set_transform_backend(m2424::BootstrapTransformBackend::FftLike);
+        prototype.set_transform_backend(m2424::BootstrapTransformBackend::DenseDiagonal);
         prototype.set_circuit_order(m2424::BootstrapCircuitOrder::SlotsToCoeffsFirst);
         prototype.set_evalmod_degree(degree);
         prototype.set_plain_scale_log2(std::log2(adapter.info(current).scale));
@@ -178,13 +181,14 @@ bool run_cycle(std::size_t cycle,
     const double final_mean_error = mean_error(expected, actual);
     const auto after_info = adapter.info(report.result);
 
-    std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu baseline_error=%.12e slot_to_coeff_first_error=%.12e mod_raise_drift=%.12e coeff_to_slot_after_raise_error=%.12e eval_mod_normalization_error=%.12e eval_mod_error=%.12e output_scale_repair_error=%.12e refresh_result_error=%.12e final_max_error=%.12e final_mean_error=%.12e input_chain=%zu output_chain=%zu input_scale_log2=%.6f output_scale_log2=%.6f bootstrap_period_log2=%.6f normalization_factor_log2=%.6f continuation_levels=%zu inside_evalmod_interval=%s preserve_value_criterion=%s restore_level_criterion=%s stages=%zu\n",
+    std::printf("[diagnose_bootstrap_one_cycle_precision] evalmod_degree=%s cycle=%zu baseline_error=%.12e slot_to_coeff_first_error=%.12e scale_down_to_q_error=%.12e bootstrap_modup_error=%.12e coeff_to_slot_after_modup_error=%.12e eval_mod_normalization_error=%.12e eval_mod_error=%.12e output_scale_repair_error=%.12e refresh_result_error=%.12e final_max_error=%.12e final_mean_error=%.12e input_chain=%zu output_chain=%zu input_scale_log2=%.6f output_scale_log2=%.6f bootstrap_period_log2=%.6f normalization_factor_log2=%.6f continuation_levels=%zu inside_evalmod_interval=%s preserve_value_criterion=%s restore_level_criterion=%s stages=%zu\n",
                 m2424::to_string(degree),
                 cycle,
                 baseline_error,
                 stage_error_or_nan(report, "slot_to_coeff_first"),
-                stage_error_or_nan(report, "mod_raise"),
-                stage_error_or_nan(report, "coeff_to_slot_after_raise"),
+                stage_error_or_nan(report, "bootstrap_scale_down_to_q"),
+                stage_error_or_nan(report, "bootstrap_modup_to_Q"),
+                stage_error_or_nan(report, "coeff_to_slot_after_modup"),
                 stage_error_or_nan(report, "eval_mod_normalization"),
                 stage_error_or_nan(report, "eval_mod"),
                 stage_error_or_nan(report, "output_scale_repair"),

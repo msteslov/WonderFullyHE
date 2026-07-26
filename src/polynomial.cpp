@@ -42,14 +42,16 @@ Cipher PolynomialEvaluator::evaluate(SealAdapter& adapter, const Cipher& input) 
     std::size_t current_degree = 1;
 
     for (const auto& term : terms_) {
+        // A zero coefficient has no observable contribution. Skipping it before
+        // exponentiation avoids needless ciphertext multiplications and rescales.
+        if (is_zero(term.coefficient)) {
+            continue;
+        }
+
         while (current_degree < term.degree) {
             Cipher base = adapter.mod_switch_to(input, power);
             power = adapter.mul_relin_rescale(power, base);
             ++current_degree;
-        }
-
-        if (is_zero(term.coefficient)) {
-            continue;
         }
 
         Plain coefficient = adapter.encode_scalar_like(term.coefficient, power);

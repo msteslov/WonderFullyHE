@@ -21,6 +21,16 @@ constexpr double kMessageScaleLog2 = 59.0;
 constexpr std::size_t kStcTargetChain = 2;
 constexpr double kMinimumUsefulGainAbs = 0.1;
 
+const char* to_string(m2424::BootstrapModUpVariant variant) {
+    switch (variant) {
+    case m2424::BootstrapModUpVariant::CenteredLift:
+        return "CenteredLift";
+    case m2424::BootstrapModUpVariant::UncenteredLift:
+        return "UncenteredLift";
+    }
+    return "unknown";
+}
+
 struct PeriodScanResult {
     double period_log2{};
     std::complex<double> gamma{};
@@ -183,60 +193,66 @@ void run_mode(const char* input_mode, bool complex_mode) {
     current = stc.apply(adapter, current);
     const auto after_stc = adapter.info(current);
 
-    const auto plan = m2424::plan_stc_first_modup(after_stc, kMessageScaleLog2, kMessageScaleLog2);
-    std::printf("[diagnose_stc_scaled_modup_lattice] input_mode=%s plan input_scale_log2=%.6f target_scale_log2=%.6f scale_down_log2=%.6f expected_period_log2=%.6f expected_message_gain_log2=%.6f consumed_levels=%zu note=\"%s\"\n",
-                input_mode,
-                plan.scale_down.input_scale_log2,
-                plan.scale_down.target_scale_log2,
-                plan.scale_down.scale_down_log2,
-                plan.scale_down.expected_period_log2,
-                plan.scale_down.expected_message_gain_log2,
-                plan.scale_down.consumed_levels,
-                plan.scale_down.note.c_str());
-
-    const auto scaled = m2424::apply_stc_scale_down(adapter, current, plan.scale_down);
-    current = adapter.mod_raise_to_first(scaled.result);
-    const auto after_modraise = adapter.info(current);
-    current = cts.apply(adapter, current);
-    const auto after_cts = adapter.info(current);
-    const auto z = head(adapter.decode_complex(adapter.decrypt(current)));
-    const auto best = scan_periods(z, expected);
-
     std::printf("[diagnose_stc_scaled_modup_lattice] input_mode=%s stage=input chain=%zu scale_log2=%.6f coeff_log2=%.0f\n",
                 input_mode, input_info.chain_index, std::log2(input_info.scale), input_info.coeff_modulus_log2);
     std::printf("[diagnose_stc_scaled_modup_lattice] input_mode=%s stage=after_burn chain=%zu scale_log2=%.6f coeff_log2=%.0f\n",
                 input_mode, after_burn.chain_index, std::log2(after_burn.scale), after_burn.coeff_modulus_log2);
     std::printf("[diagnose_stc_scaled_modup_lattice] input_mode=%s stage=after_slots_to_coeff chain=%zu scale_log2=%.6f coeff_log2=%.0f\n",
                 input_mode, after_stc.chain_index, std::log2(after_stc.scale), after_stc.coeff_modulus_log2);
-    std::printf("[diagnose_stc_scaled_modup_lattice] input_mode=%s stage=after_scale_down chain_before=%zu chain_after=%zu scale_before_log2=%.6f scale_after_log2=%.6f coeff_before_log2=%.0f coeff_after_log2=%.0f levels_consumed=%zu\n",
-                input_mode,
-                scaled.chain_before,
-                scaled.chain_after,
-                scaled.scale_before_log2,
-                scaled.scale_after_log2,
-                scaled.coeff_modulus_log2_before,
-                scaled.coeff_modulus_log2_after,
-                scaled.levels_consumed);
-    std::printf("[diagnose_stc_scaled_modup_lattice] input_mode=%s stage=after_modraise chain=%zu scale_log2=%.6f coeff_log2=%.0f\n",
-                input_mode, after_modraise.chain_index, std::log2(after_modraise.scale), after_modraise.coeff_modulus_log2);
-    std::printf("[diagnose_stc_scaled_modup_lattice] input_mode=%s stage=after_coeff_to_slot chain=%zu scale_log2=%.6f coeff_log2=%.0f max_abs_z=%.12e\n",
-                input_mode, after_cts.chain_index, std::log2(after_cts.scale), after_cts.coeff_modulus_log2, max_abs_value(z));
+    for (const auto target_q_size : {std::size_t{1}, std::size_t{2}}) {
+    for (const auto variant : {m2424::BootstrapModUpVariant::CenteredLift,
+                               m2424::BootstrapModUpVariant::UncenteredLift}) {
+        m2424::BootstrapScaleDownToQPlan scale_down_plan;
+        scale_down_plan.message_scale_log2 = kMessageScaleLog2;
+        scale_down_plan.target_scale_log2 = kMessageScaleLog2;
+        scale_down_plan.target_coeff_modulus_size = target_q_size;
+        scale_down_plan.preserve_scale_on_level_drop = true;
+        auto scaled = m2424::bootstrap_scale_down_to_q(adapter, current, scale_down_plan);
+        auto modup = adapter.bootstrap_modup_to_first(scaled.result, variant);
+        const auto after_modup = adapter.info(modup);
+        auto after_cts_cipher = cts.apply(adapter, modup);
+        const auto after_cts = adapter.info(after_cts_cipher);
+        const auto z = head(adapter.decode_complex(adapter.decrypt(after_cts_cipher)));
+        const auto best = scan_periods(z, expected);
 
-    const bool useful = std::isfinite(best.useful_mod_gain.err_mod_gain);
-    const bool pass = useful && best.useful_mod_gain.err_mod_gain <= 1e-9;
-    std::printf("[diagnose_stc_scaled_modup_lattice] input_mode=%s best_period_log2=%.0f best_gamma_abs=%.12e best_gamma_arg=%.12e err_mod_direct=%.12e err_mod_gain=%.12e useful_best_period_log2=%.0f useful_best_gamma_abs=%.12e useful_best_gamma_arg=%.12e useful_err_mod_gain=%.12e useful_status=%s conclusion=%s\n",
-                input_mode,
-                best.mod_gain.period_log2,
-                std::abs(best.mod_gain.gamma),
-                std::arg(best.mod_gain.gamma),
-                best.mod_direct.err_mod_direct,
-                best.mod_gain.err_mod_gain,
-                useful ? best.useful_mod_gain.period_log2 : std::nan(""),
-                useful ? std::abs(best.useful_mod_gain.gamma) : std::nan(""),
-                useful ? std::arg(best.useful_mod_gain.gamma) : std::nan(""),
-                useful ? best.useful_mod_gain.err_mod_gain : std::numeric_limits<double>::infinity(),
-                useful ? "non_degenerate" : "degenerate",
-                pass ? "lattice_invariant_pass" : "lattice_invariant_blocked");
+        std::printf("[diagnose_stc_scaled_modup_lattice] input_mode=%s target_coeff_modulus_size=%zu modup_variant=%s scale_down_to_q=true after_scale_down_chain=%zu after_scale_down_coeff_modulus_size=%zu after_scale_down_scale_log2=%.6f after_scale_down_coeff_log2=%.0f after_modup_chain=%zu after_modup_coeff_modulus_size=%zu after_modup_scale_log2=%.6f after_modup_coeff_log2=%.0f after_coeff_to_slot_chain=%zu after_coeff_to_slot_coeff_modulus_size=%zu after_coeff_to_slot_scale_log2=%.6f after_coeff_to_slot_coeff_log2=%.0f max_abs_z=%.12e\n",
+                    input_mode,
+                    target_q_size,
+                    to_string(variant),
+                    scaled.chain_after,
+                    scaled.coeff_modulus_size_after,
+                    scaled.scale_after_log2,
+                    scaled.coeff_modulus_log2_after,
+                    after_modup.chain_index,
+                    after_modup.coeff_modulus_size,
+                    std::log2(after_modup.scale),
+                    after_modup.coeff_modulus_log2,
+                    after_cts.chain_index,
+                    after_cts.coeff_modulus_size,
+                    std::log2(after_cts.scale),
+                    after_cts.coeff_modulus_log2,
+                    max_abs_value(z));
+
+        const bool useful = std::isfinite(best.useful_mod_gain.err_mod_gain);
+        const bool pass = useful && best.useful_mod_gain.err_mod_gain <= 1e-9;
+        std::printf("[diagnose_stc_scaled_modup_lattice] input_mode=%s target_coeff_modulus_size=%zu modup_variant=%s best_period_log2=%.0f best_gamma_abs=%.12e best_gamma_arg=%.12e err_mod_direct=%.12e err_mod_gain=%.12e useful_best_period_log2=%.0f useful_best_gamma_abs=%.12e useful_best_gamma_arg=%.12e useful_err_mod_gain=%.12e useful_status=%s classification=%s conclusion=%s\n",
+                    input_mode,
+                    target_q_size,
+                    to_string(variant),
+                    best.mod_gain.period_log2,
+                    std::abs(best.mod_gain.gamma),
+                    std::arg(best.mod_gain.gamma),
+                    best.mod_direct.err_mod_direct,
+                    best.mod_gain.err_mod_gain,
+                    useful ? best.useful_mod_gain.period_log2 : std::nan(""),
+                    useful ? std::abs(best.useful_mod_gain.gamma) : std::nan(""),
+                    useful ? std::arg(best.useful_mod_gain.gamma) : std::nan(""),
+                    useful ? best.useful_mod_gain.err_mod_gain : std::numeric_limits<double>::infinity(),
+                    useful ? "non_degenerate" : "degenerate",
+                    pass ? "matches reference lattice" : "transform semantic mismatch",
+                    pass ? "lattice_invariant_pass" : "lattice_invariant_blocked");
+    }
+    }
 }
 
 } // namespace

@@ -35,6 +35,7 @@ set(M2424_STABLE_APPS
 
 set(M2424_RESEARCH_APPS
     bench_bootstrap_multi_cycle
+    bench_bootstrap_experiments
     bench_bootstrap_reference_path
     bench_bootstrap_refresh
     bench_bootstrap_validation

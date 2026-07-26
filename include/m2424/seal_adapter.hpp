@@ -23,6 +23,11 @@ struct CipherInfo {
     double coeff_modulus_log2{};
 };
 
+enum class BootstrapModUpVariant {
+    CenteredLift,
+    UncenteredLift
+};
+
 using SerializedBuffer = std::vector<std::uint8_t>;
 
 class Plain {
@@ -85,7 +90,10 @@ public:
     Cipher mul_plain_rescale(const Cipher&, const Plain&);
     Cipher mul_relin_rescale(const Cipher&, const Cipher&);
     Cipher rescale_to_next(const Cipher&);
+    Cipher mod_switch_to_next_preserve_scale(const Cipher&);
+    Cipher mul_by_uint64_no_rescale(const Cipher&, std::uint64_t scalar);
     Cipher mod_raise_to_first(const Cipher&);
+    Cipher bootstrap_modup_to_first(const Cipher&, BootstrapModUpVariant variant = BootstrapModUpVariant::CenteredLift);
     Cipher unsafe_reinterpret_scale_for_diagnostics(const Cipher&, double decoded_value_multiplier);
     [[deprecated("use unsafe_reinterpret_scale_for_diagnostics; this is not a homomorphic multiply")]]
     Cipher multiply_decoded_value(const Cipher&, double multiplier);

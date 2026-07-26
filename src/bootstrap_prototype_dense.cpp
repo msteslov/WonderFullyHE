@@ -206,11 +206,9 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_impl(const Cipher& i
     if (expected && expected->size() != slots_) {
         throw std::invalid_argument("expected size must match BootstrapPrototype slots");
     }
-    if (circuit_order_ == BootstrapCircuitOrder::SlotsToCoeffsFirst &&
-        transform_backend_ == BootstrapTransformBackend::FftLike) {
+    if (circuit_order_ == BootstrapCircuitOrder::SlotsToCoeffsFirst) {
         return refresh_cipher_slots_to_coeffs_first_impl(input, expected);
     }
-
     EvalModPolynomial eval_mod;
     BootstrapPrototypeReport report;
     report.slots = slots_;

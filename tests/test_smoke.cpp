@@ -262,6 +262,7 @@ int main() {
 
     m2424::PolynomialEvaluator polynomial({
         {1, 0.75},
+        {2, 0.0},
         {3, -0.125}
     });
     auto polynomial_ct = polynomial.evaluate(depth_adapter, depth_ct);

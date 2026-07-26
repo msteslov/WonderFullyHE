@@ -4,6 +4,8 @@
 #include "m2424/eval_mod.hpp"
 #include "m2424/mod1_circuit.hpp"
 #include "m2424/bootstrap_precision_model.hpp"
+#include "m2424/bootstrap_stc_modup.hpp"
+#include "m2424/bootstrap_stc_reference.hpp"
 
 #include <cmath>
 #include <complex>
@@ -15,6 +17,16 @@ namespace m2424 {
 using namespace bootstrap_prototype_detail;
 
 namespace {
+
+const char* to_string(BootstrapModUpVariant variant) noexcept {
+    switch (variant) {
+    case BootstrapModUpVariant::CenteredLift:
+        return "CenteredLift";
+    case BootstrapModUpVariant::UncenteredLift:
+        return "UncenteredLift";
+    }
+    return "unknown";
+}
 
 BootstrapMod1Model mod1_model_for(EvalModDegree degree, double plain_scale_log2) {
     switch (degree) {
@@ -97,6 +109,11 @@ void attach_gain(BootstrapPrototypeStage& stage,
     }
 }
 
+BootstrapLatticeScanSummary scan_lattice_for_report(const ComplexVector& z,
+                                                    const ComplexVector& expected) {
+    return scan_bootstrap_lattice_periods(z, expected, 80.0, 125.0, 0.1);
+}
+
 } // namespace
 
 BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_first_impl(
@@ -130,10 +147,40 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         report.max_abs_input = max_abs_value(*expected);
     }
 
-    auto slot_to_coeff = FactorizedLinearTransform(make_bootstrap_dft_plan(
-        slots_, BootstrapDftType::HomomorphicEncode, plain_scale_log2_));
-    auto coeff_to_slot = FactorizedLinearTransform(make_bootstrap_dft_plan(
-        slots_, BootstrapDftType::HomomorphicDecode, plain_scale_log2_));
+    auto make_stc_plan = [&] {
+        if (transform_backend_ == BootstrapTransformBackend::SmallSlots4Butterfly) {
+            return make_small_slots4_butterfly_stc_plan(plain_scale_log2_);
+        }
+        return make_bootstrap_dft_plan(slots_, BootstrapDftType::HomomorphicEncode, plain_scale_log2_);
+    };
+    auto make_cts_plan = [&] {
+        if (transform_backend_ == BootstrapTransformBackend::SmallSlots4Butterfly) {
+            return make_small_slots4_butterfly_cts_plan(plain_scale_log2_);
+        }
+        return make_bootstrap_dft_plan(slots_, BootstrapDftType::HomomorphicDecode, plain_scale_log2_);
+    };
+    auto slot_to_coeff_factorized = FactorizedLinearTransform(make_stc_plan());
+    auto coeff_to_slot_factorized = FactorizedLinearTransform(make_cts_plan());
+    auto apply_slot_to_coeff_plain = [&](const ComplexVector& values) {
+        return transform_backend_ == BootstrapTransformBackend::DenseDiagonal
+            ? slot_to_coeff_.apply_plain(values)
+            : slot_to_coeff_factorized.apply_plain(values);
+    };
+    auto apply_coeff_to_slot_plain = [&](const ComplexVector& values) {
+        return transform_backend_ == BootstrapTransformBackend::DenseDiagonal
+            ? coeff_to_slot_.apply_plain(values)
+            : coeff_to_slot_factorized.apply_plain(values);
+    };
+    auto apply_slot_to_coeff_cipher = [&](const Cipher& cipher) {
+        return transform_backend_ == BootstrapTransformBackend::DenseDiagonal
+            ? slot_to_coeff_.apply_at_plain_scale(adapter_, cipher, std::exp2(plain_scale_log2_))
+            : slot_to_coeff_factorized.apply(adapter_, cipher);
+    };
+    auto apply_coeff_to_slot_cipher = [&](const Cipher& cipher) {
+        return transform_backend_ == BootstrapTransformBackend::DenseDiagonal
+            ? coeff_to_slot_.apply_at_plain_scale(adapter_, cipher, std::exp2(plain_scale_log2_))
+            : coeff_to_slot_factorized.apply(adapter_, cipher);
+    };
 
     auto current = input;
     const auto input_info = adapter_.info(input);
@@ -178,12 +225,12 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
 
     ComplexVector coeff_expected;
     if (expected) {
-        coeff_expected = slot_to_coeff.apply_plain(current_expected);
+        coeff_expected = apply_slot_to_coeff_plain(current_expected);
     }
     before = adapter_.info(current);
     try {
         stage_ms = elapsed_ms([&] {
-            current = slot_to_coeff.apply(adapter_, current);
+            current = apply_slot_to_coeff_cipher(current);
         });
     } catch (const std::exception& e) {
         throw std::runtime_error(stage_context("slot_to_coeff_first", before) + "; reason=" + e.what());
@@ -206,13 +253,45 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     }
     report.stages.push_back(stc_stage);
 
+    BootstrapScaleDownToQPlan scale_down_plan;
+    scale_down_plan.message_scale_log2 = plain_scale_log2_;
+    scale_down_plan.target_scale_log2 = plain_scale_log2_;
+    scale_down_plan.target_coeff_modulus_size = 2;
+    scale_down_plan.preserve_scale_on_level_drop = true;
     before = adapter_.info(current);
-    ComplexVector coeff_before_mod_raise;
-    if (expected) {
-        coeff_before_mod_raise = decode_head_for_stage(current, "mod_raise_before");
+    BootstrapScaleDownToQResult scale_down;
+    try {
+        stage_ms = elapsed_ms([&] {
+            scale_down = bootstrap_scale_down_to_q(adapter_, current, scale_down_plan);
+        });
+    } catch (const std::exception& error) {
+        throw std::runtime_error(stage_context("bootstrap_scale_down_to_q", before)
+                                 + "; reason=" + error.what());
     }
+    current = scale_down.result;
+    after = adapter_.info(current);
+    stage_error = 0.0;
+    if (expected) {
+        const auto actual = decode_head_for_stage(current, "bootstrap_scale_down_to_q");
+        stage_error = max_complex_error(coeff_expected, actual);
+    }
+    auto scale_down_stage = make_stage("bootstrap_scale_down_to_q",
+                                       before,
+                                       after,
+                                       stage_error,
+                                       tolerance_,
+                                       stage_ms,
+                                       expected != nullptr);
+    scale_down_stage.note = scale_down.note;
+    if (expected) {
+        mark_stage_diagnostic(scale_down_stage);
+    }
+    report.stages.push_back(scale_down_stage);
+
+    before = adapter_.info(current);
+    const BootstrapModUpVariant selected_modup_variant = BootstrapModUpVariant::CenteredLift;
     stage_ms = elapsed_ms([&] {
-        current = adapter_.mod_raise_to_first(current);
+        current = adapter_.bootstrap_modup_to_first(current, selected_modup_variant);
     });
     after = adapter_.info(current);
     report.bootstrap_period_log2 =
@@ -223,11 +302,11 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     report.bootstrap_scaling_factor = finite_exp2_or_zero(-report.bootstrap_period_log2);
     stage_error = 0.0;
     if (expected) {
-        const auto coeff_after_mod_raise = decode_head_for_stage(current, "mod_raise");
-        stage_error = max_complex_error(coeff_before_mod_raise, coeff_after_mod_raise);
+        const auto coeff_after_modup = decode_head_for_stage(current, "bootstrap_modup_to_Q");
+        stage_error = max_complex_error(coeff_expected, coeff_after_modup);
     }
     report.stages.push_back(BootstrapPrototypeStage{
-        "mod_raise",
+        "bootstrap_modup_to_Q",
         "STRUCTURAL",
         before.chain_index,
         after.chain_index,
@@ -238,25 +317,27 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
         before.scale,
         after.scale,
         stage_error,
-        stage_ms
+        stage_ms,
+        {},
+        std::string("modup_variant=") + to_string(selected_modup_variant)
     });
 
     ComplexVector roundtrip_expected;
     if (expected) {
-        roundtrip_expected = coeff_to_slot.apply_plain(coeff_expected);
+        roundtrip_expected = apply_coeff_to_slot_plain(coeff_expected);
     }
     before = adapter_.info(current);
     try {
         stage_ms = elapsed_ms([&] {
-            current = coeff_to_slot.apply(adapter_, current);
+            current = apply_coeff_to_slot_cipher(current);
         });
     } catch (const std::exception& e) {
-        throw std::runtime_error(stage_context("coeff_to_slot_after_raise", before) + "; reason=" + e.what());
+        throw std::runtime_error(stage_context("coeff_to_slot_after_modup", before) + "; reason=" + e.what());
     }
     after = adapter_.info(current);
     ComplexVector cts_actual;
     if (expected) {
-        cts_actual = decode_head_for_stage(current, "coeff_to_slot_after_raise");
+        cts_actual = decode_head_for_stage(current, "coeff_to_slot_after_modup");
         report.max_abs_after_coeff_to_slot = max_abs_value(cts_actual);
         stage_error = max_complex_error(roundtrip_expected, cts_actual);
         if (period_mode_ == BootstrapPeriodMode::NoBootstrapPeriod
@@ -267,7 +348,7 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
     }
     report.bootstrap_period = finite_exp2_or_zero(report.bootstrap_period_log2);
     report.bootstrap_scaling_factor = finite_exp2_or_zero(-report.bootstrap_period_log2);
-    auto cts_stage = make_stage("coeff_to_slot_after_raise",
+    auto cts_stage = make_stage("coeff_to_slot_after_modup",
                                 before,
                                 after,
                                 stage_error,
@@ -276,6 +357,18 @@ BootstrapPrototypeReport BootstrapPrototype::refresh_cipher_slots_to_coeffs_firs
                                 expected != nullptr);
     if (expected) {
         attach_gain(cts_stage, expected, cts_actual);
+        const auto lattice = scan_lattice_for_report(cts_actual, *expected);
+        std::ostringstream note;
+        note << "modup_variant=" << to_string(selected_modup_variant)
+             << "; best_period_log2=" << lattice.best_useful_mod_gain.period_log2
+             << "; gamma_abs=" << std::abs(lattice.best_useful_mod_gain.gamma)
+             << "; gamma_arg=" << std::arg(lattice.best_useful_mod_gain.gamma)
+             << "; err_mod_gain=" << lattice.best_useful_mod_gain.err_mod_gain
+             << "; classification="
+             << (lattice.has_useful_gain && lattice.best_useful_mod_gain.err_mod_gain <= tolerance_
+                     ? "lattice_invariant_pass"
+                     : "lattice_invariant_blocked");
+        cts_stage.note = note.str();
         mark_stage_diagnostic(cts_stage);
     }
     report.stages.push_back(cts_stage);

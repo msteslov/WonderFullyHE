@@ -53,6 +53,7 @@ struct BootstrapPrototypeStage {
     double max_abs_error{};
     double duration_ms{};
     BootstrapGainDiagnostic gain;
+    std::string note;
 };
 
 struct BootstrapPrototypeReport {

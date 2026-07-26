@@ -54,6 +54,15 @@ static bool has_failing_stage(const BootstrapPrototypeReport& report) {
     });
 }
 
+static void configure_scalable_refresh(BootstrapPrototype& prototype,
+                                       EvalModDegree evalmod_degree,
+                                       double plain_scale_log2) {
+    prototype.set_circuit_order(BootstrapCircuitOrder::SlotsToCoeffsFirst);
+    prototype.set_transform_backend(BootstrapTransformBackend::FftLike);
+    prototype.set_evalmod_degree(evalmod_degree);
+    prototype.set_plain_scale_log2(plain_scale_log2);
+}
+
 static std::string guarded_refresh_blocker(const BootstrapPrototypeReport& report, bool require_value_check) {
     if (report.stages.empty()) {
         return "refresh_report_empty";
@@ -71,6 +80,37 @@ static std::string guarded_refresh_blocker(const BootstrapPrototypeReport& repor
         return "refresh_did_not_preserve_value";
     }
     return "none";
+}
+
+template <class Refresh>
+static BootstrapGuardedRefreshResult run_guarded_refresh(
+    Bootstrapper& bootstrapper,
+    const Cipher& input,
+    const CkksOperationBudget& operation_budget,
+    double target_error,
+    std::size_t slots,
+    int security_bits,
+    ParameterOptimizeFor optimize_for,
+    std::size_t min_chain_remaining_after_compute,
+    bool require_value_check,
+    Refresh&& refresh) {
+    BootstrapGuardedRefreshResult result;
+    result.planning = bootstrapper.plan_refresh_for_budget(input,
+                                                            operation_budget,
+                                                            target_error,
+                                                            slots,
+                                                            security_bits,
+                                                            optimize_for,
+                                                            min_chain_remaining_after_compute);
+    if (result.planning.status != BootstrapRefreshPlanningStatus::RefreshRequired) {
+        result.blocker = result.planning.blocker;
+        return result;
+    }
+
+    result.refresh = std::forward<Refresh>(refresh)();
+    result.refresh_executed = true;
+    result.blocker = guarded_refresh_blocker(result.refresh, require_value_check);
+    return result;
 }
 
 Bootstrapper::Bootstrapper(SealAdapter& adapter) : adapter_(&adapter) {
@@ -223,10 +263,7 @@ BootstrapPrototypeReport Bootstrapper::refresh_slots_to_coeffs_first(const Ciphe
         throw std::runtime_error("Bootstrapper has no SealAdapter");
     }
     BootstrapPrototype prototype(*adapter_, slots, tolerance);
-    prototype.set_transform_backend(BootstrapTransformBackend::FftLike);
-    prototype.set_circuit_order(BootstrapCircuitOrder::SlotsToCoeffsFirst);
-    prototype.set_evalmod_degree(evalmod_degree);
-    prototype.set_plain_scale_log2(std::log2(adapter_->info(input).scale));
+    configure_scalable_refresh(prototype, evalmod_degree, std::log2(adapter_->info(input).scale));
     return prototype.refresh_cipher_fast(input);
 }
 
@@ -248,10 +285,7 @@ BootstrapPrototypeReport Bootstrapper::refresh_slots_to_coeffs_first_checked(
         throw std::runtime_error("Bootstrapper has no SealAdapter");
     }
     BootstrapPrototype prototype(*adapter_, slots, tolerance);
-    prototype.set_transform_backend(BootstrapTransformBackend::FftLike);
-    prototype.set_circuit_order(BootstrapCircuitOrder::SlotsToCoeffsFirst);
-    prototype.set_evalmod_degree(evalmod_degree);
-    prototype.set_plain_scale_log2(std::log2(adapter_->info(input).scale));
+    configure_scalable_refresh(prototype, evalmod_degree, std::log2(adapter_->info(input).scale));
     return prototype.refresh_cipher_checked(input, expected);
 }
 
@@ -285,22 +319,16 @@ BootstrapGuardedRefreshResult Bootstrapper::refresh_slots_to_coeffs_first_guarde
     int security_bits,
     ParameterOptimizeFor optimize_for,
     std::size_t min_chain_remaining_after_compute) {
-    BootstrapGuardedRefreshResult result;
-    result.planning = plan_refresh_for_budget(input,
-                                              operation_budget,
-                                              target_error,
-                                              slots,
-                                              security_bits,
-                                              optimize_for,
-                                              min_chain_remaining_after_compute);
-    if (result.planning.status != BootstrapRefreshPlanningStatus::RefreshRequired) {
-        result.blocker = result.planning.blocker;
-        return result;
-    }
-    result.refresh = refresh_slots_to_coeffs_first(input, slots, tolerance, evalmod_degree);
-    result.refresh_executed = true;
-    result.blocker = guarded_refresh_blocker(result.refresh, false);
-    return result;
+    return run_guarded_refresh(*this,
+                               input,
+                               operation_budget,
+                               target_error,
+                               slots,
+                               security_bits,
+                               optimize_for,
+                               min_chain_remaining_after_compute,
+                               false,
+                               [&] { return refresh_slots_to_coeffs_first(input, slots, tolerance, evalmod_degree); });
 }
 
 BootstrapGuardedRefreshResult Bootstrapper::refresh_slots_to_coeffs_first_checked_guarded(
@@ -336,22 +364,17 @@ BootstrapGuardedRefreshResult Bootstrapper::refresh_slots_to_coeffs_first_checke
     int security_bits,
     ParameterOptimizeFor optimize_for,
     std::size_t min_chain_remaining_after_compute) {
-    BootstrapGuardedRefreshResult result;
-    result.planning = plan_refresh_for_budget(input,
-                                              operation_budget,
-                                              target_error,
-                                              slots,
-                                              security_bits,
-                                              optimize_for,
-                                              min_chain_remaining_after_compute);
-    if (result.planning.status != BootstrapRefreshPlanningStatus::RefreshRequired) {
-        result.blocker = result.planning.blocker;
-        return result;
-    }
-    result.refresh = refresh_slots_to_coeffs_first_checked(input, expected, slots, tolerance, evalmod_degree);
-    result.refresh_executed = true;
-    result.blocker = guarded_refresh_blocker(result.refresh, true);
-    return result;
+    return run_guarded_refresh(
+        *this,
+        input,
+        operation_budget,
+        target_error,
+        slots,
+        security_bits,
+        optimize_for,
+        min_chain_remaining_after_compute,
+        true,
+        [&] { return refresh_slots_to_coeffs_first_checked(input, expected, slots, tolerance, evalmod_degree); });
 }
 
 BootstrapRefreshPlanningResult Bootstrapper::plan_refresh_for_budget(

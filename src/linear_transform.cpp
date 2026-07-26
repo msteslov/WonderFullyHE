@@ -2,9 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
-#include <optional>
-#include <unordered_map>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 
 namespace m2424 {
@@ -16,20 +15,6 @@ bool has_nonzero_coefficient(const std::vector<double>& coefficients) {
     return std::any_of(coefficients.begin(), coefficients.end(), [](double coefficient) {
         return std::fabs(coefficient) > kZeroCoefficientTolerance;
     });
-}
-
-bool has_repeated_nonzero_rotation(const std::vector<LinearTerm>& terms) {
-    std::vector<int> seen;
-    for (const auto& term : terms) {
-        if (term.rotation == 0 || !has_nonzero_coefficient(term.coefficients)) {
-            continue;
-        }
-        if (std::find(seen.begin(), seen.end(), term.rotation) != seen.end()) {
-            return true;
-        }
-        seen.push_back(term.rotation);
-    }
-    return false;
 }
 
 Cipher pairwise_add(SealAdapter& adapter, std::vector<Cipher> terms) {
@@ -86,7 +71,6 @@ std::vector<int> LinearTransform::rotation_steps() const {
 }
 
 Cipher LinearTransform::apply(SealAdapter& adapter, const Cipher& input) const {
-    const bool cache_rotations = has_repeated_nonzero_rotation(terms_);
     std::unordered_map<int, Cipher> rotated_cache;
     std::vector<Cipher> weighted_terms;
     weighted_terms.reserve(terms_.size());
@@ -96,13 +80,9 @@ Cipher LinearTransform::apply(SealAdapter& adapter, const Cipher& input) const {
             continue;
         }
 
-        std::optional<Cipher> rotated_value;
         const Cipher* rotated = nullptr;
         if (term.rotation == 0) {
             rotated = &input;
-        } else if (!cache_rotations) {
-            rotated_value.emplace(adapter.rotate(input, term.rotation));
-            rotated = &*rotated_value;
         } else {
             auto cached = rotated_cache.find(term.rotation);
             if (cached == rotated_cache.end()) {

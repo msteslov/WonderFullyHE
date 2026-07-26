@@ -13,6 +13,24 @@ void validate_log2(double value, const char* name) {
     }
 }
 
+Cipher drop_level_preserving_scale(SealAdapter& adapter, const Cipher& input) {
+    const auto info = adapter.info(input);
+    if (info.chain_index == 0) {
+        throw std::runtime_error("cannot drop level at the end of the modulus chain");
+    }
+    const auto bits = adapter.coeff_modulus_bits();
+    if (info.coeff_modulus_size == 0 || info.coeff_modulus_size > bits.size()) {
+        throw std::runtime_error("cannot infer next rescale modulus size");
+    }
+    const double plain_scale_log2 = static_cast<double>(bits[info.coeff_modulus_size - 1]);
+    if (!std::isfinite(plain_scale_log2) || plain_scale_log2 <= 0.0) {
+        throw std::runtime_error("cannot compute scale-preserving level drop scale");
+    }
+    return adapter.mul_plain_rescale(
+        input,
+        adapter.encode_scalar_at_scale_like(1.0, std::exp2(plain_scale_log2), input));
+}
+
 } // namespace
 
 const char* to_string(BootstrapStcDomain domain) noexcept {
@@ -119,6 +137,95 @@ BootstrapStcScaleDownResult apply_stc_scale_down(SealAdapter& adapter,
     result.levels_consumed = before.chain_index >= after.chain_index
         ? before.chain_index - after.chain_index
         : 0;
+    return result;
+}
+
+BootstrapScaleDownToQResult bootstrap_scale_down_to_q(SealAdapter& adapter,
+                                                      const Cipher& input,
+                                                      const BootstrapScaleDownToQPlan& plan) {
+    validate_log2(plan.message_scale_log2, "plan.message_scale_log2");
+    validate_log2(plan.target_scale_log2, "plan.target_scale_log2");
+    validate_log2(plan.message_ratio_log2, "plan.message_ratio_log2");
+    if (plan.target_coeff_modulus_size == 0) {
+        throw std::invalid_argument("target_coeff_modulus_size must be positive");
+    }
+
+    const auto before = adapter.info(input);
+    if (plan.target_coeff_modulus_size > before.coeff_modulus_size) {
+        throw std::invalid_argument("target_coeff_modulus_size cannot exceed input coeff modulus size");
+    }
+    if (!std::isfinite(before.scale) || before.scale <= 0.0) {
+        throw std::runtime_error("ScaleDown-to-q input scale is invalid");
+    }
+
+    BootstrapScaleDownToQResult result;
+    result.chain_before = before.chain_index;
+    result.coeff_modulus_size_before = before.coeff_modulus_size;
+    result.scale_before_log2 = std::log2(before.scale);
+    result.coeff_modulus_log2_before = before.coeff_modulus_log2;
+    auto current = input;
+    const auto bits = adapter.coeff_modulus_bits();
+
+    while (adapter.info(current).coeff_modulus_size > plan.target_coeff_modulus_size) {
+        const auto current_info = adapter.info(current);
+        if (current_info.coeff_modulus_size == 0 || current_info.coeff_modulus_size > bits.size()) {
+            throw std::runtime_error("ScaleDown-to-q cannot infer active last prime");
+        }
+        const double current_ratio_log2 = current_info.coeff_modulus_log2 - std::log2(current_info.scale);
+        const double last_prime_log2 = static_cast<double>(bits[current_info.coeff_modulus_size - 1]);
+        if (current_ratio_log2 < last_prime_log2 + plan.message_ratio_log2) {
+            break;
+        }
+        current = adapter.mod_switch_to_next_preserve_scale(current);
+    }
+
+    auto scale_info = adapter.info(current);
+    result.current_message_ratio_log2 = scale_info.coeff_modulus_log2 - std::log2(scale_info.scale);
+    result.target_message_ratio_log2 = plan.message_ratio_log2;
+    result.scale_up_log2 = result.current_message_ratio_log2 - result.target_message_ratio_log2;
+    if (result.scale_up_log2 < -1.0) {
+        throw std::runtime_error("ScaleDown-to-q current message ratio is too small for target message ratio");
+    }
+    double scale_up_double = std::floor(std::exp2(std::max(0.0, result.scale_up_log2)) + 0.5);
+    if (!std::isfinite(scale_up_double) || scale_up_double < 1.0
+        || scale_up_double > static_cast<double>(std::numeric_limits<std::uint64_t>::max())) {
+        throw std::runtime_error("ScaleDown-to-q scale_up is outside uint64 range");
+    }
+    result.scale_up_integer = static_cast<std::uint64_t>(scale_up_double);
+    if (result.scale_up_integer > 1) {
+        current = adapter.mul_by_uint64_no_rescale(current, result.scale_up_integer);
+    }
+
+    while (adapter.info(current).coeff_modulus_size > plan.target_coeff_modulus_size) {
+        const auto current_info = adapter.info(current);
+        if (current_info.chain_index == 0) {
+            throw std::runtime_error("ScaleDown-to-q reached chain index 0 before target coeff modulus size");
+        }
+        current = adapter.rescale_to_next(current);
+    }
+    result.result = current;
+
+    const auto after = adapter.info(result.result);
+    if (!std::isfinite(after.scale) || after.scale <= 0.0) {
+        throw std::runtime_error("ScaleDown-to-q produced invalid scale");
+    }
+    result.chain_after = after.chain_index;
+    result.coeff_modulus_size_after = after.coeff_modulus_size;
+    result.scale_after_log2 = std::log2(after.scale);
+    result.coeff_modulus_log2_after = after.coeff_modulus_log2;
+    result.err_scale_log2 = result.scale_after_log2 - (result.coeff_modulus_log2_after - plan.message_ratio_log2);
+    result.levels_consumed = before.chain_index >= after.chain_index
+        ? before.chain_index - after.chain_index
+        : 0;
+
+    std::ostringstream note;
+    note << "ScaleDown-to-q target_coeff_modulus_size=" << plan.target_coeff_modulus_size
+         << "; message_ratio_log2=" << plan.message_ratio_log2
+         << "; current_message_ratio_log2=" << result.current_message_ratio_log2
+         << "; scale_up_integer=" << result.scale_up_integer
+         << "; scale_up_log2=" << result.scale_up_log2
+         << "; err_scale_log2=" << result.err_scale_log2;
+    result.note = note.str();
     return result;
 }
 

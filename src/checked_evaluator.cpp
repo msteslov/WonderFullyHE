@@ -55,7 +55,6 @@ CheckedResult CheckedEvaluator::rescale_to_next(const Cipher& input, const std::
 }
 
 CheckedResult CheckedEvaluator::rotate(const Cipher& input, int steps, const std::vector<double>& expected) {
-    (void)steps;
     budget_builder_.record_rotation();
     return finalize("rotate", adapter_.rotate(input, steps), expected);
 }

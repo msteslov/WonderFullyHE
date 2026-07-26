@@ -75,6 +75,23 @@ std::vector<double> sine_coefficients_for_degree(std::size_t degree) {
     }
 }
 
+std::vector<double> cosine_coefficients_for_degree(std::size_t degree) {
+    if ((degree % 2) != 0) {
+        throw std::invalid_argument("cosine polynomial degree must be even");
+    }
+    std::vector<double> coefficients(degree + 1, 0.0);
+    for (std::size_t power = 0; power <= degree; power += 2) {
+        const std::size_t k = power / 2;
+        const double sign = (k % 2 == 0) ? 1.0 : -1.0;
+        double factorial = 1.0;
+        for (std::size_t i = 2; i <= power; ++i) {
+            factorial *= static_cast<double>(i);
+        }
+        coefficients[power] = sign * std::pow(2.0 * kPi, static_cast<double>(power)) / factorial;
+    }
+    return coefficients;
+}
+
 std::size_t direct_odd_power_depth(std::size_t degree) {
     switch (degree) {
     case 3:
@@ -122,6 +139,44 @@ T apply_double_angle(const Mod1Approximation& approximation, T input) {
     return value;
 }
 
+double evaluate_coefficients_unbounded(const std::vector<double>& coefficients, double input) {
+    double result = 0.0;
+    double power = 1.0;
+    for (double coefficient : coefficients) {
+        result += coefficient * power;
+        power *= input;
+    }
+    return result;
+}
+
+Complex evaluate_coefficients_unbounded(const std::vector<double>& coefficients, Complex input) {
+    Complex result{0.0, 0.0};
+    Complex power{1.0, 0.0};
+    for (double coefficient : coefficients) {
+        result += coefficient * power;
+        power *= input;
+    }
+    return result;
+}
+
+template <class T>
+T evaluate_wide_mod1_pair_recurrence(const Mod1Approximation& approximation, T input) {
+    const double divisor = std::exp2(static_cast<double>(approximation.double_angle));
+    const T compressed = input / divisor;
+    validate_input(compressed, approximation.input_bound);
+    const auto sin_coefficients = sine_coefficients_for_degree(approximation.polynomial_degree);
+    const auto cos_coefficients = cosine_coefficients_for_degree(approximation.polynomial_degree + 1);
+    T s = (2.0 * kPi) * evaluate_coefficients_unbounded(sin_coefficients, compressed);
+    T c = evaluate_coefficients_unbounded(cos_coefficients, compressed);
+    for (std::size_t i = 0; i < approximation.double_angle; ++i) {
+        const T next_s = 2.0 * s * c;
+        const T next_c = c * c - s * s;
+        s = next_s;
+        c = next_c;
+    }
+    return s / (2.0 * kPi);
+}
+
 } // namespace
 
 Mod1Approximation make_mod1_approximation(const BootstrapMod1Model& model) {
@@ -161,6 +216,41 @@ Mod1Approximation make_mod1_approximation(const BootstrapMod1Model& model) {
     }
 
     throw std::invalid_argument("unknown Mod1 approximation type");
+}
+
+Mod1Approximation make_wide_mod1_approximation(const BootstrapWideMod1Plan& plan) {
+    if (plan.type != BootstrapMod1Type::CosDiscrete) {
+        throw std::invalid_argument("wide Mod1 currently supports CosDiscrete only");
+    }
+    if (plan.polynomial_degree < 15 || (plan.polynomial_degree % 2) == 0) {
+        throw std::invalid_argument("wide Mod1 polynomial degree must be odd and at least 15");
+    }
+    if (!std::isfinite(plan.input_bound) || plan.input_bound <= 0.0) {
+        throw std::invalid_argument("wide Mod1 input_bound must be positive and finite");
+    }
+    if (!std::isfinite(plan.compressed_bound) || plan.compressed_bound <= 0.0) {
+        throw std::invalid_argument("wide Mod1 compressed_bound must be positive and finite");
+    }
+    if (!std::isfinite(plan.evalmod_scale_log2) || plan.evalmod_scale_log2 <= 0.0) {
+        throw std::invalid_argument("wide Mod1 evalmod_scale_log2 must be positive and finite");
+    }
+
+    Mod1Approximation approximation;
+    approximation.type = plan.type;
+    approximation.polynomial_degree = plan.polynomial_degree;
+    approximation.double_angle = plan.double_angle_steps;
+    approximation.input_bound = plan.compressed_bound;
+    approximation.target_error = plan.target_error;
+    approximation.evalmod_log_scale = plan.evalmod_scale_log2;
+    approximation.coefficients = sine_coefficients_for_degree(plan.polynomial_degree);
+    approximation.estimated_depth =
+        direct_odd_power_depth(plan.polynomial_degree) + plan.double_angle_steps;
+    approximation.strategy = plan.polynomial_degree <= 15
+        ? PolynomialEvaluationStrategy::DirectOddPowers
+        : PolynomialEvaluationStrategy::PatersonStockmeyer;
+    approximation.construction_note =
+        "wide-range CosDiscrete Mod1 plain approximation using sine/cosine pair double-angle recurrence";
+    return approximation;
 }
 
 const char* to_string(PolynomialEvaluationStrategy strategy) noexcept {
@@ -245,6 +335,16 @@ ComplexVector evaluate_mod1_plain_with_double_angle(const Mod1Approximation& app
         result.push_back(evaluate_mod1_plain_with_double_angle(approximation, value));
     }
     return result;
+}
+
+double evaluate_wide_mod1_plain(const Mod1Approximation& approximation, double input) {
+    validate_input_bound(approximation.input_bound);
+    return evaluate_wide_mod1_pair_recurrence(approximation, input);
+}
+
+Complex evaluate_wide_mod1_plain(const Mod1Approximation& approximation, Complex input) {
+    validate_input_bound(approximation.input_bound);
+    return evaluate_wide_mod1_pair_recurrence(approximation, input);
 }
 
 } // namespace m2424
