@@ -6,7 +6,6 @@
 #include <stdexcept>
 #include "m2424/abft.hpp"
 #include "m2424/accuracy.hpp"
-#include "m2424/bootstrap.hpp"
 #include "m2424/bootstrap_scaling.hpp"
 #include "m2424/checked_evaluator.hpp"
 #include "m2424/diagonal_transform.hpp"
@@ -88,12 +87,6 @@ static void accuracy_size_mismatch_case() {
 
 static void unknown_profile_name_case() {
     (void)m2424::profiles::by_name("unknown_ckks_profile");
-}
-
-static bool has_stage(const m2424::BootstrapReport& report, const char* name) {
-    return std::any_of(report.stages.begin(), report.stages.end(), [name](const m2424::BootstrapStage& stage) {
-        return stage.name == name;
-    });
 }
 
 static bool all_named_profiles_create_contexts() {
@@ -235,9 +228,6 @@ int main() {
     std::vector<double> depth_input;
     depth_input.reserve(16);
     for (std::size_t i = 0; i < 16; ++i) depth_input.push_back(0.25 + 0.25 * std::sin(static_cast<double>(i) / 7.0));
-    m2424::Bootstrapper bootstrapper(depth_adapter);
-    auto bootstrap_report = bootstrapper.analyze_depth(depth_input, 8);
-
     auto depth_ct = depth_adapter.encrypt(depth_adapter.encode(depth_input));
     m2424::LinearTransform transform({
         {0, {0.5}},
@@ -331,17 +321,6 @@ int main() {
         && !precision_boot_ultra_security.passes_tc192
         && precision_boot_ultra_security.effective_level == m2424::SecurityLevel::TC128
         && m2424::project_minimum_security(security_reports) == m2424::SecurityLevel::TC128;
-    const bool bootstrap_report_ok = bootstrap_report.input.available
-        && bootstrap_report.depth_boundary.available
-        && bootstrap_report.successful_multiplications == 4
-        && bootstrap_report.next_exponent == 16
-        && !bootstrap_report.stop_reason.empty()
-        && !bootstrap_report.preserve_value_criterion
-        && !bootstrap_report.restore_level_criterion
-        && has_stage(bootstrap_report, "ModRaise")
-        && has_stage(bootstrap_report, "CoeffToSlot")
-        && has_stage(bootstrap_report, "EvalMod")
-        && has_stage(bootstrap_report, "SlotToCoeff");
     const auto impossible_scale_plan = m2424::plan_bootstrap_scale_strategy(
         {60, 40, 40, 40, 40, 40, 40},
         m2424::CipherInfo{std::pow(2.0, 40), 6, 7, 2, 300.0},
@@ -413,16 +392,14 @@ int main() {
         && diagonal_transform_plan_ok()
         && eval_mod_polynomial_ok()
         && security_report_ok
-        && bootstrap_report_ok
         && scale_strategy_plan_ok
         && evalmod_capacity_plan_ok;
-    std::printf("[test_smoke] max=%.6e mean=%.6e arithmetic=%s bootstrap_parts=%s security=%s bootstrap_report=%s => %s\n",
+    std::printf("[test_smoke] max=%.6e mean=%.6e arithmetic=%s transform_parts=%s security=%s => %s\n",
                mul_accuracy.max_abs_error,
                mul_accuracy.mean_abs_error,
                arithmetic_ok ? "PASS" : "FAIL",
                bootstrap_parts_ok ? "PASS" : "FAIL",
                security_report_ok ? "PASS" : "FAIL",
-               bootstrap_report_ok ? "PASS" : "FAIL",
                ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

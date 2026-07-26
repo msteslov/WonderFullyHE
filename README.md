@@ -8,7 +8,7 @@ WonderFullyHE — C++17-библиотека для приближённых з�
 #include "m2424/m2424.hpp"
 ```
 
-Bootstrap, EvalMod и DFT остаются исследовательскими API и подключаются отдельно:
+DFT, EvalMod и parameter-planning API подключаются отдельно:
 
 ```cpp
 #include "m2424/experimental.hpp"
@@ -48,25 +48,6 @@ ctest --test-dir build --output-on-failure
 ## Тесты
 
 По умолчанию CTest запускает быстрые детерминированные инвариантные тесты.
-
-Исследовательские bootstrap-тесты и диагностику можно включить отдельно:
-
-```bash
-cmake -S . -B build -DM2424_BUILD_RESEARCH_APPS=ON -DM2424_BUILD_RESEARCH_TESTS=ON
-cmake --build build -j
-ctest --test-dir build -L research --output-on-failure
-```
-
-Для сравнения bootstrap-вариантов используйте единый research runner:
-
-```bash
-cmake -S . -B build -DM2424_BUILD_RESEARCH_APPS=ON
-cmake --build build --target bench_bootstrap_experiments -j
-./build/bench_bootstrap_experiments
-```
-
-Варианты задаются через `BootstrapExperimentConfig`; результат каждого содержит
-общий outcome, blocker и отчёт стадий.
 
 ## Пример API
 

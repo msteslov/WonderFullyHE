@@ -1,19 +1,12 @@
 add_library(m2424
     accuracy.cpp
     abft.cpp
-    bootstrap.cpp
     bootstrap_dft.cpp
-    bootstrap_experiment.cpp
     bootstrap_layout_v2.cpp
     bootstrap_parameters.cpp
     bootstrap_plan.cpp
     bootstrap_precision_model.cpp
-    bootstrap_prototype.cpp
-    bootstrap_prototype_dense.cpp
-    bootstrap_prototype_detail.cpp
-    bootstrap_prototype_stc_first.cpp
     bootstrap_scaling.cpp
-    bootstrap_stc_modup.cpp
     bootstrap_stc_reference.cpp
     checked_evaluator.cpp
     diagonal_transform.cpp

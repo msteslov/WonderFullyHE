@@ -1,7 +1,5 @@
 #include "m2424/bootstrap_plan.hpp"
 
-#include "m2424/bootstrap_prototype.hpp"
-
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -206,7 +204,15 @@ BootstrapPipelinePlan make_scalable_bootstrap_plan(std::size_t slots) {
 std::vector<int> bootstrap_plan_rotation_steps(const BootstrapPipelinePlan& plan) {
     validate_slots(plan.slots);
     if (plan.transform_backend == BootstrapTransformBackend::DenseDiagonal) {
-        return BootstrapPrototype::required_rotation_steps(plan.slots);
+        const auto coeff_to_slot = DiagonalLinearTransform::from_matrix(canonical_embedding_matrix(plan.slots));
+        const auto slot_to_coeff = DiagonalLinearTransform::from_matrix(
+            invert_matrix(canonical_embedding_matrix(plan.slots)));
+        auto steps = coeff_to_slot.rotation_steps();
+        const auto inverse_steps = slot_to_coeff.rotation_steps();
+        steps.insert(steps.end(), inverse_steps.begin(), inverse_steps.end());
+        std::sort(steps.begin(), steps.end());
+        steps.erase(std::unique(steps.begin(), steps.end()), steps.end());
+        return steps;
     }
     auto coeff_to_slot = make_bootstrap_dft_plan(plan.slots,
                                                  BootstrapDftType::HomomorphicDecode,

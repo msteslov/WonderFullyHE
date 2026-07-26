@@ -125,12 +125,9 @@ security_bits
 #include "m2424/experimental.hpp"
 ```
 
-Компоненты bootstrap-слоя:
+Поддерживаются только исследовательские модели и planner-ы:
 
-- `Bootstrapper` — точка входа для анализа глубины и guarded refresh;
-- `BootstrapPipelinePlan` — описание порядка стадий, backend-а трансформаций и активных проверок;
-- `BootstrapRefreshPlanningResult` — решение, помещается ли следующий блок без refresh или нужен guarded refresh;
-- `BootstrapPrototypeReport` — отчёт по стадиям prototype-refresh;
+- `BootstrapPipelinePlan` и `BootstrapRefreshPlanningResult` — расчёт требований к refresh без запуска ciphertext-refresh;
 - `BootstrapScaleDesign` и layout-модели — проверка масштаба, периода, уровней и ёмкости EvalMod;
 - `BootstrapStcReferencePlan` — plaintext/reference модель pre-EvalMod lattice form.
 
@@ -139,55 +136,12 @@ Backend-и линейных transform-стадий:
 - `DenseDiagonal` — reference-путь для малых `slots`;
 - `FftLike` — staged FFT-like путь для масштабируемых трансформаций.
 
-## Исследовательский цикл
-
-Изменяемые bootstrap-компоненты не должны выбираться в benchmark-ах через
-локальные `bool` и набор setter-вызовов. Для этого research API предоставляет
-`BootstrapExperimentConfig` и `run_bootstrap_experiment`:
-
-```text
-BootstrapExperimentConfig
-        |
-        +-- circuit order / transform backend / EvalMod
-        +-- scaling, period и STC/ModUp параметры
-        v
-bootstrap_experiment_rotation_steps
-        v
-keygen только нужных Galois keys
-        v
-run_bootstrap_experiment(s)
-        v
-BootstrapExperimentResult { passed | blocked | failed, blocker, stage report }
-```
-
-Каждая конфигурация описывает один вариант, поэтому suite запускает одинаковый
-input независимо для каждого варианта и возвращает сопоставимые отчёты. Runner
-не создаёт ключи неявно: вызывающий код сначала объединяет rotation steps всех
-конфигураций, создаёт adapter и ключи, затем запускает suite. Это исключает
-скрытое влияние key-set и setup на сравнение backend-ов.
-
-Пример исполняемого формата — research benchmark
-`bench_bootstrap_experiments` (доступен с `M2424_BUILD_RESEARCH_APPS=ON`).
-
-Scalable refresh-путь задаёт порядок:
-
-```text
-SlotsToCoeff -> ScaleDown/ModUp -> CoeffToSlot -> EvalMod P3 -> output_scale_repair
-```
-
-Набор Galois-ключей для этого пути должен строиться через:
-
-```cpp
-m2424::Bootstrapper::scalable_refresh_rotation_steps(slots)
-```
-
 ## Контракты стадий
 
 - `ModRaise` меняет RNS-базу ciphertext и не является восстановлением вычислительной глубины сам по себе.
 - `CoeffToSlot` и `SlotToCoeff` должны сохранять значение в пределах заданного error budget.
 - `EvalMod` применяется только к нормализованному входу, попадающему в допустимый интервал аппроксимации.
 - `output_scale_repair` возвращает результат к рабочему CKKS-масштабу после EvalMod.
-- Guarded refresh не запускает prototype-refresh, если следующий вычислительный блок помещается в доступные уровни.
 
 ## Границы применимости
 
@@ -206,11 +160,8 @@ m2424::Bootstrapper::scalable_refresh_rotation_steps(slots)
 - `src/profile_report.cpp` и `src/security_report.cpp` — отчёты по параметрам.
 - `src/linear_transform.cpp` и `src/diagonal_transform.cpp` — rotation-based линейные преобразования.
 - `src/polynomial.cpp` и `src/eval_mod.cpp` — полиномы и EvalMod.
-- `src/bootstrap.cpp` — публичный bootstrap facade.
 - `src/bootstrap_plan.cpp` — планирование refresh и проверка уровней.
 - `src/bootstrap_layout_v2.cpp` — layout-планирование bootstrap-профиля.
 - `src/bootstrap_dft.cpp` — DFT-планы для `CoeffToSlot` / `SlotToCoeff`.
 - `src/bootstrap_scaling.cpp` — управление масштабом bootstrap-стадий.
-- `src/bootstrap_stc_modup.cpp` — STC-first ScaleDown/ModUp contract.
 - `src/bootstrap_stc_reference.cpp` — plaintext/reference lattice model.
-- `src/bootstrap_prototype*.cpp` — prototype-refresh реализации.
