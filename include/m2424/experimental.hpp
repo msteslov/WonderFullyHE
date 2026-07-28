@@ -2,6 +2,7 @@
 
 #include "m2424/bootstrap_dft.hpp"
 #include "m2424/bootstrap_layout_v2.hpp"
+#include "m2424/bootstrap_pipeline.hpp"
 #include "m2424/bootstrap_plan.hpp"
 #include "m2424/bootstrap_precision_model.hpp"
 #include "m2424/bootstrap_scaling.hpp"

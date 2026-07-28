@@ -48,6 +48,10 @@ Microsoft SEAL
 
 `OperationBudgetBuilder` нужен для явного описания вычисления, когда операции вызываются напрямую через `SealAdapter`.
 
+### `BootstrapPipeline`
+
+Исследовательский `BootstrapPipeline` задаёт общий контракт для взаимозаменяемых стадий `ModUp`, `CoeffToSlot`, `EvalMod` и `SlotToCoeff`. Он собирает требования к Galois/relinearization keys и формирует отчёт по уровню, scale и времени каждой стадии, но не содержит алгоритм bootstrap и не выбирает реализацию по умолчанию.
+
 ### `accuracy`
 
 Модуль `accuracy` задаёт единый способ сравнения результата с эталоном:

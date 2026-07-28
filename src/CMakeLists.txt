@@ -19,6 +19,7 @@ add_library(m2424
     research/bootstrap_dft.cpp
     research/bootstrap_layout_v2.cpp
     research/bootstrap_parameters.cpp
+    research/bootstrap_pipeline.cpp
     research/bootstrap_plan.cpp
     research/bootstrap_precision_model.cpp
     research/bootstrap_scaling.cpp
