@@ -1,6 +1,7 @@
 add_library(m2424
     core/abft.cpp
     core/accuracy.cpp
+    core/bootstrap_candidates.cpp
     core/m2424.cpp
     core/profiles.cpp
 

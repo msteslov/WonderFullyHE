@@ -9,6 +9,7 @@ endfunction()
 set(M2424_TESTS
     test_accuracy
     test_adapter_failures
+    test_bootstrap_candidates
     test_ckks_primitives
 )
 
