@@ -12,7 +12,7 @@
 
 namespace m2424 {
 
-// This header intentionally exposes research and diagnostic APIs.
-// Include m2424/m2424.hpp for the stable library surface.
+/// Этот заголовок намеренно раскрывает исследовательский и диагностический API.
+/// Для стабильной поверхности библиотеки подключайте m2424/m2424.hpp.
 
 } // namespace m2424

@@ -14,7 +14,7 @@
 
 namespace m2424 {
 
-// Returns a semantic-ish version string of the library.
+/// Возвращает строку версии библиотеки.
 const char* version() noexcept;
 
 } // namespace m2424
