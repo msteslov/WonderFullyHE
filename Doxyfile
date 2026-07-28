@@ -1,7 +1,7 @@
 PROJECT_NAME           = "WonderFullyHE"
 PROJECT_BRIEF          = "Библиотека CKKS-вычислений поверх Microsoft SEAL"
 OUTPUT_DIRECTORY       = build/docs
-INPUT                  = include/m2424/seal_adapter.hpp include/m2424/accuracy.hpp include/m2424/abft.hpp include/m2424/bootstrap_candidates.hpp include/m2424/canonical_embedding_reference.hpp include/m2424/coeff_to_slot_contract.hpp docs
+INPUT                  = include/m2424/seal_adapter.hpp include/m2424/accuracy.hpp include/m2424/abft.hpp include/m2424/bootstrap_candidates.hpp include/m2424/canonical_embedding_reference.hpp include/m2424/coeff_to_slot_contract.hpp include/m2424/homomorphic_linear_transform.hpp docs
 FILE_PATTERNS          = *.hpp *.md
 RECURSIVE              = YES
 EXTRACT_ALL            = NO

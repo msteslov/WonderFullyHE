@@ -12,6 +12,7 @@ WonderFullyHE определяет C++17 API для приближённых з�
         +-- Bootstrap candidates
         +-- Canonical embedding reference
         +-- CoeffToSlot contract
+        +-- Homomorphic linear transform
         +-- accuracy
         +-- abft
         +-- ProfileReport и SecurityReport
@@ -74,6 +75,12 @@ ModUp: нормализованные коэффициенты, input/output sca
 Конкретный FFT- или BSGS-план передаёт минимальный запас уровней и необходимые
 rotation keys; `preflightCoeffToSlot` отклоняет несовместимый ciphertext до
 запуска вычисления.
+
+### `HomomorphicLinearTransform`
+
+`HomomorphicLinearTransform` исполняет проверяемую сумму plaintext-диагоналей
+и rotations с одним контролируемым rescale. Это вычислительное ядро будущих FFT и BSGS,
+но само по себе не является готовым CoeffToSlot.
 
 ### `abft`
 

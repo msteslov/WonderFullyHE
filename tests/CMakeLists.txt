@@ -13,6 +13,7 @@ set(M2424_TESTS
     test_canonical_embedding_reference
     test_coeff_to_slot_contract
     test_ckks_primitives
+    test_homomorphic_linear_transform
 )
 
 foreach(target IN LISTS M2424_TESTS)

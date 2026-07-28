@@ -5,6 +5,7 @@
 #include "m2424/bootstrap_candidates.hpp"
 #include "m2424/canonical_embedding_reference.hpp"
 #include "m2424/coeff_to_slot_contract.hpp"
+#include "m2424/homomorphic_linear_transform.hpp"
 #include "m2424/profiles.hpp"
 #include "m2424/profile_report.hpp"
 #include "m2424/seal_adapter.hpp"
