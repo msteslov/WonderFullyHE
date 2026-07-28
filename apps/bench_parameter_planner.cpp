@@ -45,7 +45,7 @@ void run_case(double target_error, std::size_t depth, std::size_t slots, m2424::
         auto reference = make_input(payload_size);
         auto current = adapter.encrypt(adapter.encode(reference));
         for (std::size_t i = 0; i < depth; ++i) {
-            current = multiplyRelinearizeAndRescale(adapter, current, current);
+            current = adapter.rescaleToNext(adapter.relinearize(adapter.multiply(current, current)));
             for (double& value : reference) {
                 value *= value;
             }

@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
     auto add_accuracy = m2424::compare(add_ref, add_decoded, 1e-5);
 
     m2424::Cipher multiplied;
-    double mul_ms = elapsed_ms([&] { multiplied = multiplyRelinearizeAndRescale(adapter, cipher, cipher); });
+    double mul_ms = elapsed_ms([&] { multiplied = adapter.rescaleToNext(adapter.relinearize(adapter.multiply(cipher, cipher))); });
     auto mul_decoded = payload_head(adapter.decode(adapter.decrypt(multiplied)), payload_size);
     std::vector<double> mul_ref;
     mul_ref.reserve(payload_size);

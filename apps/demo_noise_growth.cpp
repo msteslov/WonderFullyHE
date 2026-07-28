@@ -59,7 +59,7 @@ int main() {
     for (std::size_t step = 1; step <= max_steps; ++step) {
         try {
             double time_ms = elapsed_ms([&] {
-                current = multiplyRelinearizeAndRescale(adapter, current, current);
+                current = adapter.rescaleToNext(adapter.relinearize(adapter.multiply(current, current)));
             });
             exponent *= 2;
             for (double& value : reference) {

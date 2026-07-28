@@ -224,12 +224,12 @@ Cipher DiagonalLinearTransform::apply(SealAdapter& adapter, const Cipher& input)
         ComplexVector mask;
         if (logical_mask_for_rotation(term, term.rotation, adapter.slotCount(), mask)) {
             const Cipher rotated = term.rotation == 0 ? input : adapter.rotate(input, term.rotation);
-            terms.push_back(multiplyPlainAndRescale(adapter, rotated, encoded_diagonals[encoded_index++]));
+            terms.push_back(adapter.rescaleToNext(adapter.multiplyPlain(rotated, encoded_diagonals[encoded_index++])));
         }
         const int wrapped_rotation = term.rotation - static_cast<int>(dimension_);
         if (logical_mask_for_rotation(term, wrapped_rotation, adapter.slotCount(), mask)) {
             const Cipher rotated = wrapped_rotation == 0 ? input : adapter.rotate(input, wrapped_rotation);
-            terms.push_back(multiplyPlainAndRescale(adapter, rotated, encoded_diagonals[encoded_index++]));
+            terms.push_back(adapter.rescaleToNext(adapter.multiplyPlain(rotated, encoded_diagonals[encoded_index++])));
         }
     }
 
@@ -268,12 +268,12 @@ Cipher DiagonalLinearTransform::apply_at_plain_scale(SealAdapter& adapter,
         ComplexVector mask;
         if (logical_mask_for_rotation(term, term.rotation, adapter.slotCount(), mask)) {
             const Cipher rotated = term.rotation == 0 ? input : adapter.rotate(input, term.rotation);
-            terms.push_back(multiplyPlainAndRescale(adapter, rotated, encoded_diagonals[encoded_index++]));
+            terms.push_back(adapter.rescaleToNext(adapter.multiplyPlain(rotated, encoded_diagonals[encoded_index++])));
         }
         const int wrapped_rotation = term.rotation - static_cast<int>(dimension_);
         if (logical_mask_for_rotation(term, wrapped_rotation, adapter.slotCount(), mask)) {
             const Cipher rotated = wrapped_rotation == 0 ? input : adapter.rotate(input, wrapped_rotation);
-            terms.push_back(multiplyPlainAndRescale(adapter, rotated, encoded_diagonals[encoded_index++]));
+            terms.push_back(adapter.rescaleToNext(adapter.multiplyPlain(rotated, encoded_diagonals[encoded_index++])));
         }
     }
 

@@ -98,7 +98,8 @@ int main() {
                 threads.emplace_back([&workers, worker] {
                     auto& state = *workers[worker];
                     for (auto& task : state.tasks) {
-                        task.result = multiplyRelinearizeAndRescale(state.adapter, task.encrypted, task.encrypted);
+                        task.result = state.adapter.rescaleToNext(
+                            state.adapter.relinearize(state.adapter.multiply(task.encrypted, task.encrypted)));
                     }
                 });
             }

@@ -97,9 +97,9 @@ BootstrapScalarApplication apply_bootstrap_scalar_decomposed(SealAdapter& adapte
     BootstrapScalarApplication application;
     constexpr double scale_capacity_margin_log2 = 2.0;
     if (factor_log2 + plain_scale_log2 >= 0.0) {
-        application.result = multiplyPlainAndRescale(adapter, 
+        application.result = adapter.rescaleToNext(adapter.multiplyPlain(
             input,
-            adapter.encodeScalarAtScaleFor(std::exp2(factor_log2), std::exp2(plain_scale_log2), input));
+            adapter.encodeScalarAtScaleFor(std::exp2(factor_log2), std::exp2(plain_scale_log2), input)));
         application.chunks = 1;
         application.levels_consumed = start_info.chainIndex - adapter.info(application.result).chainIndex;
         return application;
@@ -126,10 +126,10 @@ BootstrapScalarApplication apply_bootstrap_scalar_decomposed(SealAdapter& adapte
         }
         const double chunk_abs_log2 = std::min(remaining_abs_log2, chunk_plain_scale_log2);
         const double chunk_log2 = -chunk_abs_log2;
-        current = multiplyPlainAndRescale(adapter, 
+        current = adapter.rescaleToNext(adapter.multiplyPlain(
             current,
             adapter.encodeScalarAtScaleFor(
-                std::exp2(chunk_log2), std::exp2(chunk_plain_scale_log2), current));
+                std::exp2(chunk_log2), std::exp2(chunk_plain_scale_log2), current)));
         remaining_abs_log2 = std::max(0.0, remaining_abs_log2 - chunk_abs_log2);
         ++application.chunks;
     }

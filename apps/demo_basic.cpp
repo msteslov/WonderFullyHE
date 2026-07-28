@@ -36,7 +36,7 @@ int main() {
     auto ct = adapter.encrypt(p);
 
     // ct2 = ct * ct (with relin + rescale), ct3 = rotate(ct2, 1), ct4 = ct2 + ct3
-    auto ct2 = multiplyRelinearizeAndRescale(adapter, ct, ct);
+    auto ct2 = adapter.rescaleToNext(adapter.relinearize(adapter.multiply(ct, ct)));
     auto ct3 = adapter.rotate(ct2, 1);
     auto ct4 = adapter.add(ct2, ct3);
 

@@ -39,14 +39,14 @@ CheckedResult CheckedEvaluator::subPlain(const Cipher& lhs, const Plain& rhs, co
 
 CheckedResult CheckedEvaluator::mul(const Cipher& lhs, const Cipher& rhs, const std::vector<double>& expected) {
     budget_builder_.record_ciphertext_mul();
-    return finalize("mul", ::m2424::multiplyRelinearizeAndRescale(adapter_, lhs, rhs), expected);
+    return finalize("mul", adapter_.rescaleToNext(adapter_.relinearize(adapter_.multiply(lhs, rhs))), expected);
 }
 
 CheckedResult CheckedEvaluator::multiplyPlainAndRescale(const Cipher& lhs,
                                                   const Plain& rhs,
                                                   const std::vector<double>& expected) {
     budget_builder_.record_plaintext_mul_rescale();
-    return finalize("multiplyPlainAndRescale", ::m2424::multiplyPlainAndRescale(adapter_, lhs, rhs), expected);
+    return finalize("multiplyPlainAndRescale", adapter_.rescaleToNext(adapter_.multiplyPlain(lhs, rhs)), expected);
 }
 
 CheckedResult CheckedEvaluator::rescaleToNext(const Cipher& input, const std::vector<double>& expected) {

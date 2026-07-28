@@ -71,7 +71,7 @@ static void mul_without_relin_case() {
     auto adapter = m2424::SealAdapter::create(m2424::profiles::basic_ckks());
     adapter.generateKeys(false, false);
     auto ct = adapter.encrypt(adapter.encode({1.0, 2.0}));
-    (void)multiplyRelinearizeAndRescale(adapter, ct, ct);
+    (void)adapter.rescaleToNext(adapter.relinearize(adapter.multiply(ct, ct)));
 }
 
 static void rotate_without_galois_case() {
@@ -177,7 +177,7 @@ int main() {
     const bool public_only_cannot_decrypt = expect_runtime_error_from([&] {
         (void)public_only_adapter.decrypt(public_only_ct);
     });
-    auto ct2 = multiplyRelinearizeAndRescale(adapter, ct, ct);
+    auto ct2 = adapter.rescaleToNext(adapter.relinearize(adapter.multiply(ct, ct)));
     auto p2 = adapter.decrypt(ct2);
     auto out = adapter.decode(p2);
 
@@ -207,7 +207,7 @@ int main() {
     auto sub_plain_out = head(adapter.decode(adapter.decrypt(ct_sub_plain)), N);
 
     auto scalar = adapter.encodeScalarFor(1.5, ct);
-    auto ct_mul_plain = multiplyPlainAndRescale(adapter, ct, scalar);
+    auto ct_mul_plain = adapter.rescaleToNext(adapter.multiplyPlain(ct, scalar));
     auto mul_plain_out = head(adapter.decode(adapter.decrypt(ct_mul_plain)), N);
     std::vector<double> mul_plain_ref; mul_plain_ref.reserve(N);
     for (double x : input) mul_plain_ref.push_back(1.5 * x);

@@ -74,7 +74,7 @@ void run_case(const char* experiment,
             auto current = adapter.encrypt(adapter.encode(reference));
 
             for (std::size_t step = 0; step < depth; ++step) {
-                current = multiplyRelinearizeAndRescale(adapter, current, current);
+                current = adapter.rescaleToNext(adapter.relinearize(adapter.multiply(current, current)));
                 for (double& value : reference) {
                     value *= value;
                 }

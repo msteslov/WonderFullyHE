@@ -31,11 +31,11 @@ void validate_input(Complex u) {
 }
 
 Cipher multiply_same_level(SealAdapter& adapter, const Cipher& lhs, const Cipher& rhs) {
-    return multiplyRelinearizeAndRescale(adapter, lhs, rhs);
+    return adapter.rescaleToNext(adapter.relinearize(adapter.multiply(lhs, rhs)));
 }
 
 Cipher weighted_term(SealAdapter& adapter, const Cipher& value, double coefficient) {
-    return multiplyPlainAndRescale(adapter, value, adapter.encodeScalarFor(coefficient, value));
+    return adapter.rescaleToNext(adapter.multiplyPlain(value, adapter.encodeScalarFor(coefficient, value)));
 }
 
 Cipher squash_scale(SealAdapter& adapter, Cipher value, double max_scale_log2) {
@@ -78,9 +78,9 @@ Cipher weighted_term_to_scale(SealAdapter& adapter,
     if (!std::isfinite(plain_scale_log2) || plain_scale_log2 <= 0.0) {
         throw std::runtime_error("cannot align EvalMod term scale");
     }
-    return multiplyPlainAndRescale(adapter, 
+    return adapter.rescaleToNext(adapter.multiplyPlain(
         value,
-        adapter.encodeScalarAtScaleFor(coefficient, std::exp2(plain_scale_log2), value));
+        adapter.encodeScalarAtScaleFor(coefficient, std::exp2(plain_scale_log2), value)));
 }
 
 Cipher add_terms(SealAdapter& adapter, Cipher lhs, Cipher rhs) {

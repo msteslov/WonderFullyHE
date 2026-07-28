@@ -49,7 +49,9 @@ int main() {
     for (std::size_t i = 0; i < payload_size; ++i) {
         product_ref.push_back(lhs[i] * rhs[i]);
     }
-    auto mul_ct = multiplyRelinearizeAndRescale(adapter, adapter.encrypt(adapter.encode(lhs)), adapter.encrypt(adapter.encode(rhs)));
+    auto left = adapter.encrypt(adapter.encode(lhs));
+    auto right = adapter.encrypt(adapter.encode(rhs));
+    auto mul_ct = adapter.rescaleToNext(adapter.relinearize(adapter.multiply(left, right)));
     auto mul_check = m2424::abft::verify_checksum_value(head(adapter.decode(adapter.decrypt(mul_ct)), payload_size),
                                                        payload_size, m2424::abft::checksum(product_ref), 1e-5);
 

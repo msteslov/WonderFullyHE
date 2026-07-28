@@ -90,7 +90,7 @@ int main() {
 
         m2424::Cipher squared;
         const double square_ms = elapsed_ms([&] {
-            squared = multiplyRelinearizeAndRescale(adapter, encrypted, encrypted);
+            squared = adapter.rescaleToNext(adapter.relinearize(adapter.multiply(encrypted, encrypted)));
         });
         const auto squared_out = head(adapter.decode(adapter.decrypt(squared)), payload_size);
         print_row(profile_name, "mul_square", square_ms, m2424::compare(square_ref, squared_out, tolerance),

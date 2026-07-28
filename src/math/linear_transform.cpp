@@ -94,7 +94,7 @@ Cipher LinearTransform::apply(SealAdapter& adapter, const Cipher& input) const {
         Plain encoded = term.coefficients.size() == 1
             ? adapter.encodeScalarFor(term.coefficients.front(), *rotated)
             : adapter.encodeFor(term.coefficients, *rotated);
-        weighted_terms.push_back(multiplyPlainAndRescale(adapter, *rotated, encoded));
+        weighted_terms.push_back(adapter.rescaleToNext(adapter.multiplyPlain(*rotated, encoded)));
     }
 
     return pairwise_add(adapter, std::move(weighted_terms));

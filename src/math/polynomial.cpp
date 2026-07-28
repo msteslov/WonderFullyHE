@@ -50,12 +50,12 @@ Cipher PolynomialEvaluator::evaluate(SealAdapter& adapter, const Cipher& input) 
 
         while (current_degree < term.degree) {
             Cipher base = adapter.modSwitchTo(input, power);
-            power = multiplyRelinearizeAndRescale(adapter, power, base);
+            power = adapter.rescaleToNext(adapter.relinearize(adapter.multiply(power, base)));
             ++current_degree;
         }
 
         Plain coefficient = adapter.encodeScalarFor(term.coefficient, power);
-        Cipher weighted = multiplyPlainAndRescale(adapter, power, coefficient);
+        Cipher weighted = adapter.rescaleToNext(adapter.multiplyPlain(power, coefficient));
 
         if (!has_result) {
             result = std::move(weighted);

@@ -59,33 +59,33 @@ private:
 
 class SealAdapter {
 public:
-    /// Creates a CKKS context and validates its parameter profile.
+    /// Создаёт CKKS-контекст и проверяет корректность профиля параметров.
     static SealAdapter create(const CkksProfile&);
 
-    /// Generates public, secret, and optionally evaluation keys for all rotations.
+    /// Генерирует public/secret и, при необходимости, evaluation keys для всех ротаций.
     void generateKeys(bool needRelin = true, bool needGalois = true);
-    /// Generates only the Galois keys required by the listed rotation steps.
+    /// Генерирует только Galois keys, необходимые для указанных шагов ротации.
     void generateKeys(const std::vector<int>& rotationSteps, bool needRelin = true);
-    /// Returns the physical CKKS slot capacity of this context.
+    /// Возвращает физическую ёмкость слотов CKKS-контекста.
     std::size_t slotCount() const;
 
-    /// Encodes real or complex values at the profile's initial level and scale.
+    /// Кодирует вещественные или комплексные значения на исходном уровне и scale профиля.
     Plain encode(const std::vector<double>&);
     Plain encodeComplex(const std::vector<std::complex<double>>&);
-    /// Encodes data at the level and scale of target; intended for a subsequent plaintext operation.
+    /// Кодирует данные на уровне и со scale целевого ciphertext для последующей plaintext-операции.
     Plain encodeFor(const std::vector<double>&, const Cipher&);
     Plain encodeComplexFor(const std::vector<std::complex<double>>&, const Cipher&);
-    /// Encodes data at target's level with an explicitly chosen, validated scale.
+    /// Кодирует данные на уровне целевого ciphertext с явно заданным и проверенным scale.
     Plain encodeComplexAtScaleFor(const std::vector<std::complex<double>>&, double scale, const Cipher&);
     Plain encodeScalarFor(double, const Cipher&);
     Plain encodeScalarAtScaleFor(double, double scale, const Cipher&);
-    /// Encrypts, decrypts, and decodes values using loaded public or secret keys.
+    /// Шифрует, расшифровывает и декодирует данные с загруженными ключами.
     Cipher encrypt(const Plain&);
     Plain decrypt(const Cipher&);
     std::vector<double> decode(const Plain&);
     std::vector<std::complex<double>> decodeComplex(const Plain&);
 
-    /// Performs the corresponding CKKS primitive without changing hidden policy.
+    /// Выполняет базовую CKKS-операцию без скрытой policy.
     Cipher add(const Cipher&, const Cipher&);
     Cipher sub(const Cipher&, const Cipher&);
     Cipher addPlain(const Cipher&, const Plain&);
@@ -94,14 +94,14 @@ public:
     Cipher multiply(const Cipher&, const Cipher&);
     Cipher relinearize(const Cipher&);
     Cipher rescaleToNext(const Cipher&);
-    /// Switches ciphertext to the level of target; it never switches levels upward.
+    /// Снижает ciphertext до уровня target; повышение уровня невозможно.
     Cipher modSwitchTo(const Cipher&, const Cipher&);
-    /// Aligns a ciphertext with target for addition when their CKKS scales differ by at most one percent.
+    /// Согласует ciphertext с target для сложения, если их CKKS scale отличаются не более чем на один процент.
     Cipher alignForAddition(const Cipher&, const Cipher&);
-    /// Rotates CKKS slots using a previously generated Galois key.
+    /// Выполняет ротацию CKKS-слотов с ранее сгенерированным Galois key.
     Cipher rotate(const Cipher&, int steps);
 
-    /// Returns ciphertext metadata and serialized key/ciphertext sizes.
+    /// Возвращает метаданные ciphertext и размеры сериализованных ключей/данных.
     std::size_t serializedSize(const Cipher&) const;
     CipherInfo info(const Cipher&) const;
     double scale(const Cipher&) const;
@@ -136,10 +136,5 @@ private:
     struct Impl;
     std::unique_ptr<Impl> pimpl_;
 };
-
-/// Explicit composition for callers that intentionally consume one CKKS level.
-Cipher multiplyPlainAndRescale(SealAdapter&, const Cipher&, const Plain&);
-/// Explicit composition for callers that intentionally relinearize and consume one CKKS level.
-Cipher multiplyRelinearizeAndRescale(SealAdapter&, const Cipher&, const Cipher&);
 
 } // namespace m2424
