@@ -12,6 +12,7 @@ endfunction()
 
 set(M2424_STABLE_APPS
     bench_chain_accuracy
+    bench_bootstrap_candidates
     bench_ckks
     bench_parallel_throughput
     demo_abft

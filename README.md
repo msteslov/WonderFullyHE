@@ -48,6 +48,16 @@ ctest --test-dir build --output-on-failure
 готовые реализации bootstrap: кандидат становится применимым только после
 полной оценки подтверждённых границ ошибок через `forecastBootstrapFeasibility`.
 
+Первый измерительный фильтр кандидатов запускается отдельно и не реализует
+bootstrap-алгоритмы:
+
+```bash
+./build/bin/bench_bootstrap_candidates --all
+./build/bin/bench_bootstrap_candidates balanced_8192_s55
+```
+
+Последняя базовая калибровка: `docs/bootstrap_candidate_baseline.md`.
+
 ## Пример API
 
 ```cpp
