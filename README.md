@@ -33,7 +33,7 @@ ctest --test-dir build --output-on-failure
 Минимальный пример:
 
 ```bash
-./build/demo_basic
+./build/bin/demo_basic
 ```
 
 ## Приложения
@@ -55,10 +55,12 @@ ctest --test-dir build --output-on-failure
 #include "m2424/m2424.hpp"
 
 auto adapter = m2424::SealAdapter::create(m2424::profiles::basic_ckks());
-adapter.keygen(true, true);
+adapter.generateKeys(true, true);
 
 auto encrypted = adapter.encrypt(adapter.encode({1.0, 2.0, 3.0}));
-auto squared = adapter.mul_relin_rescale(encrypted, encrypted);
+auto product = adapter.multiply(encrypted, encrypted);
+auto reduced = adapter.relinearize(product);
+auto squared = adapter.rescaleToNext(reduced);
 auto decoded = adapter.decode(adapter.decrypt(squared));
 ```
 
@@ -66,3 +68,22 @@ auto decoded = adapter.decode(adapter.decrypt(squared));
 
 - `docs/architecture.md`
 - `docs/ckks_parameters.md`
+- `docs/bootstrap_roadmap.md`
+
+Публичные классы и методы документированы в заголовочных файлах через Doxygen. После установки Doxygen HTML-документацию можно сгенерировать так:
+
+```bash
+cmake -S . -B build
+cmake --build build --target docs
+```
+
+Главная страница будет создана в `build/docs/html/index.html`.
+
+Структура каталога сборки:
+
+```text
+build/
+  bin/       # demos, benchmarks и тесты
+  lib/       # библиотека m2424 и Microsoft SEAL
+  docs/html/ # HTML-документация Doxygen
+```

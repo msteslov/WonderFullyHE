@@ -8,9 +8,6 @@ function(m2424_add_app target)
     add_executable(${target} ${target}.cpp)
     target_compile_features(${target} PRIVATE cxx_std_17)
     target_link_libraries(${target} PRIVATE m2424)
-    set_target_properties(${target} PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
-    )
 endfunction()
 
 set(M2424_STABLE_APPS

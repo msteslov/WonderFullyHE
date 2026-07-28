@@ -160,3 +160,7 @@ Backend-и линейных transform-стадий:
 - `src/math/` — полиномы и rotation-based линейные преобразования.
 - `src/planning/` — подбор параметров и отчёты по профилю и безопасности.
 - `src/research/` — исследовательские модели и планы bootstrapping, DFT, EvalMod и Mod1.
+
+## Артефакты сборки
+
+Корень `build/` используется только CMake и CTest. Исполняемые файлы располагаются в `build/bin/`, статические и динамические библиотеки — в `build/lib/`, а HTML-документация Doxygen — в `build/docs/html/`.
