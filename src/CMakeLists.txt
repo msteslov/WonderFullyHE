@@ -7,6 +7,8 @@ add_library(m2424
 
     ckks/seal_adapter.cpp
 
+    math/canonical_embedding_reference.cpp
+
     planning/profile_report.cpp
     planning/security_report.cpp
 )

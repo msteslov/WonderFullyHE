@@ -10,6 +10,7 @@ WonderFullyHE определяет C++17 API для приближённых з�
         |
         +-- SealAdapter
         +-- Bootstrap candidates
+        +-- Canonical embedding reference
         +-- accuracy
         +-- abft
         +-- ProfileReport и SecurityReport
@@ -58,6 +59,12 @@ compare(expected, actual, tolerance)
 общей ошибки `1e-9`. `forecastBootstrapFeasibility` возвращает положительный
 результат только при наличии подтверждённой верхней границы для каждого
 компонента и при соблюдении всех частных бюджетов.
+
+### `CanonicalEmbeddingReference`
+
+`CanonicalEmbeddingReference` задаёт plaintext-эталон CoeffToSlot и SlotToCoeff
+в порядке слотов Microsoft SEAL. Он намеренно имеет квадратичную сложность и
+используется только для проверки будущих encrypted-стратегий, а не в runtime.
 
 ### `abft`
 
