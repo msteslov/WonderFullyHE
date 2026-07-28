@@ -474,6 +474,29 @@ std::size_t SealAdapter::galoisKeysSize() const {
     return serialized_size_of(pimpl_->gk);
 }
 
+bool SealAdapter::hasRelinKeys() const noexcept {
+    return pimpl_ && pimpl_->has_relin;
+}
+
+bool SealAdapter::hasRotationKeys(const std::vector<int>& rotationSteps) const {
+    if (rotationSteps.empty()) {
+        return true;
+    }
+    if (!pimpl_ || !pimpl_->context || !pimpl_->has_galois) {
+        return false;
+    }
+    const auto key_context = pimpl_->context->key_context_data();
+    if (!key_context || !key_context->galois_tool()) {
+        return false;
+    }
+    for (int step : rotationSteps) {
+        if (step == 0 || !pimpl_->gk.has_key(key_context->galois_tool()->get_elt_from_step(step))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 SerializedBuffer SealAdapter::savePublicKey() const {
     if (!pimpl_->has_public) throw std::runtime_error("public key not loaded");
     return serialize_to_buffer(pimpl_->pk);

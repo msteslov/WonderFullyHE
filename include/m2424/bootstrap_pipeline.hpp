@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -51,6 +52,56 @@ struct BootstrapKeyRequirements {
 struct BootstrapMeasurementConfig {
     /// Измерять ли wall-clock время выполнения каждой стадии.
     bool measureDuration{true};
+};
+
+/// Параметры запуска и проверки bootstrap-эксперимента.
+struct BootstrapExecutionConfig {
+    /// Допустимая абсолютная ошибка reference-проверки.
+    double targetError{1e-9};
+    /// Число уровней, которое должно остаться после pipeline.
+    std::size_t minRemainingLevels{};
+    /// Настройки измерений.
+    BootstrapMeasurementConfig measurements{};
+};
+
+/// Результат проверки результата относительно plaintext/reference-модели.
+struct BootstrapReferenceReport {
+    /// Выполнялась ли проверка.
+    bool checked{};
+    /// Прошла ли проверка.
+    bool ok{};
+    /// Максимальная абсолютная ошибка, если она измерялась.
+    double maxAbsError{};
+    /// Причина отказа или дополнительный контекст проверки.
+    std::string message;
+};
+
+/// Интерфейс plaintext/reference-проверки результата pipeline.
+class BootstrapReferenceOracle {
+public:
+    virtual ~BootstrapReferenceOracle() = default;
+    /// Сравнивает ciphertext с эталонной моделью в тестовом контексте.
+    virtual BootstrapReferenceReport validate(SealAdapter& adapter,
+                                              const Cipher& ciphertext,
+                                              double targetError) const = 0;
+};
+
+/**
+ * @brief Reference oracle для векторного plaintext-эталона.
+ *
+ * Используется только в тестах и experiment runner с secret key. В production
+ * сценарии oracle не передаётся pipeline, поэтому расшифрование не выполняется.
+ */
+class BootstrapVectorReferenceOracle final : public BootstrapReferenceOracle {
+public:
+    /// Сохраняет ожидаемые значения первых expected.size() CKKS-слотов.
+    explicit BootstrapVectorReferenceOracle(std::vector<double> expected);
+    BootstrapReferenceReport validate(SealAdapter& adapter,
+                                      const Cipher& ciphertext,
+                                      double targetError) const override;
+
+private:
+    std::vector<double> expected_;
 };
 
 /**
@@ -103,6 +154,8 @@ public:
     /// @brief Возвращает минимальный набор evaluation keys для стадии.
     /// @return Требования, которые должны быть удовлетворены до execute().
     virtual BootstrapKeyRequirements keyRequirements() const = 0;
+    /// @brief Оценивает число уровней, которое стадия расходует без учёта ModUp.
+    virtual std::size_t estimatedLevelCost() const noexcept { return 0; }
     /**
      * @brief Применяет стадию к ciphertext.
      *
@@ -125,6 +178,18 @@ struct BootstrapPipelineResult {
     Cipher ciphertext;
     /// Отчёты в порядке выполнения стадий.
     std::vector<BootstrapStageReport> stages;
+    /// Итог reference-проверки; checked=false, если oracle не передан.
+    BootstrapReferenceReport reference;
+};
+
+/// Результат подготовки конфигурации к запуску pipeline.
+struct BootstrapPreparationPlan {
+    BootstrapKeyRequirements keyRequirements;
+    std::size_t estimatedLevelsConsumed{};
+    bool keysAvailable{};
+    bool levelsAvailable{};
+    bool ready{};
+    std::string blocker;
 };
 
 /**
@@ -149,6 +214,12 @@ public:
      * @throws std::invalid_argument Если стадия запросила rotation step 0.
      */
     BootstrapKeyRequirements keyRequirements() const;
+    /// Оценивает суммарный расход уровней, объявленный стадиями.
+    std::size_t estimatedLevelCost() const noexcept;
+    /// Проверяет ключи и budget уровней до запуска pipeline.
+    BootstrapPreparationPlan planPreparation(const SealAdapter& adapter,
+                                             const Cipher& input,
+                                             const BootstrapExecutionConfig& config) const;
     /**
      * @brief Выполняет стадии в заданном порядке и формирует фактический отчёт.
      *
@@ -159,9 +230,17 @@ public:
     BootstrapPipelineResult run(SealAdapter& adapter,
                                 const Cipher& input,
                                 const BootstrapMeasurementConfig& measurements = {}) const;
+    /// Выполняет pipeline и, при наличии oracle, проверяет итог относительно эталона.
+    BootstrapPipelineResult run(SealAdapter& adapter,
+                                const Cipher& input,
+                                const BootstrapExecutionConfig& config,
+                                const BootstrapReferenceOracle* oracle) const;
 
 private:
     std::vector<std::unique_ptr<BootstrapStage>> stages_;
 };
+
+/// Записывает отчёт стадий в CSV с заголовком.
+void writeBootstrapCsv(std::ostream& output, const BootstrapPipelineResult& result);
 
 } // namespace m2424

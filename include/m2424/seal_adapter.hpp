@@ -151,6 +151,10 @@ public:
     std::size_t relinKeysSize() const;
     /// Возвращает размер сериализованных Galois keys.
     std::size_t galoisKeysSize() const;
+    /// Проверяет наличие загруженных relinearization keys.
+    bool hasRelinKeys() const noexcept;
+    /// Проверяет наличие Galois keys для всех указанных шагов ротации.
+    bool hasRotationKeys(const std::vector<int>& rotationSteps) const;
 
     /// Сериализует public key для передачи вычислительному контексту.
     SerializedBuffer savePublicKey() const;

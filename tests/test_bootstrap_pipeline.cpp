@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -98,8 +99,14 @@ int main() {
 
     const auto requirements = pipeline.keyRequirements();
     const auto encrypted = adapter.encrypt(adapter.encode(input));
-    const auto result = pipeline.run(adapter, encrypted);
+    const auto preparation = pipeline.planPreparation(adapter, encrypted, {});
+    const m2424::BootstrapVectorReferenceOracle oracle({2.0, 3.0, 4.0, 0.0});
+    m2424::BootstrapExecutionConfig execution;
+    execution.targetError = 1e-5;
+    const auto result = pipeline.run(adapter, encrypted, execution, &oracle);
     const auto actual = head(adapter.decode(adapter.decrypt(result.ciphertext)), input.size());
+    std::ostringstream csv;
+    m2424::writeBootstrapCsv(csv, result);
     const std::vector<double> expected{2.0, 3.0, 4.0, 0.0};
 
     const bool keysOk = requirements.requiresRelin && requirements.rotationSteps == std::vector<int>({1, 2});
@@ -109,7 +116,10 @@ int main() {
         && result.stages[0].chainIndexDelta == 0
         && result.stages[1].chainIndexDelta == 0;
     const bool accuracyOk = m2424::compare(expected, actual, 1e-5).ok;
-    const bool ok = keysOk && stagesOk && accuracyOk && rejectsZeroRotation();
+    const bool planOk = preparation.ready && preparation.keysAvailable && preparation.levelsAvailable;
+    const bool referenceOk = result.reference.checked && result.reference.ok;
+    const bool csvOk = csv.str().find("input_chain_index") != std::string::npos;
+    const bool ok = keysOk && stagesOk && accuracyOk && planOk && referenceOk && csvOk && rejectsZeroRotation();
     std::printf("[test_bootstrap_pipeline] %s\n", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }
