@@ -3,6 +3,7 @@
 #include "m2424/seal_adapter.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -12,34 +13,49 @@ namespace m2424 {
 
 /// Тип стадии исследовательского bootstrap-конвейера.
 enum class BootstrapStageKind {
+    /// Расширение modulus chain ciphertext.
     ModUp,
+    /// Переход из коэффициентного представления в слоты.
     CoeffToSlot,
+    /// Аппроксимация модульной функции.
     EvalMod,
+    /// Обратный переход из слотов в коэффициенты.
     SlotToCoeff
 };
 
 /// Требования стадии к evaluation keys.
 struct BootstrapKeyRequirements {
+    /// Нужны ли relinearization keys.
     bool requiresRelin{};
+    /// Шаги ротации, для которых требуются Galois keys.
     std::vector<int> rotationSteps;
 };
 
 /// Настройки сбора измерений при запуске pipeline.
 struct BootstrapMeasurementConfig {
+    /// Измерять ли wall-clock время выполнения каждой стадии.
     bool measureDuration{true};
 };
 
 /// Метрики одной выполненной стадии.
 struct BootstrapStageReport {
+    /// Тип выполненной стадии.
     BootstrapStageKind kind{};
+    /// Стабильное имя реализации стадии.
     std::string name;
+    /// Метаданные ciphertext перед запуском стадии.
     CipherInfo input;
+    /// Метаданные ciphertext после завершения стадии.
     CipherInfo output;
+    /// Изменение индекса modulus chain: положительное значение означает подъём, отрицательное — расход уровней.
+    std::int64_t chainIndexDelta{};
+    /// Измеренное время выполнения; равно нулю при отключённом измерении.
     double durationMs{};
 };
 
 /// Результат выполнения одной стадии.
 struct BootstrapStageResult {
+    /// Ciphertext, который передаётся следующей стадии.
     Cipher ciphertext;
 };
 
@@ -66,7 +82,9 @@ public:
 
 /// Итог запуска pipeline вместе с метриками всех стадий.
 struct BootstrapPipelineResult {
+    /// Итоговый ciphertext после всех стадий.
     Cipher ciphertext;
+    /// Отчёты в порядке выполнения стадий.
     std::vector<BootstrapStageReport> stages;
 };
 

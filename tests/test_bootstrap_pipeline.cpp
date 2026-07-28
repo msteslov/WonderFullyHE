@@ -74,7 +74,9 @@ int main() {
     const bool keysOk = requirements.requiresRelin && requirements.rotationSteps == std::vector<int>({1, 2});
     const bool stagesOk = result.stages.size() == 2
         && result.stages[0].name == "identity-reference"
-        && result.stages[1].name == "rotate-reference";
+        && result.stages[1].name == "rotate-reference"
+        && result.stages[0].chainIndexDelta == 0
+        && result.stages[1].chainIndexDelta == 0;
     const bool accuracyOk = m2424::compare(expected, actual, 1e-5).ok;
     const bool ok = keysOk && stagesOk && accuracyOk;
     std::printf("[test_bootstrap_pipeline] %s\n", ok ? "PASS" : "FAIL");

@@ -22,6 +22,10 @@ BootstrapKeyRequirements BootstrapPipeline::keyRequirements() const {
     for (const auto& stage : stages_) {
         const auto requirements = stage->keyRequirements();
         result.requiresRelin = result.requiresRelin || requirements.requiresRelin;
+        if (std::any_of(requirements.rotationSteps.begin(), requirements.rotationSteps.end(),
+                        [](int step) { return step == 0; })) {
+            throw std::invalid_argument("bootstrap stage must not request zero rotation");
+        }
         result.rotationSteps.insert(result.rotationSteps.end(),
                                     requirements.rotationSteps.begin(),
                                     requirements.rotationSteps.end());
@@ -50,6 +54,8 @@ BootstrapPipelineResult BootstrapPipeline::run(SealAdapter& adapter,
         report.name = std::string(stage->name());
         report.input = before;
         report.output = adapter.info(stageResult.ciphertext);
+        report.chainIndexDelta = static_cast<std::int64_t>(report.output.chainIndex)
+            - static_cast<std::int64_t>(report.input.chainIndex);
         if (measurements.measureDuration) {
             report.durationMs = std::chrono::duration<double, std::milli>(finishedAt - startedAt).count();
         }
