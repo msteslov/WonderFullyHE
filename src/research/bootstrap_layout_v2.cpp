@@ -118,8 +118,8 @@ BootstrapLayoutV2 make_lattigo_like_bootstrap_layout_v2(std::size_t log_n,
         + layout.evalmod.levels;
     layout.expected_output_level = layout.output.levels - 1;
 
-    layout.residual_profile.poly_modulus_degree = power_of_two(log_n, "log_n");
-    layout.residual_profile.coeff_modulus_bits = layout.output.log_q;
+    layout.residual_profile.polyModulusDegree = power_of_two(log_n, "log_n");
+    layout.residual_profile.coeffModulusBits = layout.output.log_q;
     layout.residual_profile.scale = std::exp2(layout.output.log_scale);
     layout.residual_profile.slots = power_of_two(log_slots, "log_slots");
     return layout;

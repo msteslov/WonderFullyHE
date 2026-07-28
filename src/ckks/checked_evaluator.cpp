@@ -27,31 +27,31 @@ CheckedResult CheckedEvaluator::sub(const Cipher& lhs, const Cipher& rhs, const 
     return finalize("sub", adapter_.sub(lhs, rhs), expected);
 }
 
-CheckedResult CheckedEvaluator::add_plain(const Cipher& lhs, const Plain& rhs, const std::vector<double>& expected) {
+CheckedResult CheckedEvaluator::addPlain(const Cipher& lhs, const Plain& rhs, const std::vector<double>& expected) {
     budget_builder_.record_plaintext_add();
-    return finalize("add_plain", adapter_.add_plain(lhs, rhs), expected);
+    return finalize("addPlain", adapter_.addPlain(lhs, rhs), expected);
 }
 
-CheckedResult CheckedEvaluator::sub_plain(const Cipher& lhs, const Plain& rhs, const std::vector<double>& expected) {
+CheckedResult CheckedEvaluator::subPlain(const Cipher& lhs, const Plain& rhs, const std::vector<double>& expected) {
     budget_builder_.record_plaintext_add();
-    return finalize("sub_plain", adapter_.sub_plain(lhs, rhs), expected);
+    return finalize("subPlain", adapter_.subPlain(lhs, rhs), expected);
 }
 
 CheckedResult CheckedEvaluator::mul(const Cipher& lhs, const Cipher& rhs, const std::vector<double>& expected) {
     budget_builder_.record_ciphertext_mul();
-    return finalize("mul", adapter_.mul_relin_rescale(lhs, rhs), expected);
+    return finalize("mul", ::m2424::multiplyRelinearizeAndRescale(adapter_, lhs, rhs), expected);
 }
 
-CheckedResult CheckedEvaluator::mul_plain_rescale(const Cipher& lhs,
+CheckedResult CheckedEvaluator::multiplyPlainAndRescale(const Cipher& lhs,
                                                   const Plain& rhs,
                                                   const std::vector<double>& expected) {
     budget_builder_.record_plaintext_mul_rescale();
-    return finalize("mul_plain_rescale", adapter_.mul_plain_rescale(lhs, rhs), expected);
+    return finalize("multiplyPlainAndRescale", ::m2424::multiplyPlainAndRescale(adapter_, lhs, rhs), expected);
 }
 
-CheckedResult CheckedEvaluator::rescale_to_next(const Cipher& input, const std::vector<double>& expected) {
+CheckedResult CheckedEvaluator::rescaleToNext(const Cipher& input, const std::vector<double>& expected) {
     budget_builder_.record_rescale_to_next();
-    return finalize("rescale_to_next", adapter_.rescale_to_next(input), expected);
+    return finalize("rescaleToNext", adapter_.rescaleToNext(input), expected);
 }
 
 CheckedResult CheckedEvaluator::rotate(const Cipher& input, int steps, const std::vector<double>& expected) {
@@ -59,10 +59,10 @@ CheckedResult CheckedEvaluator::rotate(const Cipher& input, int steps, const std
     return finalize("rotate", adapter_.rotate(input, steps), expected);
 }
 
-CheckedResult CheckedEvaluator::sum_slots(const Cipher& input, std::size_t slot_count,
+CheckedResult CheckedEvaluator::sum_slots(const Cipher& input, std::size_t slotCount,
                                           const std::vector<double>& expected) {
-    budget_builder_.record_sum_slots(slot_count);
-    return finalize("sum_slots", m2424::sum_slots(adapter_, input, slot_count), expected);
+    budget_builder_.record_sum_slots(slotCount);
+    return finalize("sum_slots", m2424::sum_slots(adapter_, input, slotCount), expected);
 }
 
 CheckedResult CheckedEvaluator::linear_transform(const Cipher& input, const LinearTransform& transform,

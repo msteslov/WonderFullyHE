@@ -36,9 +36,9 @@ struct BootstrapDftLayer {
 struct BootstrapDftLayerTrace {
     std::string stage;
     std::size_t layer{};
-    std::size_t chain_index{};
+    std::size_t chainIndex{};
     double scale_log2{};
-    double coeff_modulus_log2{};
+    double coeffModulusLog2{};
 };
 
 struct BootstrapDftPlan {
@@ -50,7 +50,7 @@ struct BootstrapDftPlan {
     std::vector<BootstrapDftLayer> layers;
 
     ComplexVector apply_plain(const ComplexVector& input) const;
-    std::vector<int> rotation_steps() const;
+    std::vector<int> rotationSteps() const;
 };
 
 class FactorizedLinearTransform {
@@ -59,7 +59,7 @@ public:
 
     const BootstrapDftPlan& plan() const noexcept;
     ComplexVector apply_plain(const ComplexVector& input) const;
-    std::vector<int> rotation_steps() const;
+    std::vector<int> rotationSteps() const;
     Cipher apply(SealAdapter& adapter,
                  const Cipher& input,
                  std::vector<BootstrapDftLayerTrace>* trace = nullptr,

@@ -7,14 +7,14 @@
 namespace {
 
 m2424::CipherInfo make_info(double scale_log2,
-                            std::size_t chain_index,
-                            std::size_t coeff_modulus_size,
-                            double coeff_modulus_log2) {
+                            std::size_t chainIndex,
+                            std::size_t coeffModulusSize,
+                            double coeffModulusLog2) {
     m2424::CipherInfo info;
     info.scale = std::exp2(scale_log2);
-    info.chain_index = chain_index;
-    info.coeff_modulus_size = coeff_modulus_size;
-    info.coeff_modulus_log2 = coeff_modulus_log2;
+    info.chainIndex = chainIndex;
+    info.coeffModulusSize = coeffModulusSize;
+    info.coeffModulusLog2 = coeffModulusLog2;
     return info;
 }
 
@@ -40,8 +40,8 @@ m2424::BootstrapScaleDesign design(double period_log2,
         2.0);
 }
 
-m2424::CipherInfo refresh_info(std::size_t chain_index) {
-    return make_info(45.0, chain_index, chain_index + 1, 45.0 * static_cast<double>(chain_index + 1));
+m2424::CipherInfo refresh_info(std::size_t chainIndex) {
+    return make_info(45.0, chainIndex, chainIndex + 1, 45.0 * static_cast<double>(chainIndex + 1));
 }
 
 } // namespace
@@ -93,7 +93,7 @@ int main() {
         m2424::EvalModPolynomial::approximation_bound,
         2.0);
     m2424::CkksProfile profile;
-    profile.coeff_modulus_bits = {60, 40, 40, 60};
+    profile.coeffModulusBits = {60, 40, 40, 60};
     const auto active_bits = m2424::active_coeff_modulus_bits(
         profile,
         make_info(40.0, 2, 3, 140.0));
@@ -290,7 +290,7 @@ int main() {
         && dense_layout.total_levels > dense_layout.normalization_levels
         && dense_layout.security_budget_bits == 438
         && fft_layout.coeff_to_slot_levels > dense_layout.coeff_to_slot_levels
-        && fft_layout.profile.slots == fft_layout.poly_modulus_degree / 2
+        && fft_layout.profile.slots == fft_layout.polyModulusDegree / 2
         && !fft_layout.blocker.empty()
         && lattigo_like_mod1_levels == 8
         && openfhe_like_mod1_levels == 13
@@ -299,7 +299,7 @@ int main() {
         && parameter_ready.status == m2424::BootstrapParameterPlanningStatus::Ready
         && parameter_ready.blocker == "none"
         && parameter_ready.expected_output_chain_index == 1
-        && !parameter_ready.rotation_steps.empty()
+        && !parameter_ready.rotationSteps.empty()
         && parameter_unsupported.status == m2424::BootstrapParameterPlanningStatus::BlockedByUnsupportedSlots
         && parameter_security_blocked.status == m2424::BootstrapParameterPlanningStatus::BlockedBySecurityBudget
         && fits_refresh_plan.status == m2424::BootstrapRefreshPlanningStatus::ComputeFitsWithoutRefresh

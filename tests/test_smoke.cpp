@@ -69,14 +69,14 @@ static void encrypt_without_keys_case() {
 
 static void mul_without_relin_case() {
     auto adapter = m2424::SealAdapter::create(m2424::profiles::basic_ckks());
-    adapter.keygen(false, false);
+    adapter.generateKeys(false, false);
     auto ct = adapter.encrypt(adapter.encode({1.0, 2.0}));
-    (void)adapter.mul_relin_rescale(ct, ct);
+    (void)multiplyRelinearizeAndRescale(adapter, ct, ct);
 }
 
 static void rotate_without_galois_case() {
     auto adapter = m2424::SealAdapter::create(m2424::profiles::basic_ckks());
-    adapter.keygen(false, false);
+    adapter.generateKeys(false, false);
     auto ct = adapter.encrypt(adapter.encode({1.0, 2.0}));
     (void)adapter.rotate(ct, 1);
 }
@@ -92,12 +92,12 @@ static void unknown_profile_name_case() {
 static bool all_named_profiles_create_contexts() {
     for (const auto& entry : m2424::profiles::all()) {
         auto adapter = m2424::SealAdapter::create(entry.second);
-        if (adapter.slot_count() != entry.second.poly_modulus_degree / 2) {
+        if (adapter.slotCount() != entry.second.polyModulusDegree / 2) {
             return false;
         }
         const auto resolved = m2424::profiles::by_name(entry.first);
-        if (resolved.poly_modulus_degree != entry.second.poly_modulus_degree
-            || resolved.coeff_modulus_bits != entry.second.coeff_modulus_bits
+        if (resolved.polyModulusDegree != entry.second.polyModulusDegree
+            || resolved.coeffModulusBits != entry.second.coeffModulusBits
             || resolved.scale != entry.second.scale
             || resolved.slots != entry.second.slots) {
             return false;
@@ -127,7 +127,7 @@ static bool diagonal_transform_plan_ok() {
     }
     return transform.terms().size() == 4
         && inverse_transform.terms().size() == 4
-        && transform.rotation_steps().size() == 6;
+        && transform.rotationSteps().size() == 6;
 }
 
 static bool eval_mod_polynomial_ok() {
@@ -148,7 +148,7 @@ int main() {
     const auto prof = m2424::profiles::basic_ckks();
     const auto slots = prof.slots;
     auto adapter = m2424::SealAdapter::create(prof);
-    adapter.keygen(true, true);
+    adapter.generateKeys(true, true);
 
     const std::size_t N = 64;
     std::vector<double> input; input.reserve(N);
@@ -156,28 +156,28 @@ int main() {
 
     auto p = adapter.encode(input);
     auto ct = adapter.encrypt(p);
-    const auto public_key_bytes = adapter.save_public_key();
-    const auto secret_key_bytes = adapter.save_secret_key();
-    const auto relin_key_bytes = adapter.save_relin_keys();
-    const auto galois_key_bytes = adapter.save_galois_keys();
-    const auto cipher_bytes = adapter.save_cipher(ct);
+    const auto public_key_bytes = adapter.savePublicKey();
+    const auto secret_key_bytes = adapter.saveSecretKey();
+    const auto relin_key_bytes = adapter.saveRelinKeys();
+    const auto galois_key_bytes = adapter.saveGaloisKeys();
+    const auto cipher_bytes = adapter.saveCipher(ct);
 
     auto loaded_adapter = m2424::SealAdapter::create(prof);
-    loaded_adapter.load_public_key(public_key_bytes);
-    loaded_adapter.load_secret_key(secret_key_bytes);
-    loaded_adapter.load_relin_keys(relin_key_bytes);
-    loaded_adapter.load_galois_keys(galois_key_bytes);
-    auto loaded_ct = loaded_adapter.load_cipher(cipher_bytes);
+    loaded_adapter.loadPublicKey(public_key_bytes);
+    loaded_adapter.loadSecretKey(secret_key_bytes);
+    loaded_adapter.loadRelinKeys(relin_key_bytes);
+    loaded_adapter.loadGaloisKeys(galois_key_bytes);
+    auto loaded_ct = loaded_adapter.loadCipher(cipher_bytes);
     auto loaded_out = head(loaded_adapter.decode(loaded_adapter.decrypt(loaded_ct)), N);
 
     auto public_only_adapter = m2424::SealAdapter::create(prof);
-    public_only_adapter.load_public_key(public_key_bytes);
-    public_only_adapter.load_galois_keys(galois_key_bytes);
-    auto public_only_ct = public_only_adapter.load_cipher(cipher_bytes);
+    public_only_adapter.loadPublicKey(public_key_bytes);
+    public_only_adapter.loadGaloisKeys(galois_key_bytes);
+    auto public_only_ct = public_only_adapter.loadCipher(cipher_bytes);
     const bool public_only_cannot_decrypt = expect_runtime_error_from([&] {
         (void)public_only_adapter.decrypt(public_only_ct);
     });
-    auto ct2 = adapter.mul_relin_rescale(ct, ct);
+    auto ct2 = multiplyRelinearizeAndRescale(adapter, ct, ct);
     auto p2 = adapter.decrypt(ct2);
     auto out = adapter.decode(p2);
 
@@ -197,17 +197,17 @@ int main() {
     auto ct_sub = adapter.sub(ct_add, ct);
     auto sub_out = head(adapter.decode(adapter.decrypt(ct_sub)), N);
 
-    auto plain_shift = adapter.encode_like(std::vector<double>(N, 0.25), ct);
-    auto ct_add_plain = adapter.add_plain(ct, plain_shift);
+    auto plain_shift = adapter.encodeFor(std::vector<double>(N, 0.25), ct);
+    auto ct_add_plain = adapter.addPlain(ct, plain_shift);
     auto add_plain_out = head(adapter.decode(adapter.decrypt(ct_add_plain)), N);
     std::vector<double> add_plain_ref; add_plain_ref.reserve(N);
     for (double x : input) add_plain_ref.push_back(x + 0.25);
 
-    auto ct_sub_plain = adapter.sub_plain(ct_add_plain, plain_shift);
+    auto ct_sub_plain = adapter.subPlain(ct_add_plain, plain_shift);
     auto sub_plain_out = head(adapter.decode(adapter.decrypt(ct_sub_plain)), N);
 
-    auto scalar = adapter.encode_scalar_like(1.5, ct);
-    auto ct_mul_plain = adapter.mul_plain_rescale(ct, scalar);
+    auto scalar = adapter.encodeScalarFor(1.5, ct);
+    auto ct_mul_plain = multiplyPlainAndRescale(adapter, ct, scalar);
     auto mul_plain_out = head(adapter.decode(adapter.decrypt(ct_mul_plain)), N);
     std::vector<double> mul_plain_ref; mul_plain_ref.reserve(N);
     for (double x : input) mul_plain_ref.push_back(1.5 * x);
@@ -224,7 +224,7 @@ int main() {
 
     const auto depth_profile = m2424::profiles::depth_ckks();
     auto depth_adapter = m2424::SealAdapter::create(depth_profile);
-    depth_adapter.keygen(true, true);
+    depth_adapter.generateKeys(true, true);
     std::vector<double> depth_input;
     depth_input.reserve(16);
     for (std::size_t i = 0; i < 16; ++i) depth_input.push_back(0.25 + 0.25 * std::sin(static_cast<double>(i) / 7.0));
@@ -237,7 +237,7 @@ int main() {
         {0, {0.0}},
         {1, {0.0, 0.0}}
     });
-    const bool zero_transform_ok = zero_transform.rotation_steps().empty();
+    const bool zero_transform_ok = zero_transform.rotationSteps().empty();
     auto linear_ct = transform.apply(depth_adapter, depth_ct);
     auto linear_out = head(depth_adapter.decode(depth_adapter.decrypt(linear_ct)), depth_input.size());
     std::vector<double> linear_ref; linear_ref.reserve(depth_input.size());
@@ -353,7 +353,7 @@ int main() {
         && close_enough(add_ref, add_out, 1e-5)
         && checked_add.ok
         && checked_add.operation == "add"
-        && checked_add.info.ciphertext_size > 0
+        && checked_add.info.ciphertextSize > 0
         && close_enough(input, sub_out, 1e-5)
         && close_enough(add_plain_ref, add_plain_out, 1e-5)
         && close_enough(input, sub_plain_out, 1e-5)
@@ -373,13 +373,13 @@ int main() {
     bool ok = arithmetic_ok
         && bootstrap_parts_ok
         && abft_check.ok
-        && adapter.slot_count() == slots
-        && adapter.serialized_size(ct) > 0
+        && adapter.slotCount() == slots
+        && adapter.serializedSize(ct) > 0
         && adapter.scale(ct) > 0.0
-        && adapter.coeff_modulus_size(ct) > 0
-        && adapter.public_key_size() > 0
-        && adapter.relin_keys_size() > 0
-        && adapter.galois_keys_size() > 0
+        && adapter.coeffModulusSize(ct) > 0
+        && adapter.publicKeySize() > 0
+        && adapter.relinKeysSize() > 0
+        && adapter.galoisKeysSize() > 0
         && expect_invalid_argument(invalid_profile_case)
         && expect_invalid_argument(empty_encode_case)
         && expect_runtime_error(encrypt_without_keys_case)

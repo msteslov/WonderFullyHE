@@ -33,14 +33,14 @@ void require_cos_encrypted_matches_plain(const m2424::BootstrapMod1Model& model,
     require(circuit.encrypted_evaluation_available(), "CosDiscrete encrypted evaluation should be available");
 
     auto adapter = m2424::SealAdapter::create(m2424::profiles::boot_deep_ckks());
-    adapter.keygen(true, false);
+    adapter.generateKeys(true, false);
 
     const m2424::ComplexVector input{{1.0e-5, 0.0}, {-1.5e-5, 0.5e-5}, {0.75e-5, -0.25e-5}};
     const auto expected = circuit.evaluate_plain(input);
-    const auto encrypted_input = adapter.encrypt(adapter.encode_complex(input));
+    const auto encrypted_input = adapter.encrypt(adapter.encodeComplex(input));
     const auto input_info = adapter.info(encrypted_input);
     const auto evaluation = circuit.evaluate_with_report(adapter, encrypted_input);
-    const auto actual = adapter.decode_complex(adapter.decrypt(evaluation.result));
+    const auto actual = adapter.decodeComplex(adapter.decrypt(evaluation.result));
 
     double max_error = 0.0;
     for (std::size_t i = 0; i < input.size(); ++i) {
@@ -49,7 +49,7 @@ void require_cos_encrypted_matches_plain(const m2424::BootstrapMod1Model& model,
     require(max_error <= tolerance, "encrypted CosDiscrete output does not match plaintext reference");
     require(evaluation.strategy == m2424::PolynomialEvaluationStrategy::DirectOddPowers,
             "small-degree CosDiscrete should use direct odd powers");
-    require(evaluation.input_chain_index == input_info.chain_index,
+    require(evaluation.input_chain_index == input_info.chainIndex,
             "Mod1 report input chain mismatch");
     require(evaluation.output_chain_index <= evaluation.input_chain_index,
             "Mod1 report output chain mismatch");
@@ -108,9 +108,9 @@ int main() {
         bool unsupported_degree_threw = false;
         try {
             auto adapter = m2424::SealAdapter::create(m2424::profiles::boot_deep_ckks());
-            adapter.keygen(true, false);
+            adapter.generateKeys(true, false);
             const m2424::ComplexVector input{{1.0e-5, 0.0}};
-            (void)cos15.evaluate_with_report(adapter, adapter.encrypt(adapter.encode_complex(input)));
+            (void)cos15.evaluate_with_report(adapter, adapter.encrypt(adapter.encodeComplex(input)));
         } catch (const std::runtime_error& error) {
             unsupported_degree_threw =
                 std::string(error.what()).find("requires optimized evaluator") != std::string::npos;

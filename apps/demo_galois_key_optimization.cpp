@@ -41,7 +41,7 @@ std::vector<double> head(const std::vector<double>& values, std::size_t n) {
 struct RunResult {
     const char* mode{};
     std::size_t rotation_count{};
-    std::size_t galois_keys_size{};
+    std::size_t galoisKeysSize{};
     double keygen_ms{};
     double linear_ms{};
     double sum_slots_ms{};
@@ -51,19 +51,19 @@ struct RunResult {
 
 RunResult run_case(const char* mode,
                    const m2424::CkksProfile& profile,
-                   const std::vector<int>& rotation_steps,
+                   const std::vector<int>& rotationSteps,
                    const std::vector<double>& input,
                    std::size_t sum_size) {
     auto adapter = m2424::SealAdapter::create(profile);
 
     double keygen_ms = 0.0;
-    if (rotation_steps.empty()) {
+    if (rotationSteps.empty()) {
         keygen_ms = elapsed_ms([&] {
-            adapter.keygen(true, true);
+            adapter.generateKeys(true, true);
         });
     } else {
         keygen_ms = elapsed_ms([&] {
-            adapter.keygen(rotation_steps, true);
+            adapter.generateKeys(rotationSteps, true);
         });
     }
 
@@ -100,8 +100,8 @@ RunResult run_case(const char* mode,
 
     return RunResult{
         mode,
-        rotation_steps.empty() ? 0 : rotation_steps.size(),
-        adapter.galois_keys_size(),
+        rotationSteps.empty() ? 0 : rotationSteps.size(),
+        adapter.galoisKeysSize(),
         keygen_ms,
         linear_ms,
         sum_slots_ms,
@@ -133,12 +133,12 @@ int main() {
     const auto limited = run_case("limited", profile, limited_steps, input, sum_size);
 
     std::printf("rotation_steps_limited,%s\n", join_steps(limited_steps).c_str());
-    std::printf("mode,rotation_count,galois_keys_size,keygen_ms,linear_transform_ms,sum_slots_ms,linear_max_error,sum_slots_error\n");
+    std::printf("mode,rotation_count,galoisKeysSize,keygen_ms,linear_transform_ms,sum_slots_ms,linear_max_error,sum_slots_error\n");
     for (const auto& row : {full, limited}) {
         std::printf("%s,%zu,%zu,%.6f,%.6f,%.6f,%.6e,%.6e\n",
                     row.mode,
                     row.rotation_count,
-                    row.galois_keys_size,
+                    row.galoisKeysSize,
                     row.keygen_ms,
                     row.linear_ms,
                     row.sum_slots_ms,
@@ -146,6 +146,6 @@ int main() {
                     row.sum_slots_error);
     }
     std::printf("galois_key_size_ratio,%.6f\n",
-                static_cast<double>(full.galois_keys_size) / static_cast<double>(limited.galois_keys_size));
+                static_cast<double>(full.galoisKeysSize) / static_cast<double>(limited.galoisKeysSize));
     return 0;
 }

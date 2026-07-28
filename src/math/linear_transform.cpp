@@ -58,7 +58,7 @@ const std::vector<LinearTerm>& LinearTransform::terms() const noexcept {
     return terms_;
 }
 
-std::vector<int> LinearTransform::rotation_steps() const {
+std::vector<int> LinearTransform::rotationSteps() const {
     std::vector<int> steps;
     for (const auto& term : terms_) {
         if (term.rotation != 0 && has_nonzero_coefficient(term.coefficients)) {
@@ -92,35 +92,35 @@ Cipher LinearTransform::apply(SealAdapter& adapter, const Cipher& input) const {
         }
 
         Plain encoded = term.coefficients.size() == 1
-            ? adapter.encode_scalar_like(term.coefficients.front(), *rotated)
-            : adapter.encode_like(term.coefficients, *rotated);
-        weighted_terms.push_back(adapter.mul_plain_rescale(*rotated, encoded));
+            ? adapter.encodeScalarFor(term.coefficients.front(), *rotated)
+            : adapter.encodeFor(term.coefficients, *rotated);
+        weighted_terms.push_back(multiplyPlainAndRescale(adapter, *rotated, encoded));
     }
 
     return pairwise_add(adapter, std::move(weighted_terms));
 }
 
-std::vector<int> power_of_two_rotation_steps(std::size_t slot_count) {
-    if (slot_count == 0) {
-        throw std::invalid_argument("slot_count must be positive");
+std::vector<int> power_of_two_rotation_steps(std::size_t slotCount) {
+    if (slotCount == 0) {
+        throw std::invalid_argument("slotCount must be positive");
     }
     std::vector<int> steps;
-    for (std::size_t step = 1; step < slot_count; step <<= 1) {
+    for (std::size_t step = 1; step < slotCount; step <<= 1) {
         steps.push_back(static_cast<int>(step));
     }
     return steps;
 }
 
-std::vector<int> sum_slots_rotation_steps(std::size_t slot_count) {
-    return power_of_two_rotation_steps(slot_count);
+std::vector<int> sum_slots_rotation_steps(std::size_t slotCount) {
+    return power_of_two_rotation_steps(slotCount);
 }
 
-Cipher sum_slots(SealAdapter& adapter, const Cipher& input, std::size_t slot_count) {
-    if (slot_count == 0) {
-        throw std::invalid_argument("slot_count must be positive");
+Cipher sum_slots(SealAdapter& adapter, const Cipher& input, std::size_t slotCount) {
+    if (slotCount == 0) {
+        throw std::invalid_argument("slotCount must be positive");
     }
     Cipher result = input;
-    for (int step : power_of_two_rotation_steps(slot_count)) {
+    for (int step : power_of_two_rotation_steps(slotCount)) {
         Cipher rotated = adapter.rotate(result, step);
         result = adapter.add(result, rotated);
     }

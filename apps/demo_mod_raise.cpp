@@ -10,7 +10,7 @@
 int main() {
     const auto profile = m2424::profiles::boot_ckks();
     auto adapter = m2424::SealAdapter::create(profile);
-    adapter.keygen(false, false);
+    adapter.generateKeys(false, false);
 
     constexpr std::size_t payload_size = 16;
     std::vector<double> input;
@@ -20,9 +20,9 @@ int main() {
     }
 
     auto encrypted = adapter.encrypt(adapter.encode(input));
-    auto one = adapter.encode_scalar_like(1.0, encrypted);
-    auto lowered = adapter.mul_plain_rescale(encrypted, one);
-    auto raised = adapter.mod_raise_to_first(lowered);
+    auto one = adapter.encodeScalarFor(1.0, encrypted);
+    auto lowered = multiplyPlainAndRescale(adapter, encrypted, one);
+    auto raised = adapter.modRaiseToFirst(lowered);
 
     auto lowered_out = adapter.decode(adapter.decrypt(lowered));
     auto raised_out = adapter.decode(adapter.decrypt(raised));
@@ -35,24 +35,24 @@ int main() {
     const auto lowered_info = adapter.info(lowered);
     const auto raised_info = adapter.info(raised);
 
-    std::printf("stage,chain_index,coeff_modulus_size,scale,max_abs_error,status\n");
+    std::printf("stage,chainIndex,coeffModulusSize,scale,max_abs_error,status\n");
     std::printf("initial,%zu,%zu,%.6e,0.000000e+00,PASS\n",
-                initial_info.chain_index,
-                initial_info.coeff_modulus_size,
+                initial_info.chainIndex,
+                initial_info.coeffModulusSize,
                 initial_info.scale);
     std::printf("lowered,%zu,%zu,%.6e,%.6e,%s\n",
-                lowered_info.chain_index,
-                lowered_info.coeff_modulus_size,
+                lowered_info.chainIndex,
+                lowered_info.coeffModulusSize,
                 lowered_info.scale,
                 lowered_accuracy.max_abs_error,
                 lowered_accuracy.ok ? "PASS" : "FAIL");
-    const bool structural_ok = raised_info.chain_index > lowered_info.chain_index
-        && raised_info.coeff_modulus_size > lowered_info.coeff_modulus_size;
+    const bool structural_ok = raised_info.chainIndex > lowered_info.chainIndex
+        && raised_info.coeffModulusSize > lowered_info.coeffModulusSize;
     const bool raised_ok = structural_ok && raised_decode_delta.ok;
 
     std::printf("raised_structural,%zu,%zu,%.6e,%.6e,%s\n",
-                raised_info.chain_index,
-                raised_info.coeff_modulus_size,
+                raised_info.chainIndex,
+                raised_info.coeffModulusSize,
                 raised_info.scale,
                 raised_decode_delta.max_abs_error,
                 raised_ok ? "PASS" : "FAIL");

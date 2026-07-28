@@ -18,7 +18,7 @@ enum class BootstrapPeriodMode {
 };
 
 struct BootstrapScalingFactors {
-    double bootstrap_period_log2{};
+    double bootstrapPeriodLog2{};
     double normalization_factor_log2{};
     double plain_scale_log2{};
     double factor_times_plain_scale_log2{};
@@ -70,14 +70,14 @@ struct BootstrapEvalModCapacityPlan {
 
 const char* to_string(BootstrapPeriodMode mode) noexcept;
 
-double bootstrap_period_log2(BootstrapPeriodMode mode,
+double bootstrapPeriodLog2(BootstrapPeriodMode mode,
                              double manual_period_log2,
-                             const std::vector<int>& coeff_modulus_bits,
+                             const std::vector<int>& coeffModulusBits,
                              const CipherInfo& before_mod_raise,
                              const CipherInfo& after_mod_raise);
 
 BootstrapScalingFactors make_bootstrap_scaling_factors(double amplitude_factor,
-                                                       double bootstrap_period_log2,
+                                                       double bootstrapPeriodLog2,
                                                        double plain_scale_log2);
 
 BootstrapScalarApplication apply_bootstrap_scalar_decomposed(SealAdapter& adapter,

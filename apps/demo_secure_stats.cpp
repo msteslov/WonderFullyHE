@@ -25,9 +25,9 @@ int main() {
     const auto profile = m2424::profiles::basic_ckks();
 
     auto adapter = m2424::SealAdapter::create(profile);
-    adapter.keygen(false, true);
+    adapter.generateKeys(false, true);
 
-    std::vector<double> data(adapter.slot_count(), 0.0);
+    std::vector<double> data(adapter.slotCount(), 0.0);
     for (std::size_t i = 0; i < payload_size; ++i) {
         data[i] = 10.0 + 0.5 * static_cast<double>(i) + std::sin(static_cast<double>(i) / 3.0);
     }

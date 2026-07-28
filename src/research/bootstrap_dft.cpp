@@ -277,10 +277,10 @@ ComplexVector BootstrapDftPlan::apply_plain(const ComplexVector& input) const {
     return current;
 }
 
-std::vector<int> BootstrapDftPlan::rotation_steps() const {
+std::vector<int> BootstrapDftPlan::rotationSteps() const {
     std::vector<int> steps;
     for (const auto& layer : layers) {
-        auto layer_steps = layer.transform.rotation_steps();
+        auto layer_steps = layer.transform.rotationSteps();
         steps.insert(steps.end(), layer_steps.begin(), layer_steps.end());
     }
     std::sort(steps.begin(), steps.end());
@@ -303,8 +303,8 @@ ComplexVector FactorizedLinearTransform::apply_plain(const ComplexVector& input)
     return plan_.apply_plain(input);
 }
 
-std::vector<int> FactorizedLinearTransform::rotation_steps() const {
-    return plan_.rotation_steps();
+std::vector<int> FactorizedLinearTransform::rotationSteps() const {
+    return plan_.rotationSteps();
 }
 
 Cipher FactorizedLinearTransform::apply(SealAdapter& adapter,
@@ -320,9 +320,9 @@ Cipher FactorizedLinearTransform::apply(SealAdapter& adapter,
             trace->push_back(BootstrapDftLayerTrace{
                 stage_prefix.empty() ? layer.name : stage_prefix,
                 i,
-                info.chain_index,
+                info.chainIndex,
                 std::log2(info.scale),
-                info.coeff_modulus_log2
+                info.coeffModulusLog2
             });
         }
     }

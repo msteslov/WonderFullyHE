@@ -102,9 +102,9 @@ const char* to_string(BootstrapMod1Type type) noexcept {
 }
 
 std::vector<int> active_coeff_modulus_bits(const CkksProfile& profile, const CipherInfo& info) {
-    const std::size_t active_size = std::min(info.coeff_modulus_size, profile.coeff_modulus_bits.size());
-    return {profile.coeff_modulus_bits.begin(),
-            profile.coeff_modulus_bits.begin() + static_cast<std::ptrdiff_t>(active_size)};
+    const std::size_t active_size = std::min(info.coeffModulusSize, profile.coeffModulusBits.size());
+    return {profile.coeffModulusBits.begin(),
+            profile.coeffModulusBits.begin() + static_cast<std::ptrdiff_t>(active_size)};
 }
 
 namespace {
@@ -207,8 +207,8 @@ std::vector<int> bootstrap_plan_rotation_steps(const BootstrapPipelinePlan& plan
         const auto coeff_to_slot = DiagonalLinearTransform::from_matrix(canonical_embedding_matrix(plan.slots));
         const auto slot_to_coeff = DiagonalLinearTransform::from_matrix(
             invert_matrix(canonical_embedding_matrix(plan.slots)));
-        auto steps = coeff_to_slot.rotation_steps();
-        const auto inverse_steps = slot_to_coeff.rotation_steps();
+        auto steps = coeff_to_slot.rotationSteps();
+        const auto inverse_steps = slot_to_coeff.rotationSteps();
         steps.insert(steps.end(), inverse_steps.begin(), inverse_steps.end());
         std::sort(steps.begin(), steps.end());
         steps.erase(std::unique(steps.begin(), steps.end()), steps.end());
@@ -220,8 +220,8 @@ std::vector<int> bootstrap_plan_rotation_steps(const BootstrapPipelinePlan& plan
     auto slot_to_coeff = make_bootstrap_dft_plan(plan.slots,
                                                  BootstrapDftType::HomomorphicEncode,
                                                  plan.plain_scale_log2);
-    auto steps = coeff_to_slot.rotation_steps();
-    auto inverse_steps = slot_to_coeff.rotation_steps();
+    auto steps = coeff_to_slot.rotationSteps();
+    auto inverse_steps = slot_to_coeff.rotationSteps();
     steps.insert(steps.end(), inverse_steps.begin(), inverse_steps.end());
     std::sort(steps.begin(), steps.end());
     steps.erase(std::unique(steps.begin(), steps.end()), steps.end());
@@ -351,14 +351,14 @@ BootstrapRefreshPlanningResult plan_bootstrap_refresh(const BootstrapRefreshPlan
     if (request.slots == 0) {
         throw std::invalid_argument("bootstrap refresh planner slots must be positive");
     }
-    if (request.current_info.chain_index < request.min_chain_remaining_after_compute) {
+    if (request.current_info.chainIndex < request.min_chain_remaining_after_compute) {
         throw std::invalid_argument("min_chain_remaining_after_compute exceeds current chain index");
     }
 
     BootstrapRefreshPlanningResult result;
     result.required_compute_levels = estimated_level_budget(request.operation_budget);
     result.available_compute_levels =
-        request.current_info.chain_index - request.min_chain_remaining_after_compute;
+        request.current_info.chainIndex - request.min_chain_remaining_after_compute;
 
     CkksPlanningRequest parameter_request;
     parameter_request.target_error = request.target_error;
@@ -400,10 +400,10 @@ BootstrapRefreshPlanningResult plan_bootstrap_refresh(const BootstrapRefreshPlan
 }
 
 BootstrapScaleDesign plan_bootstrap_refresh_scale_gate(const BootstrapRefreshScaleGateRequest& request) {
-    const double period_log2 = bootstrap_period_log2(
+    const double period_log2 = bootstrapPeriodLog2(
         request.period_mode,
         request.manual_period_log2,
-        request.profile.coeff_modulus_bits,
+        request.profile.coeffModulusBits,
         request.before_mod_raise,
         request.after_mod_raise);
     return make_bootstrap_scale_design(
@@ -543,10 +543,10 @@ BootstrapRefreshScaleGateSearchResult search_bootstrap_refresh_scale_gate(
             continue;
         }
 
-        const double period_log2 = bootstrap_period_log2(
+        const double period_log2 = bootstrapPeriodLog2(
             period_mode,
             0.0,
-            request.profile.coeff_modulus_bits,
+            request.profile.coeffModulusBits,
             request.before_mod_raise,
             request.after_mod_raise);
         for (double prescale_log2 : request.coeff_to_slot_prescale_log2_values) {
@@ -636,7 +636,7 @@ BootstrapLayoutPlanningResult plan_bootstrap_layout(const BootstrapLayoutPlannin
     BootstrapLayoutPlanningResult result;
     result.transform_backend = request.transform_backend;
     result.slots = request.slots;
-    result.poly_modulus_degree = request.poly_modulus_degree;
+    result.polyModulusDegree = request.polyModulusDegree;
     result.security_level = request.security_level;
     result.coeff_to_slot_levels = request.coeff_to_slot_levels != 0
         ? request.coeff_to_slot_levels
@@ -679,29 +679,29 @@ BootstrapLayoutPlanningResult plan_bootstrap_layout(const BootstrapLayoutPlannin
         + result.slot_to_coeff_levels
         + result.residual_levels;
 
-    result.profile.poly_modulus_degree = request.poly_modulus_degree;
+    result.profile.polyModulusDegree = request.polyModulusDegree;
     result.profile.scale = std::exp2(std::min(request.target_scale_log2, 60.0));
-    result.profile.slots = request.poly_modulus_degree / 2;
-    result.profile.coeff_modulus_bits.reserve(result.total_levels + 1);
-    result.profile.coeff_modulus_bits.push_back(request.first_mod_bits);
+    result.profile.slots = request.polyModulusDegree / 2;
+    result.profile.coeffModulusBits.reserve(result.total_levels + 1);
+    result.profile.coeffModulusBits.push_back(request.first_mod_bits);
     for (std::size_t i = 1; i < result.total_levels; ++i) {
-        result.profile.coeff_modulus_bits.push_back(request.middle_mod_bits);
+        result.profile.coeffModulusBits.push_back(request.middle_mod_bits);
     }
-    result.profile.coeff_modulus_bits.push_back(request.last_mod_bits);
+    result.profile.coeffModulusBits.push_back(request.last_mod_bits);
     result.total_coeff_modulus_bits = total_coeff_modulus_bits(result.profile);
-    result.security_budget_bits = coeff_modulus_max_bit_count(request.poly_modulus_degree, request.security_level);
+    result.security_budget_bits = coeff_modulus_max_bit_count(request.polyModulusDegree, request.security_level);
     result.security_ok = result.security_budget_bits > 0
         && result.total_coeff_modulus_bits <= result.security_budget_bits;
 
     const std::size_t consumed_before_evalmod =
         result.coeff_to_slot_levels + result.normalization_levels + result.scale_squash_levels;
     const std::size_t active_moduli_before_evalmod =
-        result.profile.coeff_modulus_bits.size() > consumed_before_evalmod
-            ? result.profile.coeff_modulus_bits.size() - consumed_before_evalmod
+        result.profile.coeffModulusBits.size() > consumed_before_evalmod
+            ? result.profile.coeffModulusBits.size() - consumed_before_evalmod
             : 0;
     for (std::size_t i = 0; i < active_moduli_before_evalmod; ++i) {
         result.remaining_modulus_before_evalmod_log2 +=
-            static_cast<double>(result.profile.coeff_modulus_bits[i]);
+            static_cast<double>(result.profile.coeffModulusBits[i]);
     }
     result.evalmod_capacity_ok =
         result.first_evalmod_product_scale_log2 + request.evalmod_capacity_margin_log2

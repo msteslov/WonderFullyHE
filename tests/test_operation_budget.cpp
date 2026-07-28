@@ -38,7 +38,7 @@ void test_static_estimators() {
 void test_checked_evaluator_tracking() {
     const std::size_t payload_size = 8;
     auto adapter = m2424::SealAdapter::create(m2424::profiles::balanced_ckks());
-    adapter.keygen(m2424::sum_slots_rotation_steps(payload_size), true);
+    adapter.generateKeys(m2424::sum_slots_rotation_steps(payload_size), true);
 
     std::vector<double> input;
     input.reserve(payload_size);
@@ -48,13 +48,13 @@ void test_checked_evaluator_tracking() {
     auto cipher = adapter.encrypt(adapter.encode(input));
     m2424::CheckedEvaluator checked(adapter, payload_size, 1e-5);
 
-    auto shift_plain = adapter.encode_like(std::vector<double>(payload_size, 0.01), cipher);
+    auto shift_plain = adapter.encodeFor(std::vector<double>(payload_size, 0.01), cipher);
     std::vector<double> add_plain_expected;
     add_plain_expected.reserve(payload_size);
     for (double value : input) {
         add_plain_expected.push_back(value + 0.01);
     }
-    auto add_plain_result = checked.add_plain(cipher, shift_plain, add_plain_expected);
+    auto add_plain_result = checked.addPlain(cipher, shift_plain, add_plain_expected);
 
     std::vector<double> add_expected;
     add_expected.reserve(payload_size);
@@ -63,13 +63,13 @@ void test_checked_evaluator_tracking() {
     }
     auto add_result = checked.add(add_plain_result.cipher, add_plain_result.cipher, add_expected);
 
-    auto scalar_plain = adapter.encode_scalar_like(1.25, add_result.cipher);
+    auto scalar_plain = adapter.encodeScalarFor(1.25, add_result.cipher);
     std::vector<double> mul_plain_expected;
     mul_plain_expected.reserve(payload_size);
     for (double value : add_expected) {
         mul_plain_expected.push_back(1.25 * value);
     }
-    auto mul_plain_result = checked.mul_plain_rescale(add_result.cipher, scalar_plain, mul_plain_expected);
+    auto mul_plain_result = checked.multiplyPlainAndRescale(add_result.cipher, scalar_plain, mul_plain_expected);
 
     std::vector<double> mul_expected;
     mul_expected.reserve(payload_size);

@@ -30,15 +30,17 @@ Microsoft SEAL
 
 - создание CKKS-контекста из `CkksProfile`;
 - генерация public/secret/relinearization/Galois-ключей;
-- `encode`, `decode`, `encrypt`, `decrypt`;
-- `add`, `sub`, `add_plain`, `sub_plain`;
-- `mul_plain`, `mul_plain_rescale`, `mul_relin_rescale`;
+- `encode`, `encodeFor`, `encodeScalarFor`, `decode`, `encrypt`, `decrypt`;
+- `add`, `sub`, `addPlain`, `subPlain`;
+- `multiplyPlain`, `multiplyPlainAndRescale`, `multiplyRelinearizeAndRescale`;
 - `rotate`;
-- `mod_switch_to` и `match_level_and_scale`;
+- `modSwitchTo`;
 - сериализация ключей и ciphertext;
 - получение параметров ciphertext: `scale`, `chain_index`, `coeff_modulus_size`, размер объекта.
 
 Сериализация должна поддерживать разделение контекстов: один контекст шифрует данные, второй выполняет вычисления с evaluation keys, третий расшифровывает результат.
+
+Имена публичного API используют `camelCase`. Суффикс `For` означает, что plaintext кодируется на уровне и с масштабом указанного ciphertext; это нужно для совместимости plaintext-операций CKKS. `SealAdapter` не содержит ручной ModUp или произвольную подмену scale. Единственное исключение — явно названный `alignForAddition`: он допускает только близкие scale (до 1%) после снижения уровня и предназначен исключительно для сложения.
 
 ### `CheckedEvaluator` и `OperationBudget`
 
@@ -153,15 +155,8 @@ Backend-и линейных transform-стадий:
 
 ## Модули реализации
 
-- `src/seal_adapter/seal_adapter.cpp` — адаптер Microsoft SEAL.
-- `src/checked_evaluator.cpp` — проверяемый evaluator и сбор бюджета операций.
-- `src/parameter_planner.cpp` — подбор CKKS-параметров.
-- `src/profiles.cpp` — готовые CKKS-профили.
-- `src/profile_report.cpp` и `src/security_report.cpp` — отчёты по параметрам.
-- `src/linear_transform.cpp` и `src/diagonal_transform.cpp` — rotation-based линейные преобразования.
-- `src/polynomial.cpp` и `src/eval_mod.cpp` — полиномы и EvalMod.
-- `src/bootstrap_plan.cpp` — планирование refresh и проверка уровней.
-- `src/bootstrap_layout_v2.cpp` — layout-планирование bootstrap-профиля.
-- `src/bootstrap_dft.cpp` — DFT-планы для `CoeffToSlot` / `SlotToCoeff`.
-- `src/bootstrap_scaling.cpp` — управление масштабом bootstrap-стадий.
-- `src/bootstrap_stc_reference.cpp` — plaintext/reference lattice model.
+- `src/core/` — базовые типы, профили, метрики точности и ABFT.
+- `src/ckks/` — адаптер Microsoft SEAL, проверяемый evaluator и бюджет операций.
+- `src/math/` — полиномы и rotation-based линейные преобразования.
+- `src/planning/` — подбор параметров и отчёты по профилю и безопасности.
+- `src/research/` — исследовательские модели и планы bootstrapping, DFT, EvalMod и Mod1.

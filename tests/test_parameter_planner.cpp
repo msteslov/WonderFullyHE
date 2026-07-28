@@ -36,13 +36,13 @@ void test_speed_plan_for_one_e_minus_nine() {
     require(result.estimated_abs_error_bound <= request.target_error, "planner should pass target error");
     require(result.passes_target_error, "planner pass flag mismatch");
     require(result.selected_work_levels == 2, "planner depth mismatch");
-    require(result.profile.poly_modulus_degree == 8192, "planner should select minimal tc128 N for this request");
+    require(result.profile.polyModulusDegree == 8192, "planner should select minimal tc128 N for this request");
     require(result.profile.slots == 4096, "planner slots mismatch");
-    require(result.profile.coeff_modulus_bits.size() == 4, "planner chain length mismatch");
-    require(result.profile.coeff_modulus_bits[0] == 60, "planner first modulus mismatch");
-    require(result.profile.coeff_modulus_bits[1] == 45, "planner work modulus mismatch");
-    require(result.profile.coeff_modulus_bits[2] == 45, "planner work modulus mismatch");
-    require(result.profile.coeff_modulus_bits[3] == 60, "planner last modulus mismatch");
+    require(result.profile.coeffModulusBits.size() == 4, "planner chain length mismatch");
+    require(result.profile.coeffModulusBits[0] == 60, "planner first modulus mismatch");
+    require(result.profile.coeffModulusBits[1] == 45, "planner work modulus mismatch");
+    require(result.profile.coeffModulusBits[2] == 45, "planner work modulus mismatch");
+    require(result.profile.coeffModulusBits[3] == 60, "planner last modulus mismatch");
     require(std::abs(std::log2(result.profile.scale) - 45.0) < 1e-9, "planner scale mismatch");
     require(result.security.passes_tc128, "planner security report should pass tc128");
 }
@@ -58,7 +58,7 @@ void test_conservative_plan() {
     require(result.selected_work_bits == 50, "conservative plan should select at least 50-bit work moduli");
     require(result.estimated_precision_bits == 36, "conservative estimated precision mismatch");
     require(result.passes_target_error, "conservative plan should pass target error");
-    require(result.profile.poly_modulus_degree == 16384, "50-bit depth-2 plan should move to minimal secure N");
+    require(result.profile.polyModulusDegree == 16384, "50-bit depth-2 plan should move to minimal secure N");
     require(result.security.passes_tc128, "conservative plan should pass tc128");
 }
 
@@ -70,7 +70,7 @@ void test_security_and_slots_drive_degree() {
     request.security_bits = 128;
 
     const auto result = m2424::plan_ckks_parameters(request);
-    require(result.profile.poly_modulus_degree == 16384, "slots should drive N to 16384");
+    require(result.profile.polyModulusDegree == 16384, "slots should drive N to 16384");
     require(result.profile.slots == 8192, "planner should preserve requested slots");
 }
 

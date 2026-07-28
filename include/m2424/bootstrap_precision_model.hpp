@@ -73,7 +73,7 @@ struct BootstrapDftCost {
     std::size_t rotation_count{};
     std::size_t plaintext_multiplication_count{};
     std::size_t rescale_count{};
-    std::vector<int> rotation_steps;
+    std::vector<int> rotationSteps;
 };
 
 struct BootstrapPrecisionPlanningRequest {

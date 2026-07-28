@@ -173,15 +173,15 @@ BootstrapDftCost estimate_bootstrap_dft_cost(std::size_t slots,
     cost.layer_count = plan.layers.size();
     for (const auto& layer : plan.layers) {
         cost.diagonal_term_count += layer.transform.terms().size();
-        auto steps = layer.transform.rotation_steps();
+        auto steps = layer.transform.rotationSteps();
         cost.rotation_count += steps.size();
         cost.plaintext_multiplication_count += layer.transform.terms().size();
         cost.rescale_count += 1;
-        cost.rotation_steps.insert(cost.rotation_steps.end(), steps.begin(), steps.end());
+        cost.rotationSteps.insert(cost.rotationSteps.end(), steps.begin(), steps.end());
     }
-    std::sort(cost.rotation_steps.begin(), cost.rotation_steps.end());
-    cost.rotation_steps.erase(std::unique(cost.rotation_steps.begin(), cost.rotation_steps.end()),
-                              cost.rotation_steps.end());
+    std::sort(cost.rotationSteps.begin(), cost.rotationSteps.end());
+    cost.rotationSteps.erase(std::unique(cost.rotationSteps.begin(), cost.rotationSteps.end()),
+                              cost.rotationSteps.end());
     return cost;
 }
 

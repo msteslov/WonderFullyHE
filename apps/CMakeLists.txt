@@ -24,7 +24,6 @@ set(M2424_STABLE_APPS
     demo_client_compute_roundtrip
     demo_eval_mod_polynomial
     demo_galois_key_optimization
-    demo_mod_raise
     demo_noise_growth
     demo_precision_profiles
     demo_profile_report

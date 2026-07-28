@@ -52,10 +52,10 @@ BootstrapParametersResult plan_bootstrap_parameters(const BootstrapParametersReq
     if (request.slots == 0 || (request.slots & (request.slots - 1)) != 0) {
         throw std::invalid_argument("bootstrap parameters slots must be a non-zero power of two");
     }
-    if (request.poly_modulus_degree == 0 || (request.poly_modulus_degree & (request.poly_modulus_degree - 1)) != 0) {
-        throw std::invalid_argument("bootstrap parameters poly_modulus_degree must be a non-zero power of two");
+    if (request.polyModulusDegree == 0 || (request.polyModulusDegree & (request.polyModulusDegree - 1)) != 0) {
+        throw std::invalid_argument("bootstrap parameters polyModulusDegree must be a non-zero power of two");
     }
-    if (request.slots > request.poly_modulus_degree / 2) {
+    if (request.slots > request.polyModulusDegree / 2) {
         throw std::invalid_argument("bootstrap parameters slots exceed CKKS slot count");
     }
     if (!std::isfinite(request.max_abs_after_coeff_to_slot_log2)) {
@@ -86,11 +86,11 @@ BootstrapParametersResult plan_bootstrap_parameters(const BootstrapParametersReq
         return result;
     }
 
-    result.rotation_steps = bootstrap_plan_rotation_steps(result.pipeline);
+    result.rotationSteps = bootstrap_plan_rotation_steps(result.pipeline);
 
     BootstrapLayoutPlanningRequest layout_request;
     layout_request.slots = request.slots;
-    layout_request.poly_modulus_degree = request.poly_modulus_degree;
+    layout_request.polyModulusDegree = request.polyModulusDegree;
     layout_request.security_level = request.security_level;
     layout_request.transform_backend = request.transform_backend;
     layout_request.max_abs_after_coeff_to_slot_log2 = request.max_abs_after_coeff_to_slot_log2;
@@ -117,7 +117,7 @@ BootstrapParametersResult plan_bootstrap_parameters(const BootstrapParametersReq
     result.expected_output_scale_log2 = request.target_scale_log2;
 
     if (result.status == BootstrapParameterPlanningStatus::Ready) {
-        if (result.rotation_steps.empty()) {
+        if (result.rotationSteps.empty()) {
             result.status = BootstrapParameterPlanningStatus::BlockedByUnsupportedSlots;
             result.blocker = "bootstrap_rotation_steps_empty";
         } else {

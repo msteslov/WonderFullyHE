@@ -9,23 +9,18 @@
 namespace m2424 {
 
 struct CkksProfile {
-    std::size_t poly_modulus_degree{};
-    std::vector<int> coeff_modulus_bits{};
+    std::size_t polyModulusDegree{};
+    std::vector<int> coeffModulusBits{};
     double scale{};
     std::size_t slots{};
 };
 
 struct CipherInfo {
     double scale{};
-    std::size_t chain_index{};
-    std::size_t coeff_modulus_size{};
-    std::size_t ciphertext_size{};
-    double coeff_modulus_log2{};
-};
-
-enum class BootstrapModUpVariant {
-    CenteredLift,
-    UncenteredLift
+    std::size_t chainIndex{};
+    std::size_t coeffModulusSize{};
+    std::size_t ciphertextSize{};
+    double coeffModulusLog2{};
 };
 
 using SerializedBuffer = std::vector<std::uint8_t>;
@@ -64,67 +59,71 @@ private:
 
 class SealAdapter {
 public:
+    /// Creates a CKKS context and validates its parameter profile.
     static SealAdapter create(const CkksProfile&);
 
-    void keygen(bool need_relin = true, bool need_galois = true);
-    void keygen(const std::vector<int>& rotation_steps, bool need_relin = true);
-    std::size_t slot_count() const;
+    /// Generates public, secret, and optionally evaluation keys for all rotations.
+    void generateKeys(bool needRelin = true, bool needGalois = true);
+    /// Generates only the Galois keys required by the listed rotation steps.
+    void generateKeys(const std::vector<int>& rotationSteps, bool needRelin = true);
+    /// Returns the physical CKKS slot capacity of this context.
+    std::size_t slotCount() const;
 
+    /// Encodes real or complex values at the profile's initial level and scale.
     Plain encode(const std::vector<double>&);
-    Plain encode_complex(const std::vector<std::complex<double>>&);
-    Plain encode_like(const std::vector<double>&, const Cipher&);
-    Plain encode_complex_like(const std::vector<std::complex<double>>&, const Cipher&);
-    Plain encode_complex_at_scale_like(const std::vector<std::complex<double>>&, double scale, const Cipher&);
-    Plain encode_scalar_like(double, const Cipher&);
-    Plain encode_scalar_at_scale_like(double, double scale, const Cipher&);
+    Plain encodeComplex(const std::vector<std::complex<double>>&);
+    /// Encodes data at the level and scale of target; intended for a subsequent plaintext operation.
+    Plain encodeFor(const std::vector<double>&, const Cipher&);
+    Plain encodeComplexFor(const std::vector<std::complex<double>>&, const Cipher&);
+    /// Encodes data at target's level with an explicitly chosen, validated scale.
+    Plain encodeComplexAtScaleFor(const std::vector<std::complex<double>>&, double scale, const Cipher&);
+    Plain encodeScalarFor(double, const Cipher&);
+    Plain encodeScalarAtScaleFor(double, double scale, const Cipher&);
+    /// Encrypts, decrypts, and decodes values using loaded public or secret keys.
     Cipher encrypt(const Plain&);
     Plain decrypt(const Cipher&);
     std::vector<double> decode(const Plain&);
-    std::vector<std::complex<double>> decode_complex(const Plain&);
+    std::vector<std::complex<double>> decodeComplex(const Plain&);
 
+    /// Performs the corresponding CKKS primitive without changing hidden policy.
     Cipher add(const Cipher&, const Cipher&);
     Cipher sub(const Cipher&, const Cipher&);
-    Cipher add_plain(const Cipher&, const Plain&);
-    Cipher sub_plain(const Cipher&, const Plain&);
-    Cipher mul_plain(const Cipher&, const Plain&);
-    Cipher mul_plain_rescale(const Cipher&, const Plain&);
-    Cipher mul_relin_rescale(const Cipher&, const Cipher&);
-    Cipher rescale_to_next(const Cipher&);
-    Cipher mod_switch_to_next_preserve_scale(const Cipher&);
-    Cipher mul_by_uint64_no_rescale(const Cipher&, std::uint64_t scalar);
-    Cipher mod_raise_to_first(const Cipher&);
-    Cipher bootstrap_modup_to_first(const Cipher&, BootstrapModUpVariant variant = BootstrapModUpVariant::CenteredLift);
-    Cipher unsafe_reinterpret_scale_for_diagnostics(const Cipher&, double decoded_value_multiplier);
-    [[deprecated("use unsafe_reinterpret_scale_for_diagnostics; this is not a homomorphic multiply")]]
-    Cipher multiply_decoded_value(const Cipher&, double multiplier);
-    Cipher mod_switch_to(const Cipher&, const Cipher&);
-    Cipher match_level_and_scale(const Cipher&, const Cipher&);
+    Cipher addPlain(const Cipher&, const Plain&);
+    Cipher subPlain(const Cipher&, const Plain&);
+    Cipher multiplyPlain(const Cipher&, const Plain&);
+    Cipher multiply(const Cipher&, const Cipher&);
+    Cipher relinearize(const Cipher&);
+    Cipher rescaleToNext(const Cipher&);
+    /// Switches ciphertext to the level of target; it never switches levels upward.
+    Cipher modSwitchTo(const Cipher&, const Cipher&);
+    /// Aligns a ciphertext with target for addition when their CKKS scales differ by at most one percent.
+    Cipher alignForAddition(const Cipher&, const Cipher&);
+    /// Rotates CKKS slots using a previously generated Galois key.
     Cipher rotate(const Cipher&, int steps);
 
-    std::size_t serialized_size(const Cipher&) const;
+    /// Returns ciphertext metadata and serialized key/ciphertext sizes.
+    std::size_t serializedSize(const Cipher&) const;
     CipherInfo info(const Cipher&) const;
     double scale(const Cipher&) const;
-    double coeff_modulus_log2(const Cipher&) const;
-    double bootstrap_period_log2(const Cipher&) const;
-    double bootstrap_period(const Cipher&) const;
-    std::vector<int> coeff_modulus_bits() const;
-    std::size_t chain_index(const Cipher&) const;
-    std::size_t coeff_modulus_size(const Cipher&) const;
-    std::size_t public_key_size() const;
-    std::size_t relin_keys_size() const;
-    std::size_t galois_keys_size() const;
+    double coeffModulusLog2(const Cipher&) const;
+    std::vector<int> coeffModulusBits() const;
+    std::size_t chainIndex(const Cipher&) const;
+    std::size_t coeffModulusSize(const Cipher&) const;
+    std::size_t publicKeySize() const;
+    std::size_t relinKeysSize() const;
+    std::size_t galoisKeysSize() const;
 
-    SerializedBuffer save_public_key() const;
-    SerializedBuffer save_secret_key() const;
-    SerializedBuffer save_relin_keys() const;
-    SerializedBuffer save_galois_keys() const;
-    SerializedBuffer save_cipher(const Cipher&) const;
+    SerializedBuffer savePublicKey() const;
+    SerializedBuffer saveSecretKey() const;
+    SerializedBuffer saveRelinKeys() const;
+    SerializedBuffer saveGaloisKeys() const;
+    SerializedBuffer saveCipher(const Cipher&) const;
 
-    void load_public_key(const SerializedBuffer&);
-    void load_secret_key(const SerializedBuffer&);
-    void load_relin_keys(const SerializedBuffer&);
-    void load_galois_keys(const SerializedBuffer&);
-    Cipher load_cipher(const SerializedBuffer&) const;
+    void loadPublicKey(const SerializedBuffer&);
+    void loadSecretKey(const SerializedBuffer&);
+    void loadRelinKeys(const SerializedBuffer&);
+    void loadGaloisKeys(const SerializedBuffer&);
+    Cipher loadCipher(const SerializedBuffer&) const;
 
     SealAdapter();
     ~SealAdapter();
@@ -137,5 +136,10 @@ private:
     struct Impl;
     std::unique_ptr<Impl> pimpl_;
 };
+
+/// Explicit composition for callers that intentionally consume one CKKS level.
+Cipher multiplyPlainAndRescale(SealAdapter&, const Cipher&, const Plain&);
+/// Explicit composition for callers that intentionally relinearize and consume one CKKS level.
+Cipher multiplyRelinearizeAndRescale(SealAdapter&, const Cipher&, const Cipher&);
 
 } // namespace m2424

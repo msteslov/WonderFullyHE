@@ -119,7 +119,7 @@ int calibrated_loss_bits(const CkksOperationBudget& budget) {
     loss += static_cast<int>((budget.plaintext_additions + 7) / 8);
     loss += static_cast<int>(3 * budget.ciphertext_muls);
     loss += static_cast<int>(2 * budget.plaintext_mul_rescales);
-    loss += static_cast<int>(2 * budget.rescale_to_next);
+    loss += static_cast<int>(2 * budget.rescaleToNext);
     loss += static_cast<int>((budget.mod_switches + 3) / 4);
     loss += static_cast<int>((budget.rotations + 1) / 2);
     loss += static_cast<int>(6 * budget.linear_transforms);
@@ -131,7 +131,7 @@ int calibrated_loss_bits(const CkksOperationBudget& budget) {
 std::size_t estimated_level_budget(const CkksOperationBudget& budget) {
     return budget.ciphertext_muls
         + budget.plaintext_mul_rescales
-        + budget.rescale_to_next
+        + budget.rescaleToNext
         + budget.linear_transforms
         + 3 * budget.evalmod_p3;
 }
@@ -194,7 +194,7 @@ CkksPlanningResult plan_ckks_parameters(const CkksPlanningRequest& request) {
         }
     }
 
-    throw std::invalid_argument("no supported poly_modulus_degree satisfies requested depth, slots, and security");
+    throw std::invalid_argument("no supported polyModulusDegree satisfies requested depth, slots, and security");
 }
 
 std::string planning_result_summary(const CkksPlanningResult& result) {
@@ -207,7 +207,7 @@ std::string planning_result_summary(const CkksPlanningResult& result) {
         << ",estimated_abs_error_bound=" << result.estimated_abs_error_bound
         << ",passes_target_error=" << (result.passes_target_error ? "true" : "false")
         << ",work_levels=" << result.selected_work_levels
-        << ",poly_modulus_degree=" << result.profile.poly_modulus_degree
+        << ",polyModulusDegree=" << result.profile.polyModulusDegree
         << ",slots=" << result.profile.slots
         << ",effective_security=" << to_string(result.security.effective_level);
     return out.str();

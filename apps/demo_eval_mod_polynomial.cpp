@@ -35,7 +35,7 @@ int main() {
     const auto plain_accuracy = m2424::compare(sine_ref, polynomial_ref, sine_tolerance);
 
     auto adapter = m2424::SealAdapter::create(m2424::profiles::boot_ckks());
-    adapter.keygen(true, false);
+    adapter.generateKeys(true, false);
     auto encrypted = adapter.encrypt(adapter.encode(input));
     auto evaluated = eval_mod.evaluate(adapter, encrypted);
     auto decoded = head(adapter.decode(adapter.decrypt(evaluated)), payload_size);
@@ -47,10 +47,10 @@ int main() {
     std::printf("approximation_bound,%.12e,PASS\n", m2424::EvalModPolynomial::approximation_bound);
     std::printf("plain_vs_sine_max_error,%.6e,%s\n", plain_accuracy.max_abs_error, plain_accuracy.ok ? "PASS" : "FAIL");
     std::printf("cipher_vs_plain_max_error,%.6e,%s\n", cipher_accuracy.max_abs_error, cipher_accuracy.ok ? "PASS" : "FAIL");
-    std::printf("chain_index_after,%zu,PASS\n", info.chain_index);
-    std::printf("coeff_modulus_size_after,%zu,PASS\n", info.coeff_modulus_size);
-    std::printf("ciphertext_size_after,%zu,PASS\n", info.ciphertext_size);
-    std::printf("serialized_bytes_after,%zu,PASS\n", adapter.serialized_size(evaluated));
+    std::printf("chain_index_after,%zu,PASS\n", info.chainIndex);
+    std::printf("coeff_modulus_size_after,%zu,PASS\n", info.coeffModulusSize);
+    std::printf("ciphertext_size_after,%zu,PASS\n", info.ciphertextSize);
+    std::printf("serialized_bytes_after,%zu,PASS\n", adapter.serializedSize(evaluated));
 
     return plain_accuracy.ok && cipher_accuracy.ok ? 0 : 1;
 }

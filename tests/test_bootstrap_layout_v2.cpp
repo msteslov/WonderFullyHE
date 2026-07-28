@@ -22,7 +22,7 @@ int main() {
 
     const auto layout = m2424::make_lattigo_like_bootstrap_layout_v2(15, 2, 1e-9, 3);
 
-    ok = ok && layout.residual_profile.poly_modulus_degree == 32768;
+    ok = ok && layout.residual_profile.polyModulusDegree == 32768;
     ok = ok && layout.residual_profile.slots == 4;
     ok = ok && near(std::log2(layout.residual_profile.scale), 50.0, 1e-9);
 

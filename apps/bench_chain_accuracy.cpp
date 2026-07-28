@@ -68,13 +68,13 @@ void run_case(const char* experiment,
                 poly_degree / 2
             };
             auto adapter = m2424::SealAdapter::create(profile);
-            adapter.keygen(true, false);
+            adapter.generateKeys(true, false);
 
             auto reference = make_input(payload_size);
             auto current = adapter.encrypt(adapter.encode(reference));
 
             for (std::size_t step = 0; step < depth; ++step) {
-                current = adapter.mul_relin_rescale(current, current);
+                current = multiplyRelinearizeAndRescale(adapter, current, current);
                 for (double& value : reference) {
                     value *= value;
                 }
@@ -119,7 +119,7 @@ void run_case(const char* experiment,
 int main() {
     const std::size_t trials = 3;
 
-    std::printf("experiment,variant,poly_modulus_degree,work_bits,scale_log2,chain_length,work_levels,depth,status,error,mean_max_abs_error,worst_max_abs_error,mean_mean_abs_error,worst_mean_abs_error\n");
+    std::printf("experiment,variant,polyModulusDegree,work_bits,scale_log2,chain_length,work_levels,depth,status,error,mean_max_abs_error,worst_max_abs_error,mean_mean_abs_error,worst_mean_abs_error\n");
 
     for (std::size_t work_levels = 1; work_levels <= 7; ++work_levels) {
         run_case("chain_length_fixed_depth", "depth1", 16384, 40, 40, work_levels, 1, trials);

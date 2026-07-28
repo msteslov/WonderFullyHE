@@ -49,19 +49,19 @@ Cipher PolynomialEvaluator::evaluate(SealAdapter& adapter, const Cipher& input) 
         }
 
         while (current_degree < term.degree) {
-            Cipher base = adapter.mod_switch_to(input, power);
-            power = adapter.mul_relin_rescale(power, base);
+            Cipher base = adapter.modSwitchTo(input, power);
+            power = multiplyRelinearizeAndRescale(adapter, power, base);
             ++current_degree;
         }
 
-        Plain coefficient = adapter.encode_scalar_like(term.coefficient, power);
-        Cipher weighted = adapter.mul_plain_rescale(power, coefficient);
+        Plain coefficient = adapter.encodeScalarFor(term.coefficient, power);
+        Cipher weighted = multiplyPlainAndRescale(adapter, power, coefficient);
 
         if (!has_result) {
             result = std::move(weighted);
             has_result = true;
         } else {
-            result = adapter.match_level_and_scale(result, weighted);
+            result = adapter.alignForAddition(result, weighted);
             result = adapter.add(result, weighted);
         }
     }

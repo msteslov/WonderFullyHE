@@ -24,7 +24,7 @@ struct CkksOperationBudget {
     std::size_t plaintext_additions{};
     std::size_t ciphertext_muls{};
     std::size_t plaintext_mul_rescales{};
-    std::size_t rescale_to_next{};
+    std::size_t rescaleToNext{};
     std::size_t mod_switches{};
     std::size_t rotations{};
     std::size_t linear_transforms{};

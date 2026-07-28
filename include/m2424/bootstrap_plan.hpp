@@ -190,7 +190,7 @@ struct BootstrapRefreshScaleGateSearchResult {
 
 struct BootstrapLayoutPlanningRequest {
     std::size_t slots{16};
-    std::size_t poly_modulus_degree{32768};
+    std::size_t polyModulusDegree{32768};
     SecurityLevel security_level{SecurityLevel::TC128};
     BootstrapTransformBackend transform_backend{BootstrapTransformBackend::FftLike};
     double max_abs_after_coeff_to_slot_log2{};
@@ -212,7 +212,7 @@ struct BootstrapLayoutPlanningResult {
     BootstrapLayoutPlanningStatus status{BootstrapLayoutPlanningStatus::BlockedByScaleBudget};
     BootstrapTransformBackend transform_backend{BootstrapTransformBackend::FftLike};
     std::size_t slots{};
-    std::size_t poly_modulus_degree{};
+    std::size_t polyModulusDegree{};
     SecurityLevel security_level{SecurityLevel::TC128};
     double period_log2{};
     std::size_t coeff_to_slot_levels{};
@@ -238,7 +238,7 @@ struct BootstrapLayoutPlanningResult {
 
 struct BootstrapParametersRequest {
     std::size_t slots{16};
-    std::size_t poly_modulus_degree{32768};
+    std::size_t polyModulusDegree{32768};
     SecurityLevel security_level{SecurityLevel::TC128};
     BootstrapCircuitOrder circuit_order{BootstrapCircuitOrder::SlotsToCoeffsFirst};
     BootstrapTransformBackend transform_backend{BootstrapTransformBackend::FftLike};
@@ -260,7 +260,7 @@ struct BootstrapParametersResult {
     BootstrapPipelinePlan pipeline;
     BootstrapLayoutPlanningResult layout;
     CkksProfile profile;
-    std::vector<int> rotation_steps;
+    std::vector<int> rotationSteps;
     std::size_t required_input_chain_index{};
     std::size_t expected_output_chain_index{};
     std::size_t consumed_levels{};

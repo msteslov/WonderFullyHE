@@ -29,7 +29,7 @@ void print_row(std::size_t step, std::size_t exponent, double time_ms, const m24
                const m2424::CipherInfo& info, std::size_t bytes, const char* status) {
     std::printf("%zu,%zu,%.6f,%.6e,%.6e,%.6e,%zu,%zu,%zu,%s\n",
                 step, exponent, time_ms, accuracy.max_abs_error, accuracy.mean_abs_error,
-                info.scale, info.chain_index, info.coeff_modulus_size, bytes, status);
+                info.scale, info.chainIndex, info.coeffModulusSize, bytes, status);
 }
 
 } // namespace
@@ -40,7 +40,7 @@ int main() {
 
     const auto profile = m2424::profiles::depth_ckks();
     auto adapter = m2424::SealAdapter::create(profile);
-    adapter.keygen(true, false);
+    adapter.generateKeys(true, false);
 
     std::vector<double> reference;
     reference.reserve(payload_size);
@@ -51,15 +51,15 @@ int main() {
     auto current = adapter.encrypt(adapter.encode(reference));
     std::size_t exponent = 1;
 
-    std::printf("step,exponent,time_ms,max_abs_error,mean_abs_error,scale,chain_index,coeff_modulus_size,serialized_bytes,status\n");
+    std::printf("step,exponent,time_ms,max_abs_error,mean_abs_error,scale,chainIndex,coeffModulusSize,serialized_bytes,status\n");
     auto initial = payload_head(adapter.decode(adapter.decrypt(current)), payload_size);
     print_row(0, exponent, 0.0, m2424::compare(reference, initial, 1e-5), adapter.info(current),
-              adapter.serialized_size(current), "ok");
+              adapter.serializedSize(current), "ok");
 
     for (std::size_t step = 1; step <= max_steps; ++step) {
         try {
             double time_ms = elapsed_ms([&] {
-                current = adapter.mul_relin_rescale(current, current);
+                current = multiplyRelinearizeAndRescale(adapter, current, current);
             });
             exponent *= 2;
             for (double& value : reference) {
@@ -68,7 +68,7 @@ int main() {
 
             auto decoded = payload_head(adapter.decode(adapter.decrypt(current)), payload_size);
             print_row(step, exponent, time_ms, m2424::compare(reference, decoded, 1e-5), adapter.info(current),
-                      adapter.serialized_size(current), "ok");
+                      adapter.serializedSize(current), "ok");
         } catch (const std::exception& error) {
             std::printf("%zu,%zu,0.000000,0.000000e+00,0.000000e+00,0.000000e+00,0,0,0,failed:%s\n",
                         step, exponent * 2, error.what());

@@ -1,27 +1,31 @@
 add_library(m2424
-    accuracy.cpp
-    abft.cpp
-    bootstrap_dft.cpp
-    bootstrap_layout_v2.cpp
-    bootstrap_parameters.cpp
-    bootstrap_plan.cpp
-    bootstrap_precision_model.cpp
-    bootstrap_scaling.cpp
-    bootstrap_stc_reference.cpp
-    checked_evaluator.cpp
-    diagonal_transform.cpp
-    eval_mod.cpp
-    linear_transform.cpp
-    m2424.cpp
-    mod1_approximation.cpp
-    mod1_circuit.cpp
-    operation_budget.cpp
-    parameter_planner.cpp
-    polynomial.cpp
-    profiles.cpp
-    profile_report.cpp
-    security_report.cpp
-    seal_adapter/seal_adapter.cpp
+    core/abft.cpp
+    core/accuracy.cpp
+    core/m2424.cpp
+    core/profiles.cpp
+
+    ckks/checked_evaluator.cpp
+    ckks/operation_budget.cpp
+    ckks/seal_adapter.cpp
+
+    math/diagonal_transform.cpp
+    math/linear_transform.cpp
+    math/polynomial.cpp
+
+    planning/parameter_planner.cpp
+    planning/profile_report.cpp
+    planning/security_report.cpp
+
+    research/bootstrap_dft.cpp
+    research/bootstrap_layout_v2.cpp
+    research/bootstrap_parameters.cpp
+    research/bootstrap_plan.cpp
+    research/bootstrap_precision_model.cpp
+    research/bootstrap_scaling.cpp
+    research/bootstrap_stc_reference.cpp
+    research/eval_mod.cpp
+    research/mod1_approximation.cpp
+    research/mod1_circuit.cpp
 )
 add_library(m2424::m2424 ALIAS m2424)
 

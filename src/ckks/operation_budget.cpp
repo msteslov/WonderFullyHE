@@ -50,7 +50,7 @@ void OperationBudgetBuilder::record_plaintext_mul_rescale(std::size_t count) noe
 }
 
 void OperationBudgetBuilder::record_rescale_to_next(std::size_t count) noexcept {
-    budget_.rescale_to_next += count;
+    budget_.rescaleToNext += count;
 }
 
 void OperationBudgetBuilder::record_mod_switch(std::size_t count) noexcept {
@@ -65,8 +65,8 @@ void OperationBudgetBuilder::record_linear_transform(const LinearTransform& tran
     budget_ = merge_operation_budgets(budget_, estimate_linear_transform_budget(transform));
 }
 
-void OperationBudgetBuilder::record_sum_slots(std::size_t slot_count) {
-    budget_ = merge_operation_budgets(budget_, estimate_sum_slots_budget(slot_count));
+void OperationBudgetBuilder::record_sum_slots(std::size_t slotCount) {
+    budget_ = merge_operation_budgets(budget_, estimate_sum_slots_budget(slotCount));
 }
 
 void OperationBudgetBuilder::record_evalmod_p3(std::size_t count) noexcept {
@@ -84,17 +84,17 @@ CkksOperationBudget estimate_linear_transform_budget(const LinearTransform& tran
     }
     CkksOperationBudget budget;
     budget.linear_transforms = 1;
-    budget.rotations = transform.rotation_steps().size();
+    budget.rotations = transform.rotationSteps().size();
     budget.plaintext_mul_rescales = terms;
     budget.additions = terms > 0 ? terms - 1 : 0;
     return budget;
 }
 
-CkksOperationBudget estimate_sum_slots_budget(std::size_t slot_count) {
-    if (slot_count == 0) {
-        throw std::invalid_argument("slot_count must be positive");
+CkksOperationBudget estimate_sum_slots_budget(std::size_t slotCount) {
+    if (slotCount == 0) {
+        throw std::invalid_argument("slotCount must be positive");
     }
-    const std::size_t steps = sum_slots_rotation_steps(slot_count).size();
+    const std::size_t steps = sum_slots_rotation_steps(slotCount).size();
     CkksOperationBudget budget;
     budget.rotations = steps;
     budget.additions = steps;
@@ -107,7 +107,7 @@ CkksOperationBudget merge_operation_budgets(CkksOperationBudget lhs,
     lhs.plaintext_additions += rhs.plaintext_additions;
     lhs.ciphertext_muls += rhs.ciphertext_muls;
     lhs.plaintext_mul_rescales += rhs.plaintext_mul_rescales;
-    lhs.rescale_to_next += rhs.rescale_to_next;
+    lhs.rescaleToNext += rhs.rescaleToNext;
     lhs.mod_switches += rhs.mod_switches;
     lhs.rotations += rhs.rotations;
     lhs.linear_transforms += rhs.linear_transforms;

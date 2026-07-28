@@ -9,9 +9,9 @@ namespace m2424 {
 
 struct ProfileReport {
     std::string name;
-    std::size_t poly_modulus_degree{};
-    std::size_t slot_count{};
-    std::string coeff_modulus_bits;
+    std::size_t polyModulusDegree{};
+    std::size_t slotCount{};
+    std::string coeffModulusBits;
     int total_coeff_modulus_bits{};
     double scale{};
     double scale_log2{};

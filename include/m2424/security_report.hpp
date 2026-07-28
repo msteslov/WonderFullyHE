@@ -17,7 +17,7 @@ enum class SecurityLevel {
 
 struct SecurityReport {
     std::string profile_name;
-    std::size_t poly_modulus_degree{};
+    std::size_t polyModulusDegree{};
     int total_coeff_modulus_bits{};
     int tc128_limit{};
     int tc192_limit{};
@@ -28,7 +28,7 @@ struct SecurityReport {
     SecurityLevel effective_level{SecurityLevel::None};
 };
 
-int coeff_modulus_max_bit_count(std::size_t poly_modulus_degree, SecurityLevel level);
+int coeff_modulus_max_bit_count(std::size_t polyModulusDegree, SecurityLevel level);
 int total_coeff_modulus_bits(const CkksProfile& profile);
 SecurityReport analyze_security(const std::string& profile_name, const CkksProfile& profile);
 SecurityLevel project_minimum_security(const std::vector<SecurityReport>& reports);

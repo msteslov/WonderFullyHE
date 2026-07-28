@@ -40,12 +40,12 @@ void run_case(double target_error, std::size_t depth, std::size_t slots, m2424::
 
         const auto plan = m2424::plan_ckks_parameters(request);
         auto adapter = m2424::SealAdapter::create(plan.profile);
-        adapter.keygen(true, false);
+        adapter.generateKeys(true, false);
 
         auto reference = make_input(payload_size);
         auto current = adapter.encrypt(adapter.encode(reference));
         for (std::size_t i = 0; i < depth; ++i) {
-            current = adapter.mul_relin_rescale(current, current);
+            current = multiplyRelinearizeAndRescale(adapter, current, current);
             for (double& value : reference) {
                 value *= value;
             }
@@ -60,7 +60,7 @@ void run_case(double target_error, std::size_t depth, std::size_t slots, m2424::
                     depth,
                     slots,
                     m2424::to_string(optimize_for),
-                    plan.profile.poly_modulus_degree,
+                    plan.profile.polyModulusDegree,
                     plan.selected_work_bits,
                     plan.selected_scale_log2,
                     plan.estimated_precision_bits,
@@ -69,7 +69,7 @@ void run_case(double target_error, std::size_t depth, std::size_t slots, m2424::
                     accuracy.max_abs_error,
                     accuracy.mean_abs_error,
                     pass_fail(accuracy.ok),
-                    info.chain_index,
+                    info.chainIndex,
                     info.scale,
                     "ok");
     } catch (const std::exception& error) {
@@ -103,7 +103,7 @@ void print_budget_plan(double target_error,
                     target_error,
                     slots,
                     m2424::to_string(optimize_for),
-                    plan.profile.poly_modulus_degree,
+                    plan.profile.polyModulusDegree,
                     plan.selected_work_bits,
                     plan.selected_scale_log2,
                     plan.estimated_precision_bits,
@@ -124,13 +124,13 @@ void print_budget_plan(double target_error,
 } // namespace
 
 int main() {
-    std::printf("target_error,depth,slots,optimize_for,poly_modulus_degree,work_bits,scale_log2,estimated_precision_bits,estimated_abs_error_bound,planned_pass,max_abs_error,mean_abs_error,measured_pass,final_chain_index,final_scale,status\n");
+    std::printf("target_error,depth,slots,optimize_for,polyModulusDegree,work_bits,scale_log2,estimated_precision_bits,estimated_abs_error_bound,planned_pass,max_abs_error,mean_abs_error,measured_pass,final_chain_index,final_scale,status\n");
     for (std::size_t depth : {1UL, 2UL, 3UL}) {
         run_case(1e-9, depth, 4096, m2424::ParameterOptimizeFor::Speed);
     }
     run_case(1e-9, 2, 4096, m2424::ParameterOptimizeFor::Conservative);
 
-    std::printf("kind,label,target_error,slots,optimize_for,poly_modulus_degree,work_bits,scale_log2,estimated_precision_bits,estimated_abs_error_bound,planned_pass,work_levels,status\n");
+    std::printf("kind,label,target_error,slots,optimize_for,polyModulusDegree,work_bits,scale_log2,estimated_precision_bits,estimated_abs_error_bound,planned_pass,work_levels,status\n");
     m2424::CkksOperationBudget linear_budget;
     linear_budget.additions = 3;
     linear_budget.ciphertext_muls = 1;

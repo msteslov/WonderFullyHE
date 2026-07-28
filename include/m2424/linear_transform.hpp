@@ -16,15 +16,15 @@ public:
     explicit LinearTransform(std::vector<LinearTerm> terms);
 
     const std::vector<LinearTerm>& terms() const noexcept;
-    std::vector<int> rotation_steps() const;
+    std::vector<int> rotationSteps() const;
     Cipher apply(SealAdapter& adapter, const Cipher& input) const;
 
 private:
     std::vector<LinearTerm> terms_;
 };
 
-Cipher sum_slots(SealAdapter& adapter, const Cipher& input, std::size_t slot_count);
-std::vector<int> power_of_two_rotation_steps(std::size_t slot_count);
-std::vector<int> sum_slots_rotation_steps(std::size_t slot_count);
+Cipher sum_slots(SealAdapter& adapter, const Cipher& input, std::size_t slotCount);
+std::vector<int> power_of_two_rotation_steps(std::size_t slotCount);
+std::vector<int> sum_slots_rotation_steps(std::size_t slotCount);
 
 } // namespace m2424

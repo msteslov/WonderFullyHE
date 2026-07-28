@@ -26,7 +26,7 @@ public:
     static DiagonalLinearTransform from_matrix(const ComplexMatrix& matrix, double zero_tolerance = 0.0);
 
     const std::vector<DiagonalTerm>& terms() const noexcept;
-    std::vector<int> rotation_steps() const;
+    std::vector<int> rotationSteps() const;
     ComplexVector apply_plain(const ComplexVector& input) const;
     Cipher apply(SealAdapter& adapter, const Cipher& input) const;
     Cipher apply_at_plain_scale(SealAdapter& adapter, const Cipher& input, double plain_scale) const;

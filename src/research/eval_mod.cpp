@@ -31,19 +31,19 @@ void validate_input(Complex u) {
 }
 
 Cipher multiply_same_level(SealAdapter& adapter, const Cipher& lhs, const Cipher& rhs) {
-    return adapter.mul_relin_rescale(lhs, rhs);
+    return multiplyRelinearizeAndRescale(adapter, lhs, rhs);
 }
 
 Cipher weighted_term(SealAdapter& adapter, const Cipher& value, double coefficient) {
-    return adapter.mul_plain_rescale(value, adapter.encode_scalar_like(coefficient, value));
+    return multiplyPlainAndRescale(adapter, value, adapter.encodeScalarFor(coefficient, value));
 }
 
 Cipher squash_scale(SealAdapter& adapter, Cipher value, double max_scale_log2) {
     while (std::log2(adapter.info(value).scale) > max_scale_log2 + 0.5) {
-        if (adapter.info(value).chain_index == 0) {
+        if (adapter.info(value).chainIndex == 0) {
             throw std::runtime_error("not enough levels to squash EvalMod scale");
         }
-        value = adapter.rescale_to_next(value);
+        value = adapter.rescaleToNext(value);
     }
     return value;
 }
@@ -61,11 +61,11 @@ Cipher evalmod_step(const char* name, Fn&& fn) {
 
 double next_rescale_drop_log2(SealAdapter& adapter, const Cipher& value) {
     const auto info = adapter.info(value);
-    const auto bits = adapter.coeff_modulus_bits();
-    if (info.coeff_modulus_size == 0 || info.coeff_modulus_size > bits.size()) {
+    const auto bits = adapter.coeffModulusBits();
+    if (info.coeffModulusSize == 0 || info.coeffModulusSize > bits.size()) {
         throw std::runtime_error("cannot infer next rescale modulus size");
     }
-    return static_cast<double>(bits[info.coeff_modulus_size - 1]);
+    return static_cast<double>(bits[info.coeffModulusSize - 1]);
 }
 
 Cipher weighted_term_to_scale(SealAdapter& adapter,
@@ -78,25 +78,25 @@ Cipher weighted_term_to_scale(SealAdapter& adapter,
     if (!std::isfinite(plain_scale_log2) || plain_scale_log2 <= 0.0) {
         throw std::runtime_error("cannot align EvalMod term scale");
     }
-    return adapter.mul_plain_rescale(
+    return multiplyPlainAndRescale(adapter, 
         value,
-        adapter.encode_scalar_at_scale_like(coefficient, std::exp2(plain_scale_log2), value));
+        adapter.encodeScalarAtScaleFor(coefficient, std::exp2(plain_scale_log2), value));
 }
 
 Cipher add_terms(SealAdapter& adapter, Cipher lhs, Cipher rhs) {
     try {
-        lhs = adapter.match_level_and_scale(lhs, rhs);
+        lhs = adapter.alignForAddition(lhs, rhs);
     } catch (const std::exception& e) {
         const auto lhs_info = adapter.info(lhs);
         const auto rhs_info = adapter.info(rhs);
         std::ostringstream out;
         out << e.what()
-            << "; lhs_chain=" << lhs_info.chain_index
-            << "; rhs_chain=" << rhs_info.chain_index
+            << "; lhs_chain=" << lhs_info.chainIndex
+            << "; rhs_chain=" << rhs_info.chainIndex
             << "; lhs_scale_log2=" << std::log2(lhs_info.scale)
             << "; rhs_scale_log2=" << std::log2(rhs_info.scale)
-            << "; lhs_coeff_modulus_log2=" << lhs_info.coeff_modulus_log2
-            << "; rhs_coeff_modulus_log2=" << rhs_info.coeff_modulus_log2;
+            << "; lhs_coeff_modulus_log2=" << lhs_info.coeffModulusLog2
+            << "; rhs_coeff_modulus_log2=" << rhs_info.coeffModulusLog2;
         throw std::runtime_error(out.str());
     }
     return adapter.add(lhs, rhs);
@@ -112,11 +112,11 @@ void print_evalmod_info(SealAdapter& adapter, const char* label, const Cipher& v
         return;
     }
     const auto info = adapter.info(value);
-    std::printf("[eval_mod] %s chain=%zu scale_log2=%.6f coeff_modulus_log2=%.0f\n",
+    std::printf("[eval_mod] %s chain=%zu scale_log2=%.6f coeffModulusLog2=%.0f\n",
                 label,
-                info.chain_index,
+                info.chainIndex,
                 std::log2(info.scale),
-                info.coeff_modulus_log2);
+                info.coeffModulusLog2);
 }
 
 } // namespace
@@ -237,7 +237,7 @@ Cipher EvalModPolynomial::evaluate(SealAdapter& adapter, const Cipher& input, Ev
             return multiply_same_level(adapter, p3_scaled, p3_scaled);
         });
         const Cipher p3_cubed = evalmod_step("P3DoubleAngle cube", [&] {
-            return multiply_same_level(adapter, adapter.mod_switch_to(p3_scaled, p3_squared), p3_squared);
+            return multiply_same_level(adapter, adapter.modSwitchTo(p3_scaled, p3_squared), p3_squared);
         });
         Cipher cubic = evalmod_step("P3DoubleAngle cubic weight", [&] {
             return weighted_term(adapter, p3_cubed, -4.0 * kPi * kPi);
@@ -246,7 +246,7 @@ Cipher EvalModPolynomial::evaluate(SealAdapter& adapter, const Cipher& input, Ev
         Cipher linear = evalmod_step("P3DoubleAngle linear weight", [&] {
             return weighted_term_to_scale(
                 adapter,
-                adapter.mod_switch_to(p3_scaled, p3_cubed),
+                adapter.modSwitchTo(p3_scaled, p3_cubed),
                 2.0,
                 target_scale_log2);
         });
@@ -258,31 +258,31 @@ Cipher EvalModPolynomial::evaluate(SealAdapter& adapter, const Cipher& input, Ev
     const Cipher u2 = multiply_same_level(adapter, input, input);
     print_evalmod_info(adapter, "P3 input", input);
     print_evalmod_info(adapter, "P3 u2", u2);
-    const Cipher u3 = multiply_same_level(adapter, adapter.mod_switch_to(input, u2), u2);
+    const Cipher u3 = multiply_same_level(adapter, adapter.modSwitchTo(input, u2), u2);
     print_evalmod_info(adapter, "P3 u3", u3);
     if (degree == EvalModDegree::P3) {
         const double target_scale_log2 = std::log2(adapter.info(input).scale);
         Cipher cubic = weighted_term_to_scale(adapter, u3, a3, target_scale_log2);
         print_evalmod_info(adapter, "P3 cubic_weighted", cubic);
-        Cipher linear = weighted_term_to_scale(adapter, adapter.mod_switch_to(input, u3), a1, target_scale_log2);
+        Cipher linear = weighted_term_to_scale(adapter, adapter.modSwitchTo(input, u3), a1, target_scale_log2);
         print_evalmod_info(adapter, "P3 linear_weighted", linear);
         Cipher result = add_terms(adapter, std::move(linear), std::move(cubic));
         print_evalmod_info(adapter, "P3 add_result", result);
         return result;
     }
 
-    const Cipher u5 = multiply_same_level(adapter, u3, adapter.mod_switch_to(u2, u3));
+    const Cipher u5 = multiply_same_level(adapter, u3, adapter.modSwitchTo(u2, u3));
     if (degree == EvalModDegree::P5) {
-        Cipher result = weighted_term(adapter, adapter.mod_switch_to(input, u5), a1);
-        result = add_terms(adapter, std::move(result), weighted_term(adapter, adapter.mod_switch_to(u3, u5), a3));
+        Cipher result = weighted_term(adapter, adapter.modSwitchTo(input, u5), a1);
+        result = add_terms(adapter, std::move(result), weighted_term(adapter, adapter.modSwitchTo(u3, u5), a3));
         result = add_terms(adapter, std::move(result), weighted_term(adapter, u5, a5));
         return result;
     }
 
-    const Cipher u7 = multiply_same_level(adapter, u5, adapter.mod_switch_to(u2, u5));
-    Cipher result = weighted_term(adapter, adapter.mod_switch_to(input, u7), a1);
-    result = add_terms(adapter, std::move(result), weighted_term(adapter, adapter.mod_switch_to(u3, u7), a3));
-    result = add_terms(adapter, std::move(result), weighted_term(adapter, adapter.mod_switch_to(u5, u7), a5));
+    const Cipher u7 = multiply_same_level(adapter, u5, adapter.modSwitchTo(u2, u5));
+    Cipher result = weighted_term(adapter, adapter.modSwitchTo(input, u7), a1);
+    result = add_terms(adapter, std::move(result), weighted_term(adapter, adapter.modSwitchTo(u3, u7), a3));
+    result = add_terms(adapter, std::move(result), weighted_term(adapter, adapter.modSwitchTo(u5, u7), a5));
     result = add_terms(adapter, std::move(result), weighted_term(adapter, u7, a7));
     return result;
 }

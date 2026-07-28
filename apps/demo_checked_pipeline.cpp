@@ -18,9 +18,9 @@ void print_checked(const m2424::CheckedResult& result, const char* abft_status) 
                 result.accuracy.max_abs_error,
                 result.accuracy.mean_abs_error,
                 result.info.scale,
-                result.info.chain_index,
-                result.info.coeff_modulus_size,
-                result.info.ciphertext_size,
+                result.info.chainIndex,
+                result.info.coeffModulusSize,
+                result.info.ciphertextSize,
                 abft_status,
                 result.ok ? "PASS" : "FAIL");
 }
@@ -43,7 +43,7 @@ int main() {
     constexpr double tolerance = 1e-6;
 
     auto adapter = m2424::SealAdapter::create(m2424::profiles::high_precision_ckks());
-    adapter.keygen(m2424::sum_slots_rotation_steps(payload_size), true);
+    adapter.generateKeys(m2424::sum_slots_rotation_steps(payload_size), true);
     m2424::CheckedEvaluator checked(adapter, payload_size, tolerance);
 
     std::vector<double> input;
@@ -54,7 +54,7 @@ int main() {
 
     auto encrypted = adapter.encrypt(adapter.encode(input));
 
-    std::printf("operation,max_abs_error,mean_abs_error,scale,chain_index,coeff_modulus_size,ciphertext_size,abft_status,status\n");
+    std::printf("operation,max_abs_error,mean_abs_error,scale,chainIndex,coeffModulusSize,ciphertextSize,abft_status,status\n");
 
     std::vector<double> add_ref;
     add_ref.reserve(payload_size);
@@ -101,7 +101,7 @@ int main() {
     const auto& budget = checked.operation_budget();
     const auto refresh_plan = checked.plan_refresh_for_tracked_budget(sum_result.info,
                                                                       1e-9,
-                                                                      adapter.slot_count());
+                                                                      adapter.slotCount());
     std::printf("budget,additions,%zu,ciphertext_muls,%zu,rotations,%zu,plaintext_mul_rescales,%zu\n",
                 budget.additions,
                 budget.ciphertext_muls,

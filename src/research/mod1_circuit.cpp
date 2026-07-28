@@ -139,16 +139,16 @@ Mod1EncryptedEvaluation Mod1Circuit::evaluate_with_report(SealAdapter& adapter, 
     const auto before = adapter.info(input);
     Mod1EncryptedEvaluation evaluation;
     evaluation.strategy = approximation_.strategy;
-    evaluation.input_chain_index = before.chain_index;
+    evaluation.input_chain_index = before.chainIndex;
     if (model_.type == BootstrapMod1Type::LegacySineP3) {
         evaluation.result = EvalModPolynomial{}.evaluate(adapter, input, legacy_degree(model_));
     } else {
         evaluation.result = EvalModPolynomial{}.evaluate(adapter, input, cos_discrete_degree(model_));
     }
     const auto after = adapter.info(evaluation.result);
-    evaluation.output_chain_index = after.chain_index;
-    evaluation.consumed_levels = before.chain_index >= after.chain_index
-        ? before.chain_index - after.chain_index
+    evaluation.output_chain_index = after.chainIndex;
+    evaluation.consumed_levels = before.chainIndex >= after.chainIndex
+        ? before.chainIndex - after.chainIndex
         : 0;
     evaluation.output_scale_log2 = std::log2(after.scale);
     return evaluation;

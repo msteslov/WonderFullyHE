@@ -37,9 +37,9 @@ void print_row(const std::string& profile_name, const char* operation,
                 accuracy.max_abs_error,
                 accuracy.mean_abs_error,
                 info.scale,
-                info.chain_index,
-                info.coeff_modulus_size,
-                info.ciphertext_size,
+                info.chainIndex,
+                info.coeffModulusSize,
+                info.ciphertextSize,
                 serialized_bytes,
                 accuracy.ok ? "PASS" : "FAIL");
 }
@@ -68,7 +68,7 @@ int main() {
         add_ref.push_back(value + value);
     }
 
-    std::printf("profile,operation,runtime_ms,max_abs_error,mean_abs_error,scale,chain_index,coeff_modulus_size,ciphertext_size,serialized_bytes,status\n");
+    std::printf("profile,operation,runtime_ms,max_abs_error,mean_abs_error,scale,chainIndex,coeffModulusSize,ciphertextSize,serialized_bytes,status\n");
 
     for (const auto& [profile_name, profile] : m2424::profiles::all()) {
         if (profile_name == "fast_demo_ckks") {
@@ -76,7 +76,7 @@ int main() {
         }
 
         auto adapter = m2424::SealAdapter::create(profile);
-        adapter.keygen(true, true);
+        adapter.generateKeys(true, true);
 
         auto encrypted = adapter.encrypt(adapter.encode(input));
 
@@ -86,15 +86,15 @@ int main() {
         });
         const auto added_out = head(adapter.decode(adapter.decrypt(added)), payload_size);
         print_row(profile_name, "add", add_ms, m2424::compare(add_ref, added_out, tolerance),
-                  adapter.info(added), adapter.serialized_size(added));
+                  adapter.info(added), adapter.serializedSize(added));
 
         m2424::Cipher squared;
         const double square_ms = elapsed_ms([&] {
-            squared = adapter.mul_relin_rescale(encrypted, encrypted);
+            squared = multiplyRelinearizeAndRescale(adapter, encrypted, encrypted);
         });
         const auto squared_out = head(adapter.decode(adapter.decrypt(squared)), payload_size);
         print_row(profile_name, "mul_square", square_ms, m2424::compare(square_ref, squared_out, tolerance),
-                  adapter.info(squared), adapter.serialized_size(squared));
+                  adapter.info(squared), adapter.serializedSize(squared));
     }
 
     return 0;

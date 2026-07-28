@@ -24,9 +24,9 @@ const char* to_string(BootstrapPeriodMode mode) noexcept {
     return "unknown";
 }
 
-double bootstrap_period_log2(BootstrapPeriodMode mode,
+double bootstrapPeriodLog2(BootstrapPeriodMode mode,
                              double manual_period_log2,
-                             const std::vector<int>& coeff_modulus_bits,
+                             const std::vector<int>& coeffModulusBits,
                              const CipherInfo& before_mod_raise,
                              const CipherInfo& after_mod_raise) {
     switch (mode) {
@@ -36,20 +36,20 @@ double bootstrap_period_log2(BootstrapPeriodMode mode,
         if (!std::isfinite(before_mod_raise.scale) || before_mod_raise.scale <= 0.0) {
             throw std::invalid_argument("source ciphertext scale must be positive and finite");
         }
-        return before_mod_raise.coeff_modulus_log2 - std::log2(before_mod_raise.scale);
+        return before_mod_raise.coeffModulusLog2 - std::log2(before_mod_raise.scale);
     case BootstrapPeriodMode::TotalCoeffModulus:
-        return after_mod_raise.coeff_modulus_log2 - std::log2(after_mod_raise.scale);
+        return after_mod_raise.coeffModulusLog2 - std::log2(after_mod_raise.scale);
     case BootstrapPeriodMode::LastPrime: {
-        if (coeff_modulus_bits.empty()) {
-            throw std::invalid_argument("coeff_modulus_bits must not be empty");
+        if (coeffModulusBits.empty()) {
+            throw std::invalid_argument("coeffModulusBits must not be empty");
         }
-        if (before_mod_raise.coeff_modulus_size >= coeff_modulus_bits.size()) {
-            return static_cast<double>(coeff_modulus_bits.back());
+        if (before_mod_raise.coeffModulusSize >= coeffModulusBits.size()) {
+            return static_cast<double>(coeffModulusBits.back());
         }
-        return static_cast<double>(coeff_modulus_bits[before_mod_raise.coeff_modulus_size]);
+        return static_cast<double>(coeffModulusBits[before_mod_raise.coeffModulusSize]);
     }
     case BootstrapPeriodMode::DroppedPrimeProduct:
-        return std::max(0.0, after_mod_raise.coeff_modulus_log2 - before_mod_raise.coeff_modulus_log2);
+        return std::max(0.0, after_mod_raise.coeffModulusLog2 - before_mod_raise.coeffModulusLog2);
     case BootstrapPeriodMode::ManualPowerOfTwo:
         return manual_period_log2;
     }
@@ -57,12 +57,12 @@ double bootstrap_period_log2(BootstrapPeriodMode mode,
 }
 
 BootstrapScalingFactors make_bootstrap_scaling_factors(double amplitude_factor,
-                                                       double bootstrap_period_log2,
+                                                       double bootstrapPeriodLog2,
                                                        double plain_scale_log2) {
     if (!std::isfinite(amplitude_factor) || amplitude_factor <= 0.0) {
         throw std::invalid_argument("amplitude factor must be positive and finite");
     }
-    if (!std::isfinite(bootstrap_period_log2)) {
+    if (!std::isfinite(bootstrapPeriodLog2)) {
         throw std::invalid_argument("bootstrap period log2 must be finite");
     }
     if (!std::isfinite(plain_scale_log2)) {
@@ -70,9 +70,9 @@ BootstrapScalingFactors make_bootstrap_scaling_factors(double amplitude_factor,
     }
 
     BootstrapScalingFactors factors;
-    factors.bootstrap_period_log2 = bootstrap_period_log2;
-    factors.normalization_factor_log2 = bootstrap_period_log2 > 0.0
-        ? -bootstrap_period_log2
+    factors.bootstrapPeriodLog2 = bootstrapPeriodLog2;
+    factors.normalization_factor_log2 = bootstrapPeriodLog2 > 0.0
+        ? -bootstrapPeriodLog2
         : std::log2(amplitude_factor);
     factors.plain_scale_log2 = plain_scale_log2;
     factors.factor_times_plain_scale_log2 =
@@ -97,11 +97,11 @@ BootstrapScalarApplication apply_bootstrap_scalar_decomposed(SealAdapter& adapte
     BootstrapScalarApplication application;
     constexpr double scale_capacity_margin_log2 = 2.0;
     if (factor_log2 + plain_scale_log2 >= 0.0) {
-        application.result = adapter.mul_plain_rescale(
+        application.result = multiplyPlainAndRescale(adapter, 
             input,
-            adapter.encode_scalar_at_scale_like(std::exp2(factor_log2), std::exp2(plain_scale_log2), input));
+            adapter.encodeScalarAtScaleFor(std::exp2(factor_log2), std::exp2(plain_scale_log2), input));
         application.chunks = 1;
-        application.levels_consumed = start_info.chain_index - adapter.info(application.result).chain_index;
+        application.levels_consumed = start_info.chainIndex - adapter.info(application.result).chainIndex;
         return application;
     }
 
@@ -114,28 +114,28 @@ BootstrapScalarApplication apply_bootstrap_scalar_decomposed(SealAdapter& adapte
     constexpr double decomposition_epsilon_log2 = 1e-6;
     while (remaining_abs_log2 > decomposition_epsilon_log2) {
         const auto info = adapter.info(current);
-        if (info.chain_index == 0) {
+        if (info.chainIndex == 0) {
             throw std::runtime_error("not enough levels for bootstrap scalar decomposition");
         }
         const double current_scale_log2 = std::log2(info.scale);
         const double capacity_log2 =
-            info.coeff_modulus_log2 - current_scale_log2 - scale_capacity_margin_log2;
+            info.coeffModulusLog2 - current_scale_log2 - scale_capacity_margin_log2;
         const double chunk_plain_scale_log2 = std::min(plain_scale_log2, capacity_log2);
         if (chunk_plain_scale_log2 <= 0.0) {
             throw std::runtime_error("not enough scale capacity for bootstrap scalar decomposition");
         }
         const double chunk_abs_log2 = std::min(remaining_abs_log2, chunk_plain_scale_log2);
         const double chunk_log2 = -chunk_abs_log2;
-        current = adapter.mul_plain_rescale(
+        current = multiplyPlainAndRescale(adapter, 
             current,
-            adapter.encode_scalar_at_scale_like(
+            adapter.encodeScalarAtScaleFor(
                 std::exp2(chunk_log2), std::exp2(chunk_plain_scale_log2), current));
         remaining_abs_log2 = std::max(0.0, remaining_abs_log2 - chunk_abs_log2);
         ++application.chunks;
     }
 
     application.result = current;
-    application.levels_consumed = start_info.chain_index - adapter.info(application.result).chain_index;
+    application.levels_consumed = start_info.chainIndex - adapter.info(application.result).chainIndex;
     return application;
 }
 
@@ -152,14 +152,14 @@ BootstrapScaleSquash squash_bootstrap_scale(SealAdapter& adapter,
     BootstrapScaleSquash squash;
     while (std::log2(adapter.info(current).scale) > max_scale_log2) {
         const auto info = adapter.info(current);
-        if (info.chain_index <= min_chain_remaining) {
+        if (info.chainIndex <= min_chain_remaining) {
             throw std::runtime_error("not enough levels for bootstrap scale squash");
         }
-        current = adapter.rescale_to_next(current);
+        current = adapter.rescaleToNext(current);
         ++squash.levels_consumed;
     }
     squash.result = current;
-    squash.levels_consumed = start_info.chain_index - adapter.info(current).chain_index;
+    squash.levels_consumed = start_info.chainIndex - adapter.info(current).chainIndex;
     return squash;
 }
 
@@ -187,16 +187,16 @@ BootstrapScaleStrategyPlan plan_bootstrap_scale_strategy(const std::vector<int>&
     plan.start_scale_log2 = std::log2(start_info.scale);
     plan.target_scale_log2 = target_scale_log2;
     plan.max_plain_scale_log2 = max_plain_scale_log2;
-    plan.start_chain_index = start_info.chain_index;
+    plan.start_chain_index = start_info.chainIndex;
     plan.min_chain_remaining = min_chain_remaining;
     plan.scalar_representable = plan.factor_abs_log2 <=
-        max_plain_scale_log2 * static_cast<double>(start_info.chain_index);
+        max_plain_scale_log2 * static_cast<double>(start_info.chainIndex);
 
-    if (start_info.chain_index < min_chain_remaining) {
+    if (start_info.chainIndex < min_chain_remaining) {
         plan.blocker = "insufficient_start_chain";
         return plan;
     }
-    plan.max_consumable_levels = start_info.chain_index - min_chain_remaining;
+    plan.max_consumable_levels = start_info.chainIndex - min_chain_remaining;
 
     if (plan.factor_abs_log2 == 0.0) {
         plan.scalar_levels_needed = 0;

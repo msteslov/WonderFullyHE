@@ -20,8 +20,8 @@ const char* to_string(SecurityLevel level) noexcept {
     return "unknown";
 }
 
-int coeff_modulus_max_bit_count(std::size_t poly_modulus_degree, SecurityLevel level) {
-    switch (poly_modulus_degree) {
+int coeff_modulus_max_bit_count(std::size_t polyModulusDegree, SecurityLevel level) {
+    switch (polyModulusDegree) {
         case 1024:
             if (level == SecurityLevel::TC128) return 27;
             break;
@@ -54,9 +54,9 @@ int coeff_modulus_max_bit_count(std::size_t poly_modulus_degree, SecurityLevel l
 
 int total_coeff_modulus_bits(const CkksProfile& profile) {
     int total = 0;
-    for (int bits : profile.coeff_modulus_bits) {
+    for (int bits : profile.coeffModulusBits) {
         if (bits <= 0) {
-            throw std::invalid_argument("coeff_modulus_bits entries must be positive");
+            throw std::invalid_argument("coeffModulusBits entries must be positive");
         }
         total += bits;
     }
@@ -71,13 +71,13 @@ static SecurityLevel effective_level(bool tc128, bool tc192, bool tc256) {
 }
 
 SecurityReport analyze_security(const std::string& profile_name, const CkksProfile& profile) {
-    if (profile.poly_modulus_degree == 0) {
-        throw std::invalid_argument("poly_modulus_degree must be positive");
+    if (profile.polyModulusDegree == 0) {
+        throw std::invalid_argument("polyModulusDegree must be positive");
     }
     const int total = total_coeff_modulus_bits(profile);
-    const int tc128 = coeff_modulus_max_bit_count(profile.poly_modulus_degree, SecurityLevel::TC128);
-    const int tc192 = coeff_modulus_max_bit_count(profile.poly_modulus_degree, SecurityLevel::TC192);
-    const int tc256 = coeff_modulus_max_bit_count(profile.poly_modulus_degree, SecurityLevel::TC256);
+    const int tc128 = coeff_modulus_max_bit_count(profile.polyModulusDegree, SecurityLevel::TC128);
+    const int tc192 = coeff_modulus_max_bit_count(profile.polyModulusDegree, SecurityLevel::TC192);
+    const int tc256 = coeff_modulus_max_bit_count(profile.polyModulusDegree, SecurityLevel::TC256);
 
     const bool pass128 = tc128 > 0 && total <= tc128;
     const bool pass192 = tc192 > 0 && total <= tc192;
@@ -85,7 +85,7 @@ SecurityReport analyze_security(const std::string& profile_name, const CkksProfi
 
     return SecurityReport{
         profile_name,
-        profile.poly_modulus_degree,
+        profile.polyModulusDegree,
         total,
         tc128,
         tc192,
@@ -121,13 +121,13 @@ SecurityLevel project_minimum_security(const std::vector<SecurityReport>& report
 }
 
 std::string security_report_csv_header() {
-    return "profile,poly_modulus_degree,total_coeff_modulus_bits,tc128_limit,tc192_limit,tc256_limit,passes_tc128,passes_tc192,passes_tc256,effective_security_level";
+    return "profile,polyModulusDegree,total_coeff_modulus_bits,tc128_limit,tc192_limit,tc256_limit,passes_tc128,passes_tc192,passes_tc256,effective_security_level";
 }
 
 std::string to_csv_row(const SecurityReport& report) {
     std::ostringstream out;
     out << report.profile_name << ","
-        << report.poly_modulus_degree << ","
+        << report.polyModulusDegree << ","
         << report.total_coeff_modulus_bits << ","
         << report.tc128_limit << ","
         << report.tc192_limit << ","

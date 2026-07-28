@@ -24,7 +24,7 @@ int main() {
     const auto profile = m2424::profiles::basic_ckks();
 
     auto adapter = m2424::SealAdapter::create(profile);
-    adapter.keygen(true, true);
+    adapter.generateKeys(true, true);
 
     std::vector<double> lhs;
     std::vector<double> rhs;
@@ -49,18 +49,18 @@ int main() {
     for (std::size_t i = 0; i < payload_size; ++i) {
         product_ref.push_back(lhs[i] * rhs[i]);
     }
-    auto mul_ct = adapter.mul_relin_rescale(adapter.encrypt(adapter.encode(lhs)), adapter.encrypt(adapter.encode(rhs)));
+    auto mul_ct = multiplyRelinearizeAndRescale(adapter, adapter.encrypt(adapter.encode(lhs)), adapter.encrypt(adapter.encode(rhs)));
     auto mul_check = m2424::abft::verify_checksum_value(head(adapter.decode(adapter.decrypt(mul_ct)), payload_size),
                                                        payload_size, m2424::abft::checksum(product_ref), 1e-5);
 
     std::vector<double> rotate_payload;
-    rotate_payload.reserve(adapter.slot_count());
-    for (std::size_t i = 0; i < adapter.slot_count(); ++i) {
+    rotate_payload.reserve(adapter.slotCount());
+    for (std::size_t i = 0; i < adapter.slotCount(); ++i) {
         rotate_payload.push_back(0.001 * std::sin(static_cast<double>(i) / 17.0));
     }
     auto rotate_ct = adapter.rotate(adapter.encrypt(adapter.encode(rotate_payload)), 7);
     auto rotate_check = m2424::abft::verify_checksum_value(adapter.decode(adapter.decrypt(rotate_ct)),
-                                                          adapter.slot_count(), m2424::abft::checksum(rotate_payload), 1e-4);
+                                                          adapter.slotCount(), m2424::abft::checksum(rotate_payload), 1e-4);
 
     print_check("abft_add_appended_checksum", add_check);
     print_check("abft_sub_appended_checksum", sub_check);

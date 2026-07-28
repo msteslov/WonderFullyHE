@@ -78,7 +78,7 @@ int main() {
             for (std::size_t worker = 0; worker < worker_count; ++worker) {
                 auto state = std::make_unique<WorkerState>();
                 state->adapter = m2424::SealAdapter::create(profile);
-                state->adapter.keygen(true, true);
+                state->adapter.generateKeys(true, true);
                 workers.push_back(std::move(state));
             }
 
@@ -98,7 +98,7 @@ int main() {
                 threads.emplace_back([&workers, worker] {
                     auto& state = *workers[worker];
                     for (auto& task : state.tasks) {
-                        task.result = state.adapter.mul_relin_rescale(task.encrypted, task.encrypted);
+                        task.result = multiplyRelinearizeAndRescale(state.adapter, task.encrypted, task.encrypted);
                     }
                 });
             }

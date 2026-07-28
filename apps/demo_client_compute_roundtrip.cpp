@@ -27,23 +27,23 @@ int main() {
     const std::size_t payload_size = 16;
 
     auto client = m2424::SealAdapter::create(profile);
-    const auto rotation_steps = m2424::sum_slots_rotation_steps(payload_size);
-    client.keygen(rotation_steps, false);
+    const auto rotationSteps = m2424::sum_slots_rotation_steps(payload_size);
+    client.generateKeys(rotationSteps, false);
 
-    std::vector<double> data(client.slot_count(), 0.0);
+    std::vector<double> data(client.slotCount(), 0.0);
     for (std::size_t i = 0; i < payload_size; ++i) {
         data[i] = 4.0 + 0.25 * static_cast<double>(i) + std::sin(static_cast<double>(i) / 5.0);
     }
 
-    const auto public_key = client.save_public_key();
-    const auto secret_key = client.save_secret_key();
-    const auto galois_keys = client.save_galois_keys();
-    const auto encrypted_payload = client.save_cipher(client.encrypt(client.encode(data)));
+    const auto public_key = client.savePublicKey();
+    const auto secret_key = client.saveSecretKey();
+    const auto galois_keys = client.saveGaloisKeys();
+    const auto encrypted_payload = client.saveCipher(client.encrypt(client.encode(data)));
 
     auto compute = m2424::SealAdapter::create(profile);
-    compute.load_public_key(public_key);
-    compute.load_galois_keys(galois_keys);
-    auto encrypted_on_compute = compute.load_cipher(encrypted_payload);
+    compute.loadPublicKey(public_key);
+    compute.loadGaloisKeys(galois_keys);
+    auto encrypted_on_compute = compute.loadCipher(encrypted_payload);
 
     const bool secret_is_absent = cannot_decrypt_without_secret(compute, encrypted_on_compute);
 
@@ -51,11 +51,11 @@ int main() {
         encrypted_on_compute = compute.add(encrypted_on_compute,
                                            compute.rotate(encrypted_on_compute, static_cast<int>(step)));
     }
-    const auto encrypted_result = compute.save_cipher(encrypted_on_compute);
+    const auto encrypted_result = compute.saveCipher(encrypted_on_compute);
 
     auto result_reader = m2424::SealAdapter::create(profile);
-    result_reader.load_secret_key(secret_key);
-    auto result_cipher = result_reader.load_cipher(encrypted_result);
+    result_reader.loadSecretKey(secret_key);
+    auto result_cipher = result_reader.loadCipher(encrypted_result);
     const auto result = result_reader.decode(result_reader.decrypt(result_cipher));
 
     const double expected_sum = m2424::abft::checksum(std::vector<double>(data.begin(), data.begin() + payload_size));
