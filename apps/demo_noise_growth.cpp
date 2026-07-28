@@ -53,7 +53,7 @@ int main() {
 
     std::printf("step,exponent,time_ms,max_abs_error,mean_abs_error,scale,chainIndex,coeffModulusSize,serialized_bytes,status\n");
     auto initial = payload_head(adapter.decode(adapter.decrypt(current)), payload_size);
-    print_row(0, exponent, 0.0, m2424::compare(reference, initial, 1e-5), adapter.info(current),
+    print_row(0, exponent, 0.0, m2424::compare(reference, initial, m2424::kTargetAbsoluteError), adapter.info(current),
               adapter.serializedSize(current), "ok");
 
     for (std::size_t step = 1; step <= max_steps; ++step) {
@@ -67,7 +67,7 @@ int main() {
             }
 
             auto decoded = payload_head(adapter.decode(adapter.decrypt(current)), payload_size);
-            print_row(step, exponent, time_ms, m2424::compare(reference, decoded, 1e-5), adapter.info(current),
+            print_row(step, exponent, time_ms, m2424::compare(reference, decoded, m2424::kTargetAbsoluteError), adapter.info(current),
                       adapter.serializedSize(current), "ok");
         } catch (const std::exception& error) {
             std::printf("%zu,%zu,0.000000,0.000000e+00,0.000000e+00,0.000000e+00,0,0,0,failed:%s\n",

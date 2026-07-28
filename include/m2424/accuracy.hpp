@@ -5,6 +5,9 @@
 
 namespace m2424 {
 
+/// Целевой абсолютный предел ошибки для всех проверяемых CKKS-результатов.
+inline constexpr double kTargetAbsoluteError = 1e-9;
+
 struct AccuracyReport {
     double max_abs_error{};
     double mean_abs_error{};

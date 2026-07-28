@@ -395,21 +395,6 @@ Cipher SealAdapter::modSwitchTo(const Cipher& cipher, const Cipher& target) {
     return out;
 }
 
-Cipher SealAdapter::alignForAddition(const Cipher& cipher, const Cipher& target) {
-    Cipher out = modSwitchTo(cipher, target);
-    const double source_scale = out.pimpl_->ct.scale();
-    const double target_scale = target.pimpl_->ct.scale();
-    if (!std::isfinite(source_scale) || !std::isfinite(target_scale) || source_scale <= 0.0 || target_scale <= 0.0) {
-        throw std::runtime_error("cannot align ciphertexts for addition: scale must be positive and finite");
-    }
-    const double relative_error = std::fabs(source_scale - target_scale) / std::max(source_scale, target_scale);
-    if (relative_error > 1e-2) {
-        throw std::runtime_error("cannot align ciphertexts for addition: relative scale mismatch is too large");
-    }
-    out.pimpl_->ct.scale() = target_scale;
-    return out;
-}
-
 Cipher SealAdapter::rotate(const Cipher& c, int steps) {
     if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
     if (!pimpl_->has_galois) throw std::runtime_error("galois keys not generated");

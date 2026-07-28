@@ -22,39 +22,7 @@ CkksProfile depth_ckks() {
 }
 
 CkksProfile high_precision_ckks() {
-    return CkksProfile{16384, {60, 50, 50, 50, 60}, std::pow(2.0, 50), 8192};
-}
-
-CkksProfile boot_ckks() {
-    return CkksProfile{16384, {60, 40, 40, 40, 40, 40, 40, 40, 60}, std::pow(2.0, 40), 8192};
-}
-
-CkksProfile boot_deep_ckks() {
-    return CkksProfile{32768,
-                       {60,
-                        40, 40, 40, 40, 40, 40, 40, 40, 40, 40,
-                        40, 40, 40, 40, 40, 40, 40, 40, 40,
-                        60},
-                       std::pow(2.0, 40),
-                       16384};
-}
-
-CkksProfile precision_boot_deep_ckks() {
-    return CkksProfile{32768,
-                       {60,
-                        50, 50, 50, 50, 50, 50, 50, 50,
-                        50, 50, 50, 50, 50, 50, 50,
-                        60},
-                       std::pow(2.0, 50),
-                       16384};
-}
-
-CkksProfile precision_boot_ultra_ckks_59() {
-    return CkksProfile{32768,
-                       {60, 60, 60, 60, 60, 60, 60,
-                        60, 60, 60, 60, 60, 60, 60},
-                       std::pow(2.0, 59),
-                       16384};
+    return CkksProfile{16384, {60, 55, 55, 55, 60}, std::pow(2.0, 55), 8192};
 }
 
 std::vector<std::pair<std::string, CkksProfile>> all() {
@@ -63,11 +31,7 @@ std::vector<std::pair<std::string, CkksProfile>> all() {
         {"basic_ckks", basic_ckks()},
         {"balanced_ckks", balanced_ckks()},
         {"depth_ckks", depth_ckks()},
-        {"high_precision_ckks", high_precision_ckks()},
-        {"boot_ckks", boot_ckks()},
-        {"boot_deep_ckks", boot_deep_ckks()},
-        {"precision_boot_deep_ckks", precision_boot_deep_ckks()},
-        {"precision_boot_ultra_ckks_59", precision_boot_ultra_ckks_59()}
+        {"high_precision_ckks", high_precision_ckks()}
     };
 }
 

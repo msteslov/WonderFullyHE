@@ -13,14 +13,9 @@ endfunction()
 set(M2424_STABLE_APPS
     bench_chain_accuracy
     bench_ckks
-    bench_parameter_planner
     bench_parallel_throughput
     demo_abft
     demo_basic
-    demo_checked_pipeline
-    demo_client_compute_roundtrip
-    demo_eval_mod_polynomial
-    demo_galois_key_optimization
     demo_noise_growth
     demo_precision_profiles
     demo_profile_report

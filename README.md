@@ -8,12 +8,6 @@ WonderFullyHE — C++17-библиотека для приближённых з�
 #include "m2424/m2424.hpp"
 ```
 
-DFT, EvalMod и parameter-planning API подключаются отдельно:
-
-```cpp
-#include "m2424/experimental.hpp"
-```
-
 ## Сборка
 
 Клонирование с Microsoft SEAL:
@@ -40,7 +34,6 @@ ctest --test-dir build --output-on-failure
 
 - `demo_basic` — минимальный цикл шифрования и вычисления.
 - `demo_secure_stats` — зашифрованные сумма и среднее.
-- `demo_checked_pipeline` — pipeline с контролем бюджета операций.
 - `bench_ckks` — измерение базовых CKKS-операций.
 
 Остальные demos и benchmarks собираются по умолчанию и служат примерами API или измерительными утилитами.
@@ -68,7 +61,6 @@ auto decoded = adapter.decode(adapter.decrypt(squared));
 
 - `docs/architecture.md`
 - `docs/ckks_parameters.md`
-- `docs/bootstrap_roadmap.md`
 
 Публичные классы и методы документированы в заголовочных файлах через Doxygen. После установки Doxygen HTML-документацию можно сгенерировать так:
 

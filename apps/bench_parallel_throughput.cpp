@@ -118,7 +118,7 @@ int main() {
             for (const auto& task : state.tasks) {
                 const auto actual = head(state.adapter.decode(state.adapter.decrypt(task.result)), payload_size);
                 const auto expected = square_ref(task.input);
-                const auto accuracy = m2424::compare(expected, actual, 1e-3);
+                const auto accuracy = m2424::compare(expected, actual, m2424::kTargetAbsoluteError);
                 max_abs_error = std::max(max_abs_error, accuracy.max_abs_error);
                 mean_abs_error_sum += accuracy.mean_abs_error;
                 ok = ok && accuracy.ok;

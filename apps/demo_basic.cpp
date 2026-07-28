@@ -58,7 +58,7 @@ int main() {
     }
     std::vector<double> out_head(out.begin(), out.begin() + N);
 
-    auto accuracy = m2424::compare(ref4, out_head, 1e-5);
+    auto accuracy = m2424::compare(ref4, out_head, m2424::kTargetAbsoluteError);
     std::printf("max_abs_error=%.6e\nmean_abs_error=%.6e\n", accuracy.max_abs_error, accuracy.mean_abs_error);
     (void)m2424::version();
     return 0;

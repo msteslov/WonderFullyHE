@@ -18,7 +18,7 @@ bool throws_invalid_argument(void (*fn)()) {
 }
 
 void size_mismatch_case() {
-    (void)m2424::compare({1.0, 2.0}, {1.0}, 1e-6);
+    (void)m2424::compare({1.0, 2.0}, {1.0}, m2424::kTargetAbsoluteError);
 }
 
 void negative_tolerance_case() {
@@ -36,11 +36,11 @@ int main() {
     const auto nan_report = m2424::compare(
         {1.0, 2.0},
         {1.0, std::numeric_limits<double>::quiet_NaN()},
-        1e-6);
+        m2424::kTargetAbsoluteError);
     const auto inf_report = m2424::compare(
         {1.0, std::numeric_limits<double>::infinity()},
         {1.0, 2.0},
-        1e-6);
+        m2424::kTargetAbsoluteError);
 
     const bool ok = report.ok
         && report.size_ok

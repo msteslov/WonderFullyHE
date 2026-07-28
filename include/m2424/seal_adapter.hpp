@@ -125,8 +125,6 @@ public:
     Cipher rescaleToNext(const Cipher&);
     /// Снижает ciphertext до уровня target; повышение уровня невозможно.
     Cipher modSwitchTo(const Cipher&, const Cipher&);
-    /// Согласует ciphertext с target для сложения, если их CKKS scale отличаются не более чем на один процент.
-    Cipher alignForAddition(const Cipher&, const Cipher&);
     /// Выполняет ротацию CKKS-слотов с ранее сгенерированным Galois key.
     /// @param steps Число позиций ротации; для него должен существовать Galois key.
     Cipher rotate(const Cipher&, int steps);

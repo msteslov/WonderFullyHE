@@ -42,7 +42,7 @@ int main() {
 
     std::vector<double> expected{expected_sum, expected_mean};
     std::vector<double> actual{encrypted_sum, encrypted_mean};
-    const auto accuracy = m2424::compare(expected, actual, 1e-5);
+    const auto accuracy = m2424::compare(expected, actual, m2424::kTargetAbsoluteError);
 
     std::printf("secure_statistics\n");
     std::printf("payload_size=%zu\n", payload_size);

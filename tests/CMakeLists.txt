@@ -9,17 +9,7 @@ endfunction()
 set(M2424_TESTS
     test_accuracy
     test_adapter_failures
-    test_bootstrap_dft
-    test_bootstrap_layout_v2
-    test_bootstrap_pipeline
-    test_bootstrap_precision_model
-    test_bootstrap_scale_design
-    test_bootstrap_stc_reference
-    test_mod1_approximation
-    test_mod1_circuit
-    test_operation_budget
-    test_parameter_planner
-    test_smoke
+    test_ckks_primitives
 )
 
 foreach(target IN LISTS M2424_TESTS)

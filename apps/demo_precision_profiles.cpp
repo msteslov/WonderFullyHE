@@ -48,7 +48,7 @@ void print_row(const std::string& profile_name, const char* operation,
 
 int main() {
     constexpr std::size_t payload_size = 64;
-    constexpr double tolerance = 1e-6;
+    constexpr double tolerance = m2424::kTargetAbsoluteError;
 
     std::vector<double> input;
     input.reserve(payload_size);

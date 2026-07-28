@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
     std::vector<double> add_ref;
     add_ref.reserve(payload_size);
     for (double value : input) add_ref.push_back(value + value);
-    auto add_accuracy = m2424::compare(add_ref, add_decoded, 1e-5);
+    auto add_accuracy = m2424::compare(add_ref, add_decoded, m2424::kTargetAbsoluteError);
 
     m2424::Cipher multiplied;
     double mul_ms = elapsed_ms([&] { multiplied = adapter.rescaleToNext(adapter.relinearize(adapter.multiply(cipher, cipher))); });
@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
     std::vector<double> mul_ref;
     mul_ref.reserve(payload_size);
     for (double value : input) mul_ref.push_back(value * value);
-    auto mul_accuracy = m2424::compare(mul_ref, mul_decoded, 1e-5);
+    auto mul_accuracy = m2424::compare(mul_ref, mul_decoded, m2424::kTargetAbsoluteError);
 
     m2424::Cipher rotated;
     double rotate_ms = elapsed_ms([&] { rotated = adapter.rotate(cipher, 1); });
@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
     for (std::size_t i = 0; i < payload_size; ++i) {
         rotate_ref.push_back(input[(i + 1) % payload_size]);
     }
-    auto rotate_accuracy = m2424::compare(rotate_ref, rotated_decoded, 1e-5);
+    auto rotate_accuracy = m2424::compare(rotate_ref, rotated_decoded, m2424::kTargetAbsoluteError);
 
     m2424::Plain decrypted;
     double decrypt_ms = elapsed_ms([&] { decrypted = adapter.decrypt(cipher); });
