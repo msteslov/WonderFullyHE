@@ -11,6 +11,7 @@ set(M2424_TESTS
     test_adapter_failures
     test_bootstrap_candidates
     test_canonical_embedding_reference
+    test_coeff_to_slot_contract
     test_ckks_primitives
 )
 

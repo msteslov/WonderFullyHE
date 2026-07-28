@@ -11,6 +11,7 @@ WonderFullyHE определяет C++17 API для приближённых з�
         +-- SealAdapter
         +-- Bootstrap candidates
         +-- Canonical embedding reference
+        +-- CoeffToSlot contract
         +-- accuracy
         +-- abft
         +-- ProfileReport и SecurityReport
@@ -65,6 +66,14 @@ compare(expected, actual, tolerance)
 `CanonicalEmbeddingReference` задаёт plaintext-эталон CoeffToSlot и SlotToCoeff
 в порядке слотов Microsoft SEAL. Он намеренно имеет квадратичную сложность и
 используется только для проверки будущих encrypted-стратегий, а не в runtime.
+
+### `CoeffToSlotContract`
+
+`CoeffToSlotContract` фиксирует семантику входного ciphertext после будущего
+ModUp: нормализованные коэффициенты, input/output scale и частный бюджет ошибки.
+Конкретный FFT- или BSGS-план передаёт минимальный запас уровней и необходимые
+rotation keys; `preflightCoeffToSlot` отклоняет несовместимый ciphertext до
+запуска вычисления.
 
 ### `abft`
 
