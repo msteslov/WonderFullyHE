@@ -28,12 +28,22 @@ public:
     /// Возвращает шаги ротации, для которых требуются Galois keys.
     std::vector<int> rotationSteps() const;
 
+    /// Кодирует неизменяемые plaintext-диагонали для уровня и scale входного ciphertext.
+    /// Подготовка не входит в измеряемое время повторных вызовов apply.
+    void prepare(SealAdapter& adapter, const Cipher& input) const;
+    /// Возвращает размер подготовленных plaintext-диагоналей в сериализованном виде.
+    std::size_t preparedPlaintextBytes(SealAdapter& adapter) const;
+
     /// Применяет линейное преобразование с одним общим уровнем: каждая диагональ умножается и rescale-ится.
     Cipher apply(SealAdapter& adapter, const Cipher& input) const;
 
 private:
     std::size_t physicalSlotCount_{};
     std::vector<HomomorphicDiagonalTerm> terms_;
+    mutable const SealAdapter* preparedAdapter_{};
+    mutable std::size_t preparedChainIndex_{};
+    mutable double preparedInputScale_{};
+    mutable std::vector<Plain> preparedDiagonals_;
 };
 
 } // namespace m2424

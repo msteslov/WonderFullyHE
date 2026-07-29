@@ -158,6 +158,22 @@ Cipher CoeffToSlotFftPlan::apply(SealAdapter& adapter, const Cipher& input) cons
     return result;
 }
 
+void CoeffToSlotFftPlan::prepare(SealAdapter& adapter, const Cipher& input) const {
+    Cipher state = input;
+    for (const auto& layer : layers_) {
+        layer.prepare(adapter, state);
+        state = layer.apply(adapter, state);
+    }
+}
+
+std::size_t CoeffToSlotFftPlan::preparedPlaintextBytes(SealAdapter& adapter) const {
+    std::size_t result = 0;
+    for (const auto& layer : layers_) {
+        result += layer.preparedPlaintextBytes(adapter);
+    }
+    return result;
+}
+
 CoeffToSlotPlanRequirements CoeffToSlotFftPlan::requirements() const {
     return {requiredLevels(), rotationSteps()};
 }

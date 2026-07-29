@@ -27,6 +27,10 @@ public:
     std::vector<int> rotationSteps() const;
     /// Преобразует входные plaintext-слоты в forward DFT для проверки математики плана.
     ComplexVector applyPlain(const ComplexVector& input) const;
+    /// Подготавливает константы каждого слоя; для последующих слоёв выполняет один прогревочный проход.
+    void prepare(SealAdapter& adapter, const Cipher& input) const;
+    /// Возвращает размер подготовленных plaintext-диагоналей всех FFT-слоёв.
+    std::size_t preparedPlaintextBytes(SealAdapter& adapter) const;
     /// Применяет все стадии плана к ciphertext; вход должен пройти CoeffToSlot preflight.
     Cipher apply(SealAdapter& adapter, const Cipher& input) const;
     /// Формирует требования плана для preflightCoeffToSlot.

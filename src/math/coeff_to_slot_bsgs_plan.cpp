@@ -90,7 +90,8 @@ std::size_t CoeffToSlotBsgsPlan::requiredLevels() const noexcept {
 
 std::vector<int> CoeffToSlotBsgsPlan::rotationSteps() const {
     std::vector<int> steps;
-    for (const auto& group : groups_) {
+    for (std::size_t groupIndex = 0; groupIndex < groups_.size(); ++groupIndex) {
+        const auto& group = groups_[groupIndex];
         if (group.giantRotation != 0) {
             steps.push_back(group.giantRotation);
         }
@@ -138,11 +139,15 @@ ComplexVector CoeffToSlotBsgsPlan::applyPlain(const ComplexVector& input) const 
     return {result.begin(), result.begin() + static_cast<std::ptrdiff_t>(transformSlots_)};
 }
 
-Cipher CoeffToSlotBsgsPlan::apply(SealAdapter& adapter, const Cipher& input) const {
+void CoeffToSlotBsgsPlan::prepare(SealAdapter& adapter, const Cipher& input) const {
     if (adapter.slotCount() != physicalSlotCount_) {
         throw std::invalid_argument("BSGS slot count does not match ciphertext context");
     }
     const auto inputInfo = adapter.info(input);
+    if (preparedAdapter_ == &adapter && preparedChainIndex_ == inputInfo.chainIndex
+        && preparedInputScale_ == inputInfo.scale && preparedDiagonals_.size() == groups_.size()) {
+        return;
+    }
     const auto coeffModulusBits = adapter.coeffModulusBits();
     if (inputInfo.chainIndex == 0 || inputInfo.coeffModulusSize == 0
         || inputInfo.coeffModulusSize > coeffModulusBits.size()) {
@@ -150,9 +155,39 @@ Cipher CoeffToSlotBsgsPlan::apply(SealAdapter& adapter, const Cipher& input) con
     }
     const double diagonalScale = std::exp2(static_cast<double>(coeffModulusBits[inputInfo.coeffModulusSize - 1]));
 
+    std::vector<std::vector<Plain>> diagonals;
+    diagonals.reserve(groups_.size());
+    for (const auto& group : groups_) {
+        std::vector<Plain> groupDiagonals;
+        groupDiagonals.reserve(group.terms.size());
+        for (const auto& term : group.terms) {
+            groupDiagonals.push_back(adapter.encodeComplexAtScaleFor(term.diagonal, diagonalScale, input));
+        }
+        diagonals.push_back(std::move(groupDiagonals));
+    }
+    preparedAdapter_ = &adapter;
+    preparedChainIndex_ = inputInfo.chainIndex;
+    preparedInputScale_ = inputInfo.scale;
+    preparedDiagonals_ = std::move(diagonals);
+}
+
+std::size_t CoeffToSlotBsgsPlan::preparedPlaintextBytes(SealAdapter& adapter) const {
+    std::size_t result = 0;
+    for (const auto& group : preparedDiagonals_) {
+        for (const auto& diagonal : group) {
+            result += adapter.serializedSize(diagonal);
+        }
+    }
+    return result;
+}
+
+Cipher CoeffToSlotBsgsPlan::apply(SealAdapter& adapter, const Cipher& input) const {
+    prepare(adapter, input);
+
     std::map<int, Cipher> babyValues;
     babyValues.emplace(0, input);
-    for (const auto& group : groups_) {
+    for (std::size_t groupIndex = 0; groupIndex < groups_.size(); ++groupIndex) {
+        const auto& group = groups_[groupIndex];
         for (const auto& term : group.terms) {
             if (babyValues.find(term.babyRotation) == babyValues.end()) {
                 babyValues.emplace(term.babyRotation, adapter.rotate(input, term.babyRotation));
@@ -162,13 +197,15 @@ Cipher CoeffToSlotBsgsPlan::apply(SealAdapter& adapter, const Cipher& input) con
 
     Cipher result;
     bool hasResult = false;
-    for (const auto& group : groups_) {
+    for (std::size_t groupIndex = 0; groupIndex < groups_.size(); ++groupIndex) {
+        const auto& group = groups_[groupIndex];
         Cipher inner;
         bool hasInner = false;
-        for (const auto& term : group.terms) {
+        for (std::size_t termIndex = 0; termIndex < group.terms.size(); ++termIndex) {
+            const auto& term = group.terms[termIndex];
             const auto& baby = babyValues.at(term.babyRotation);
-            const Plain diagonal = adapter.encodeComplexAtScaleFor(term.diagonal, diagonalScale, baby);
-            const Cipher weighted = adapter.rescaleToNext(adapter.multiplyPlain(baby, diagonal));
+            const Cipher weighted = adapter.rescaleToNext(
+                adapter.multiplyPlain(baby, preparedDiagonals_[groupIndex][termIndex]));
             if (!hasInner) {
                 inner = weighted;
                 hasInner = true;

@@ -29,6 +29,10 @@ public:
     std::vector<int> rotationSteps() const;
     /// Вычисляет тот же forward DFT в plaintext для проверки факторизации.
     ComplexVector applyPlain(const ComplexVector& input) const;
+    /// Кодирует неизменяемые BSGS-диагонали для уровня и scale входного ciphertext.
+    void prepare(SealAdapter& adapter, const Cipher& input) const;
+    /// Возвращает размер подготовленных plaintext-диагоналей в сериализованном виде.
+    std::size_t preparedPlaintextBytes(SealAdapter& adapter) const;
     /// Применяет BSGS-план к ciphertext.
     Cipher apply(SealAdapter& adapter, const Cipher& input) const;
     /// Формирует требования BSGS-плана для preflightCoeffToSlot.
@@ -48,6 +52,10 @@ private:
     std::size_t physicalSlotCount_{};
     std::size_t babyStep_{};
     std::vector<GiantGroup> groups_;
+    mutable const SealAdapter* preparedAdapter_{};
+    mutable std::size_t preparedChainIndex_{};
+    mutable double preparedInputScale_{};
+    mutable std::vector<std::vector<Plain>> preparedDiagonals_;
 };
 
 } // namespace m2424

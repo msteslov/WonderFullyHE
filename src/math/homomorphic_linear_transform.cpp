@@ -33,11 +33,15 @@ std::vector<int> HomomorphicLinearTransform::rotationSteps() const {
     return steps;
 }
 
-Cipher HomomorphicLinearTransform::apply(SealAdapter& adapter, const Cipher& input) const {
+void HomomorphicLinearTransform::prepare(SealAdapter& adapter, const Cipher& input) const {
     if (adapter.slotCount() != physicalSlotCount_) {
         throw std::invalid_argument("linear transform slot count does not match ciphertext context");
     }
     const auto inputInfo = adapter.info(input);
+    if (preparedAdapter_ == &adapter && preparedChainIndex_ == inputInfo.chainIndex
+        && preparedInputScale_ == inputInfo.scale && preparedDiagonals_.size() == terms_.size()) {
+        return;
+    }
     const auto coeffModulusBits = adapter.coeffModulusBits();
     if (inputInfo.chainIndex == 0 || inputInfo.coeffModulusSize == 0
         || inputInfo.coeffModulusSize > coeffModulusBits.size()) {
@@ -45,12 +49,34 @@ Cipher HomomorphicLinearTransform::apply(SealAdapter& adapter, const Cipher& inp
     }
     const double diagonalScale = std::exp2(static_cast<double>(coeffModulusBits[inputInfo.coeffModulusSize - 1]));
 
+    std::vector<Plain> diagonals;
+    diagonals.reserve(terms_.size());
+    for (const auto& term : terms_) {
+        diagonals.push_back(adapter.encodeComplexAtScaleFor(term.diagonal, diagonalScale, input));
+    }
+    preparedAdapter_ = &adapter;
+    preparedChainIndex_ = inputInfo.chainIndex;
+    preparedInputScale_ = inputInfo.scale;
+    preparedDiagonals_ = std::move(diagonals);
+}
+
+std::size_t HomomorphicLinearTransform::preparedPlaintextBytes(SealAdapter& adapter) const {
+    std::size_t result = 0;
+    for (const auto& diagonal : preparedDiagonals_) {
+        result += adapter.serializedSize(diagonal);
+    }
+    return result;
+}
+
+Cipher HomomorphicLinearTransform::apply(SealAdapter& adapter, const Cipher& input) const {
+    prepare(adapter, input);
+
     Cipher result;
     bool hasResult = false;
-    for (const auto& term : terms_) {
+    for (std::size_t index = 0; index < terms_.size(); ++index) {
+        const auto& term = terms_[index];
         const Cipher rotated = term.rotation == 0 ? input : adapter.rotate(input, term.rotation);
-        const Plain diagonal = adapter.encodeComplexAtScaleFor(term.diagonal, diagonalScale, rotated);
-        const Cipher weighted = adapter.rescaleToNext(adapter.multiplyPlain(rotated, diagonal));
+        const Cipher weighted = adapter.rescaleToNext(adapter.multiplyPlain(rotated, preparedDiagonals_[index]));
         if (!hasResult) {
             result = weighted;
             hasResult = true;

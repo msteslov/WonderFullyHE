@@ -131,6 +131,8 @@ public:
 
     /// Возвращает метаданные ciphertext и размеры сериализованных ключей/данных.
     std::size_t serializedSize(const Cipher&) const;
+    /// Возвращает размер сериализованного plaintext.
+    std::size_t serializedSize(const Plain&) const;
     /// Возвращает уровень, scale, размер и доступный modulus chain ciphertext.
     CipherInfo info(const Cipher&) const;
     /// Возвращает scale ciphertext.

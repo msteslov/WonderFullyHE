@@ -407,6 +407,10 @@ std::size_t SealAdapter::serializedSize(const Cipher& cipher) const {
     return serialized_size_of(cipher.pimpl_->ct);
 }
 
+std::size_t SealAdapter::serializedSize(const Plain& plain) const {
+    return serialized_size_of(plain.pimpl_->pt);
+}
+
 CipherInfo SealAdapter::info(const Cipher& cipher) const {
     if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
     const auto context_data = pimpl_->context->get_context_data(cipher.pimpl_->ct.parms_id());

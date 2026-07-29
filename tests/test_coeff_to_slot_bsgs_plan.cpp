@@ -61,6 +61,8 @@ int main() {
         encrypted,
         m2424::makeCoeffToSlotContract(m2424::bootstrapCandidateById("precision_8192_s59")),
         encryptedPlan.requirements());
+    encryptedPlan.prepare(adapter, encrypted);
+    const std::size_t preparedBytes = encryptedPlan.preparedPlaintextBytes(adapter);
     const auto result = encryptedPlan.apply(adapter, encrypted);
     const auto decoded = adapter.decodeComplex(adapter.decrypt(result));
     const auto expected = directDft(input);
@@ -70,12 +72,13 @@ int main() {
     const auto resultInfo = adapter.info(result);
 
     const bool encryptedOk = preflight.ready
+        && preparedBytes > 0
         && encryptedError <= m2424::bootstrapCandidateById("precision_8192_s59").errorBudget.coeffToSlot
         && resultInfo.chainIndex + encryptedPlan.requiredLevels() == inputInfo.chainIndex
         && std::abs(std::log2(resultInfo.scale) - std::log2(inputInfo.scale)) <= 0.25;
     const bool ok = plainOk && encryptedOk;
-    std::printf("[test_coeff_to_slot_bsgs_plan] plain=%s encrypted_error=%.3e levels=%zu keys=%zu %s\n",
+    std::printf("[test_coeff_to_slot_bsgs_plan] plain=%s encrypted_error=%.3e levels=%zu keys=%zu prepared_bytes=%zu %s\n",
                 plainOk ? "PASS" : "FAIL", encryptedError, encryptedPlan.requiredLevels(),
-                encryptedPlan.rotationSteps().size(), ok ? "PASS" : "FAIL");
+                encryptedPlan.rotationSteps().size(), preparedBytes, ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

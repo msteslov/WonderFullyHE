@@ -62,6 +62,25 @@ bootstrap-алгоритмы:
 сравнения ни один не считается оптимальным; критерии и подготовительные работы
 зафиксированы в `docs/coeff_to_slot_comparison_plan.md`.
 
+Единый benchmark подготовленной реализации запускается так:
+
+```bash
+./build/bin/bench_coeff_to_slot
+```
+
+Он сравнивает FFT с BSGS при нескольких `babyStep`, но выводит данные для
+исследования, а не объявляет автоматического победителя. Последний baseline:
+`docs/coeff_to_slot_baseline.md`.
+
+Единый benchmark подготовленной реализации запускается так:
+
+```bash
+./build/bin/bench_coeff_to_slot
+```
+
+Он сравнивает FFT с BSGS при нескольких `babyStep`, но выводит данные для
+исследования, а не объявляет автоматического победителя.
+
 ## Пример API
 
 ```cpp
@@ -82,6 +101,7 @@ auto decoded = adapter.decode(adapter.decrypt(squared));
 - `docs/architecture.md`
 - `docs/bootstrap_candidate_baseline.md`
 - `docs/coeff_to_slot_comparison_plan.md`
+- `docs/coeff_to_slot_baseline.md`
 
 Публичные классы и методы документированы в заголовочных файлах через Doxygen. После установки Doxygen HTML-документацию можно сгенерировать так:
 
