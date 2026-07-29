@@ -66,12 +66,14 @@ bootstrap-алгоритмы:
 
 ```bash
 ./build/bin/bench_coeff_to_slot
-./build/bin/bench_coeff_to_slot --size 16
+./build/bin/bench_coeff_to_slot --profile precision_16384_s59 --size 64
 ```
 
 Он сравнивает FFT с BSGS при нескольких `babyStep`, но выводит данные для
 исследования, а не объявляет автоматического победителя. Последний baseline:
 `docs/coeff_to_slot_baseline.md`.
+
+Полная матрица и результаты больших размеров: `docs/coeff_to_slot_matrix.md`.
 
 Единый benchmark подготовленной реализации запускается так:
 
@@ -103,6 +105,7 @@ auto decoded = adapter.decode(adapter.decrypt(squared));
 - `docs/bootstrap_candidate_baseline.md`
 - `docs/coeff_to_slot_comparison_plan.md`
 - `docs/coeff_to_slot_baseline.md`
+- `docs/coeff_to_slot_matrix.md`
 
 Публичные классы и методы документированы в заголовочных файлах через Doxygen. После установки Doxygen HTML-документацию можно сгенерировать так:
 

@@ -1,4 +1,3 @@
-#include "m2424/accuracy.hpp"
 #include "m2424/bootstrap_candidates.hpp"
 #include "m2424/coeff_to_slot_bsgs_plan.hpp"
 #include "m2424/coeff_to_slot_contract.hpp"
@@ -9,16 +8,26 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
-#include <functional>
+#include <exception>
 #include <string>
 #include <vector>
 
 namespace {
 
 using Clock = std::chrono::steady_clock;
-constexpr std::size_t kTrials = 7;
+constexpr std::size_t kRuntimeTrials = 7;
 constexpr std::size_t kAccuracyTrials = 7;
 constexpr double kPi = 3.141592653589793238462643383279502884;
+
+struct ComparisonProfile {
+    const char* candidateId;
+    std::vector<std::size_t> transformSizes;
+};
+
+struct Selection {
+    std::string candidateId;
+    std::vector<std::size_t> transformSizes;
+};
 
 struct Measurement {
     double keySetupMs{};
@@ -31,8 +40,17 @@ struct Measurement {
     std::size_t rotationKeyCount{};
     std::size_t galoisKeyBytes{};
     std::size_t preparedPlaintextBytes{};
+    bool keysWithinLimit{};
     bool passes{};
 };
+
+const std::vector<ComparisonProfile>& comparisonProfiles() {
+    static const std::vector<ComparisonProfile> profiles{
+        {"precision_8192_s59", {4, 8, 16}},
+        {"precision_16384_s59", {4, 8, 16, 32, 64}},
+    };
+    return profiles;
+}
 
 template <class Function>
 double elapsedMs(Function&& function) {
@@ -42,8 +60,35 @@ double elapsedMs(Function&& function) {
     return std::chrono::duration<double, std::milli>(finish - start).count();
 }
 
-m2424::CkksProfile comparisonProfile() {
-    return {16384, {60, 59, 59, 59, 59, 59, 60}, std::exp2(59.0), 8192};
+std::size_t fftLevels(std::size_t transformSlots) {
+    std::size_t levels = 1; // bit-reversal
+    while (transformSlots > 1) {
+        transformSlots >>= 1U;
+        ++levels;
+    }
+    return levels;
+}
+
+m2424::CkksProfile makeComparisonProfile(const m2424::BootstrapCandidate& candidate,
+                                          std::size_t transformSlots) {
+    const int scaleBits = static_cast<int>(std::ceil(candidate.targetScaleLog2));
+    std::vector<int> chain{60};
+    chain.insert(chain.end(), fftLevels(transformSlots), scaleBits);
+    chain.push_back(60);
+    return {candidate.polyModulusDegree, std::move(chain), std::exp2(candidate.targetScaleLog2), candidate.activeSlots};
+}
+
+std::vector<std::size_t> bsgsBabySteps(std::size_t transformSlots) {
+    std::vector<std::size_t> steps;
+    for (std::size_t step = 1; step < transformSlots; step *= 2) {
+        if (step * step >= transformSlots / 4 && step * step <= transformSlots * 4) {
+            steps.push_back(step);
+        }
+    }
+    if (steps.empty()) {
+        steps.push_back(1);
+    }
+    return steps;
 }
 
 m2424::ComplexVector makeInput(std::size_t size) {
@@ -82,20 +127,23 @@ double median(std::vector<double> values) {
 }
 
 template <class Plan>
-Measurement measurePlan(Plan& plan, const m2424::ComplexVector& input) {
-    const auto& candidate = m2424::bootstrapCandidateById("precision_8192_s59");
-    auto adapter = m2424::SealAdapter::create(comparisonProfile());
+Measurement measurePlan(const m2424::BootstrapCandidate& candidate,
+                        const m2424::CkksProfile& profile,
+                        Plan& plan,
+                        const m2424::ComplexVector& input) {
+    auto adapter = m2424::SealAdapter::create(profile);
     Measurement measurement;
     measurement.rotationKeyCount = plan.rotationSteps().size();
     measurement.levels = plan.requiredLevels();
     measurement.keySetupMs = elapsedMs([&] { adapter.generateKeys(plan.rotationSteps(), false); });
     measurement.galoisKeyBytes = adapter.galoisKeysSize();
+    measurement.keysWithinLimit = static_cast<double>(measurement.galoisKeyBytes) / (1024.0 * 1024.0)
+        <= static_cast<double>(candidate.resources.maxEvaluationKeyMiB);
 
     const auto encodedInput = adapter.encodeComplex(input);
     const auto encrypted = adapter.encrypt(encodedInput);
-    const auto contract = m2424::makeCoeffToSlotContract(candidate);
-    const auto preflight = m2424::preflightCoeffToSlot(adapter, encrypted, contract, plan.requirements());
-
+    const auto preflight = m2424::preflightCoeffToSlot(
+        adapter, encrypted, m2424::makeCoeffToSlotContract(candidate), plan.requirements());
     measurement.prepareMs = elapsedMs([&] { plan.prepare(adapter, encrypted); });
     measurement.preparedPlaintextBytes = plan.preparedPlaintextBytes(adapter);
 
@@ -114,67 +162,97 @@ Measurement measurePlan(Plan& plan, const m2424::ComplexVector& input) {
     }
     measurement.maxError = *std::max_element(accuracySamples.begin(), accuracySamples.end());
     measurement.medianError = median(std::move(accuracySamples));
-    const auto inputInfo = adapter.info(encrypted);
 
-    std::vector<double> samples;
-    samples.reserve(kTrials);
-    for (std::size_t trial = 0; trial < kTrials; ++trial) {
-        samples.push_back(elapsedMs([&] {
+    std::vector<double> runtimeSamples;
+    runtimeSamples.reserve(kRuntimeTrials);
+    for (std::size_t trial = 0; trial < kRuntimeTrials; ++trial) {
+        runtimeSamples.push_back(elapsedMs([&] {
             const auto result = plan.apply(adapter, encrypted);
             (void)result;
         }));
     }
-    measurement.minApplyMs = *std::min_element(samples.begin(), samples.end());
-    measurement.medianApplyMs = median(std::move(samples));
-    measurement.passes = preflight.ready
+    measurement.minApplyMs = *std::min_element(runtimeSamples.begin(), runtimeSamples.end());
+    measurement.medianApplyMs = median(std::move(runtimeSamples));
+    const auto inputInfo = adapter.info(encrypted);
+    measurement.passes = preflight.ready && measurement.keysWithinLimit
         && measurement.maxError <= candidate.errorBudget.coeffToSlot
         && resultInfo.chainIndex + measurement.levels == inputInfo.chainIndex
         && std::abs(std::log2(resultInfo.scale) - std::log2(inputInfo.scale)) <= 0.25;
     return measurement;
 }
 
-void printRow(const char* strategy, std::size_t size, std::size_t babyStep, const Measurement& measurement) {
-    std::printf("precision_8192_s59,%s,%zu,%zu,%zu,%zu,%.3f,%.3f,%.3f,%.3f,%.3e,%.3e,%zu,%zu,%zu,%zu,%s\n",
-                strategy, size, babyStep, kTrials, kAccuracyTrials, measurement.keySetupMs, measurement.prepareMs,
-                measurement.minApplyMs, measurement.medianApplyMs, measurement.maxError, measurement.medianError,
-                measurement.levels,
+void printRow(const m2424::BootstrapCandidate& candidate,
+              const char* strategy,
+              std::size_t transformSlots,
+              std::size_t babyStep,
+              const Measurement& measurement) {
+    std::printf("%s,%zu,%zu,%s,%zu,%zu,%zu,%zu,%.3f,%.3f,%.3f,%.3f,%.3e,%.3e,%zu,%zu,%zu,%zu,%s\n",
+                candidate.id.c_str(), candidate.polyModulusDegree, candidate.activeSlots, strategy,
+                transformSlots, babyStep, kRuntimeTrials, kAccuracyTrials, measurement.keySetupMs,
+                measurement.prepareMs, measurement.minApplyMs, measurement.medianApplyMs,
+                measurement.maxError, measurement.medianError, measurement.levels,
                 measurement.rotationKeyCount, measurement.galoisKeyBytes, measurement.preparedPlaintextBytes,
                 measurement.passes ? "PASS" : "FAIL");
+}
+
+Selection parseSelection(int argc, char** argv) {
+    Selection selection;
+    for (int index = 1; index < argc; ++index) {
+        const std::string argument = argv[index];
+        if (argument == "--profile" && index + 1 < argc) {
+            selection.candidateId = argv[++index];
+        } else if (argument == "--size" && index + 1 < argc) {
+            selection.transformSizes = {std::stoull(argv[++index])};
+        } else {
+            throw std::invalid_argument("usage: bench_coeff_to_slot [--profile candidate_id] [--size power_of_two]");
+        }
+    }
+    return selection;
+}
+
+bool isSelected(const Selection& selection, const ComparisonProfile& profile, std::size_t size) {
+    return (selection.candidateId.empty() || selection.candidateId == profile.candidateId)
+        && (selection.transformSizes.empty() || selection.transformSizes.front() == size);
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
-    std::printf("candidate,strategy,transform_slots,baby_step,runtime_trials,accuracy_trials,key_setup_ms,prepare_ms,min_apply_ms,"
-                "median_apply_ms,max_abs_error,median_abs_error,levels,rotation_key_count,galois_key_bytes,"
-                "prepared_plaintext_bytes,status\n");
-    std::vector<std::size_t> sizes{4, 8, 16};
-    if (argc == 3 && std::string(argv[1]) == "--size") {
-        const std::size_t size = std::stoull(argv[2]);
-        if (size != 4 && size != 8 && size != 16) {
-            std::fprintf(stderr, "--size must be 4, 8, or 16\n");
+    try {
+        const auto selection = parseSelection(argc, argv);
+        std::printf("candidate,poly_modulus_degree,active_slots,strategy,transform_slots,baby_step,runtime_trials,"
+                    "accuracy_trials,key_setup_ms,prepare_ms,min_apply_ms,median_apply_ms,max_abs_error,"
+                    "median_abs_error,levels,rotation_key_count,galois_key_bytes,prepared_plaintext_bytes,status\n");
+        bool found = false;
+        bool ok = true;
+        for (const auto& profileSelection : comparisonProfiles()) {
+            const auto& candidate = m2424::bootstrapCandidateById(profileSelection.candidateId);
+            for (const std::size_t size : profileSelection.transformSizes) {
+                if (!isSelected(selection, profileSelection, size)) {
+                    continue;
+                }
+                found = true;
+                const auto profile = makeComparisonProfile(candidate, size);
+                const auto input = makeInput(size);
+                m2424::CoeffToSlotFftPlan fft(size, candidate.activeSlots);
+                const auto fftMeasurement = measurePlan(candidate, profile, fft, input);
+                printRow(candidate, "fft", size, 0, fftMeasurement);
+                ok = fftMeasurement.passes && ok;
+                for (const std::size_t babyStep : bsgsBabySteps(size)) {
+                    m2424::CoeffToSlotBsgsPlan bsgs(size, candidate.activeSlots, babyStep);
+                    const auto bsgsMeasurement = measurePlan(candidate, profile, bsgs, input);
+                    printRow(candidate, "bsgs", size, babyStep, bsgsMeasurement);
+                    ok = bsgsMeasurement.passes && ok;
+                }
+            }
+        }
+        if (!found) {
+            std::fprintf(stderr, "no configured comparison case matches selection\n");
             return 2;
         }
-        sizes = {size};
-    } else if (argc != 1) {
-        std::fprintf(stderr, "usage: bench_coeff_to_slot [--size 4|8|16]\n");
+        return ok ? 0 : 1;
+    } catch (const std::exception& error) {
+        std::fprintf(stderr, "%s\n", error.what());
         return 2;
     }
-
-    bool ok = true;
-    for (const std::size_t size : sizes) {
-        const auto input = makeInput(size);
-        m2424::CoeffToSlotFftPlan fft(size, 8192);
-        const auto fftMeasurement = measurePlan(fft, input);
-        printRow("fft", size, 0, fftMeasurement);
-        ok = fftMeasurement.passes && ok;
-
-        for (std::size_t babyStep = 1; babyStep <= size; babyStep *= 2) {
-            m2424::CoeffToSlotBsgsPlan bsgs(size, 8192, babyStep);
-            const auto bsgsMeasurement = measurePlan(bsgs, input);
-            printRow("bsgs", size, babyStep, bsgsMeasurement);
-            ok = bsgsMeasurement.passes && ok;
-        }
-    }
-    return ok ? 0 : 1;
 }

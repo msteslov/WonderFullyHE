@@ -95,6 +95,8 @@ ModUp, encrypted-тест использует synthetic slot fixture; это п
 
 Условия объективного сравнения обоих кандидатов зафиксированы в
 [`coeff_to_slot_comparison_plan.md`](coeff_to_slot_comparison_plan.md).
+Воспроизводимая матрица запусков и её результаты — в
+[`coeff_to_slot_matrix.md`](coeff_to_slot_matrix.md).
 
 ### `HomomorphicLinearTransform`
 
