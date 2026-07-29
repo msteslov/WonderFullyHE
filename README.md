@@ -66,6 +66,7 @@ bootstrap-алгоритмы:
 
 ```bash
 ./build/bin/bench_coeff_to_slot
+./build/bin/bench_coeff_to_slot --size 16
 ```
 
 Он сравнивает FFT с BSGS при нескольких `babyStep`, но выводит данные для

@@ -17,6 +17,7 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 constexpr std::size_t kTrials = 7;
+constexpr std::size_t kAccuracyTrials = 7;
 constexpr double kPi = 3.141592653589793238462643383279502884;
 
 struct Measurement {
@@ -24,7 +25,8 @@ struct Measurement {
     double prepareMs{};
     double minApplyMs{};
     double medianApplyMs{};
-    double error{};
+    double maxError{};
+    double medianError{};
     std::size_t levels{};
     std::size_t rotationKeyCount{};
     std::size_t galoisKeyBytes{};
@@ -89,7 +91,8 @@ Measurement measurePlan(Plan& plan, const m2424::ComplexVector& input) {
     measurement.keySetupMs = elapsedMs([&] { adapter.generateKeys(plan.rotationSteps(), false); });
     measurement.galoisKeyBytes = adapter.galoisKeysSize();
 
-    const auto encrypted = adapter.encrypt(adapter.encodeComplex(input));
+    const auto encodedInput = adapter.encodeComplex(input);
+    const auto encrypted = adapter.encrypt(encodedInput);
     const auto contract = m2424::makeCoeffToSlotContract(candidate);
     const auto preflight = m2424::preflightCoeffToSlot(adapter, encrypted, contract, plan.requirements());
 
@@ -97,11 +100,20 @@ Measurement measurePlan(Plan& plan, const m2424::ComplexVector& input) {
     measurement.preparedPlaintextBytes = plan.preparedPlaintextBytes(adapter);
 
     const auto expected = directDft(input);
-    const auto validationResult = plan.apply(adapter, encrypted);
-    const auto decoded = adapter.decodeComplex(adapter.decrypt(validationResult));
-    const m2424::ComplexVector actual(decoded.begin(), decoded.begin() + static_cast<std::ptrdiff_t>(input.size()));
-    measurement.error = maxError(expected, actual);
-    const auto resultInfo = adapter.info(validationResult);
+    std::vector<double> accuracySamples;
+    accuracySamples.reserve(kAccuracyTrials);
+    m2424::CipherInfo resultInfo;
+    for (std::size_t trial = 0; trial < kAccuracyTrials; ++trial) {
+        const auto validationInput = adapter.encrypt(encodedInput);
+        const auto validationResult = plan.apply(adapter, validationInput);
+        const auto decoded = adapter.decodeComplex(adapter.decrypt(validationResult));
+        const m2424::ComplexVector actual(
+            decoded.begin(), decoded.begin() + static_cast<std::ptrdiff_t>(input.size()));
+        accuracySamples.push_back(maxError(expected, actual));
+        resultInfo = adapter.info(validationResult);
+    }
+    measurement.maxError = *std::max_element(accuracySamples.begin(), accuracySamples.end());
+    measurement.medianError = median(std::move(accuracySamples));
     const auto inputInfo = adapter.info(encrypted);
 
     std::vector<double> samples;
@@ -115,28 +127,42 @@ Measurement measurePlan(Plan& plan, const m2424::ComplexVector& input) {
     measurement.minApplyMs = *std::min_element(samples.begin(), samples.end());
     measurement.medianApplyMs = median(std::move(samples));
     measurement.passes = preflight.ready
-        && measurement.error <= candidate.errorBudget.coeffToSlot
+        && measurement.maxError <= candidate.errorBudget.coeffToSlot
         && resultInfo.chainIndex + measurement.levels == inputInfo.chainIndex
         && std::abs(std::log2(resultInfo.scale) - std::log2(inputInfo.scale)) <= 0.25;
     return measurement;
 }
 
 void printRow(const char* strategy, std::size_t size, std::size_t babyStep, const Measurement& measurement) {
-    std::printf("precision_8192_s59,%s,%zu,%zu,%zu,%.3f,%.3f,%.3f,%.3f,%.3e,%zu,%zu,%zu,%zu,%s\n",
-                strategy, size, babyStep, kTrials, measurement.keySetupMs, measurement.prepareMs,
-                measurement.minApplyMs, measurement.medianApplyMs, measurement.error, measurement.levels,
+    std::printf("precision_8192_s59,%s,%zu,%zu,%zu,%zu,%.3f,%.3f,%.3f,%.3f,%.3e,%.3e,%zu,%zu,%zu,%zu,%s\n",
+                strategy, size, babyStep, kTrials, kAccuracyTrials, measurement.keySetupMs, measurement.prepareMs,
+                measurement.minApplyMs, measurement.medianApplyMs, measurement.maxError, measurement.medianError,
+                measurement.levels,
                 measurement.rotationKeyCount, measurement.galoisKeyBytes, measurement.preparedPlaintextBytes,
                 measurement.passes ? "PASS" : "FAIL");
 }
 
 } // namespace
 
-int main() {
-    std::printf("candidate,strategy,transform_slots,baby_step,trials,key_setup_ms,prepare_ms,min_apply_ms,"
-                "median_apply_ms,max_abs_error,levels,rotation_key_count,galois_key_bytes,"
+int main(int argc, char** argv) {
+    std::printf("candidate,strategy,transform_slots,baby_step,runtime_trials,accuracy_trials,key_setup_ms,prepare_ms,min_apply_ms,"
+                "median_apply_ms,max_abs_error,median_abs_error,levels,rotation_key_count,galois_key_bytes,"
                 "prepared_plaintext_bytes,status\n");
+    std::vector<std::size_t> sizes{4, 8, 16};
+    if (argc == 3 && std::string(argv[1]) == "--size") {
+        const std::size_t size = std::stoull(argv[2]);
+        if (size != 4 && size != 8 && size != 16) {
+            std::fprintf(stderr, "--size must be 4, 8, or 16\n");
+            return 2;
+        }
+        sizes = {size};
+    } else if (argc != 1) {
+        std::fprintf(stderr, "usage: bench_coeff_to_slot [--size 4|8|16]\n");
+        return 2;
+    }
+
     bool ok = true;
-    for (const std::size_t size : {std::size_t{4}, std::size_t{8}, std::size_t{16}}) {
+    for (const std::size_t size : sizes) {
         const auto input = makeInput(size);
         m2424::CoeffToSlotFftPlan fft(size, 8192);
         const auto fftMeasurement = measurePlan(fft, input);
