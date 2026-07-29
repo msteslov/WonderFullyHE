@@ -22,6 +22,7 @@ constexpr double kPi = 3.141592653589793238462643383279502884;
 struct ComparisonProfile {
     const char* candidateId;
     std::vector<std::size_t> transformSizes;
+    bool fftSupported;
 };
 
 struct Selection {
@@ -46,8 +47,18 @@ struct Measurement {
 
 const std::vector<ComparisonProfile>& comparisonProfiles() {
     static const std::vector<ComparisonProfile> profiles{
-        {"precision_8192_s59", {4, 8, 16}},
-        {"precision_16384_s59", {4, 8, 16, 32, 64}},
+        {"validation_4_s55", {4}, false},
+        {"validation_16_s55", {16}, false},
+        {"validation_64_s55", {64}, false},
+        {"memory_1024_s55", {64}, false},
+        {"throughput_1024_s55", {64}, false},
+        {"memory_4096_s55", {64}, false},
+        {"throughput_4096_s55", {64}, false},
+        {"balanced_8192_s55", {4, 8, 16}, true},
+        {"precision_8192_s59", {4, 8, 16}, true},
+        {"memory_8192_s55", {4, 8, 16}, true},
+        {"throughput_16384_s55", {4, 8, 16, 32, 64}, true},
+        {"precision_16384_s59", {4, 8, 16, 32, 64}, true},
     };
     return profiles;
 }
@@ -70,12 +81,15 @@ std::size_t fftLevels(std::size_t transformSlots) {
 }
 
 m2424::CkksProfile makeComparisonProfile(const m2424::BootstrapCandidate& candidate,
-                                          std::size_t transformSlots) {
+                                          std::size_t transformSlots,
+                                          bool fftSupported) {
     const int scaleBits = static_cast<int>(std::ceil(candidate.targetScaleLog2));
     std::vector<int> chain{60};
-    chain.insert(chain.end(), fftLevels(transformSlots), scaleBits);
+    chain.insert(chain.end(), fftSupported ? fftLevels(transformSlots) : 1, scaleBits);
     chain.push_back(60);
-    return {candidate.polyModulusDegree, std::move(chain), std::exp2(candidate.targetScaleLog2), candidate.activeSlots};
+    // Диагонали CoeffToSlot занимают физическую CKKS-ёмкость, поэтому benchmark
+    // не ограничивает encoder логическим числом активных слотов кандидата.
+    return {candidate.polyModulusDegree, std::move(chain), std::exp2(candidate.targetScaleLog2), 0};
 }
 
 std::vector<std::size_t> bsgsBabySteps(std::size_t transformSlots) {
@@ -232,14 +246,17 @@ int main(int argc, char** argv) {
                     continue;
                 }
                 found = true;
-                const auto profile = makeComparisonProfile(candidate, size);
+                const auto profile = makeComparisonProfile(candidate, size, profileSelection.fftSupported);
                 const auto input = makeInput(size);
-                m2424::CoeffToSlotFftPlan fft(size, candidate.activeSlots);
-                const auto fftMeasurement = measurePlan(candidate, profile, fft, input);
-                printRow(candidate, "fft", size, 0, fftMeasurement);
-                ok = fftMeasurement.passes && ok;
+                const std::size_t physicalSlotCount = candidate.polyModulusDegree / 2;
+                if (profileSelection.fftSupported) {
+                    m2424::CoeffToSlotFftPlan fft(size, physicalSlotCount);
+                    const auto fftMeasurement = measurePlan(candidate, profile, fft, input);
+                    printRow(candidate, "fft", size, 0, fftMeasurement);
+                    ok = fftMeasurement.passes && ok;
+                }
                 for (const std::size_t babyStep : bsgsBabySteps(size)) {
-                    m2424::CoeffToSlotBsgsPlan bsgs(size, candidate.activeSlots, babyStep);
+                    m2424::CoeffToSlotBsgsPlan bsgs(size, physicalSlotCount, babyStep);
                     const auto bsgsMeasurement = measurePlan(candidate, profile, bsgs, input);
                     printRow(candidate, "bsgs", size, babyStep, bsgsMeasurement);
                     ok = bsgsMeasurement.passes && ok;
