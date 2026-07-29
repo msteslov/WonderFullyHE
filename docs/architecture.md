@@ -13,6 +13,7 @@ WonderFullyHE определяет C++17 API для приближённых з�
         +-- Canonical embedding reference
         +-- CoeffToSlot contract
         +-- CoeffToSlot FFT plan
+        +-- CoeffToSlot BSGS plan
         +-- Homomorphic linear transform
         +-- accuracy
         +-- abft
@@ -84,6 +85,13 @@ rotation keys; `preflightCoeffToSlot` отклоняет несовместим�
 ротаций и уровней измеряется полностью, без бесплатных перестановок. Пока нет
 ModUp, encrypted-тест использует synthetic slot fixture; это проверка исполнения
 линейного FFT-плана, а не подтверждение полного bootstrap CoeffToSlot.
+
+### `CoeffToSlotBsgsPlan`
+
+`CoeffToSlotBsgsPlan` — второй encrypted-кандидат для той же DFT-матрицы.
+Он переиспользует baby rotations внутри giant-групп и расходует один уровень;
+результаты сравниваются с FFT только на одинаковом synthetic fixture. Пока ModUp
+не реализован, это не подтверждение полного bootstrap CoeffToSlot.
 
 ### `HomomorphicLinearTransform`
 

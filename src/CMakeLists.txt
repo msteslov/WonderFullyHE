@@ -9,6 +9,7 @@ add_library(m2424
     ckks/seal_adapter.cpp
 
     math/canonical_embedding_reference.cpp
+    math/coeff_to_slot_bsgs_plan.cpp
     math/coeff_to_slot_fft_plan.cpp
     math/homomorphic_linear_transform.cpp
 
