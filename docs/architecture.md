@@ -93,6 +93,9 @@ ModUp, encrypted-тест использует synthetic slot fixture; это п
 результаты сравниваются с FFT только на одинаковом synthetic fixture. Пока ModUp
 не реализован, это не подтверждение полного bootstrap CoeffToSlot.
 
+Условия объективного сравнения обоих кандидатов зафиксированы в
+[`coeff_to_slot_comparison_plan.md`](coeff_to_slot_comparison_plan.md).
+
 ### `HomomorphicLinearTransform`
 
 `HomomorphicLinearTransform` исполняет проверяемую сумму plaintext-диагоналей

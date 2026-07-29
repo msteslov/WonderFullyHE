@@ -58,6 +58,10 @@ bootstrap-алгоритмы:
 
 Последняя базовая калибровка: `docs/bootstrap_candidate_baseline.md`.
 
+Для CoeffToSlot сейчас реализованы FFT- и BSGS-кандидаты. До их benchmark
+сравнения ни один не считается оптимальным; критерии и подготовительные работы
+зафиксированы в `docs/coeff_to_slot_comparison_plan.md`.
+
 ## Пример API
 
 ```cpp
@@ -76,7 +80,8 @@ auto decoded = adapter.decode(adapter.decrypt(squared));
 ## Документация
 
 - `docs/architecture.md`
-- `docs/ckks_parameters.md`
+- `docs/bootstrap_candidate_baseline.md`
+- `docs/coeff_to_slot_comparison_plan.md`
 
 Публичные классы и методы документированы в заголовочных файлах через Doxygen. После установки Doxygen HTML-документацию можно сгенерировать так:
 
