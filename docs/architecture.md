@@ -72,37 +72,27 @@ compare(expected, actual, tolerance)
 
 ### `CoeffToSlotContract`
 
-`CoeffToSlotContract` фиксирует семантику входного ciphertext после будущего
-ModUp: нормализованные коэффициенты, input/output scale и частный бюджет ошибки.
-Конкретный FFT- или BSGS-план передаёт минимальный запас уровней и необходимые
-rotation keys; `preflightCoeffToSlot` отклоняет несовместимый ciphertext до
+`CoeffToSlotContract` фиксирует семантику входного `RaisedCipher` после
+ModRaise: нормализованные коэффициенты, input/output scale и частный бюджет
+ошибки. План передаёт минимальный запас уровней, rotation keys и требование
+conjugation key; `preflightCoeffToSlot` отклоняет несовместимый RaisedCipher до
 запуска вычисления.
 
-### `CoeffToSlotFftPlan`
+### `CoeffToSlot`
 
-`CoeffToSlotFftPlan` — первый encrypted-кандидат CoeffToSlot для размеров 4, 8
-и 16. План включает bit-reversal и все butterfly-слои, поэтому его стоимость
-ротаций и уровней измеряется полностью, без бесплатных перестановок. Пока нет
-ModUp, encrypted-тест использует synthetic slot fixture; это проверка исполнения
-линейного FFT-плана, а не подтверждение полного bootstrap CoeffToSlot.
-
-### `CoeffToSlotBsgsPlan`
-
-`CoeffToSlotBsgsPlan` — второй encrypted-кандидат для той же DFT-матрицы.
-Он переиспользует baby rotations внутри giant-групп и расходует один уровень;
-результаты сравниваются с FFT только на одинаковом synthetic fixture. Пока ModUp
-не реализован, это не подтверждение полного bootstrap CoeffToSlot.
-
-Условия объективного сравнения обоих кандидатов зафиксированы в
-[`coeff_to_slot_comparison_plan.md`](coeff_to_slot_comparison_plan.md).
-Воспроизводимая матрица запусков и её результаты — в
-[`coeff_to_slot_matrix.md`](coeff_to_slot_matrix.md).
+`CoeffToSlot` принимает только `RaisedCipher` и вычисляет две половины
+coefficient-side plaintext через canonical inverse embedding `U₀ᵀ/N`,
+BSGS-диагонали, rotations и conjugated sums. Результат содержит
+`slotCipherFirst` и `slotCipherSecond`. Независимый oracle расшифровывает
+RaisedCipher, выполняет inverse NTT и centered CRT по поднятой базе Q, после
+чего отдельно сравнивает обе половины. CRT по исходной базе q используется
+только для проверки ModRaise residues и будущего результата EvalMod.
 
 ### `HomomorphicLinearTransform`
 
 `HomomorphicLinearTransform` исполняет проверяемую сумму plaintext-диагоналей
-и rotations с одним контролируемым rescale. Это вычислительное ядро будущих FFT и BSGS,
-но само по себе не является готовым CoeffToSlot.
+и rotations с одним контролируемым rescale. Это внутреннее вычислительное ядро,
+но само по себе не является CoeffToSlot.
 
 ### `abft`
 

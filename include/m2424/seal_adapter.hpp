@@ -8,6 +8,8 @@
 
 namespace m2424 {
 
+class CoeffToSlot;
+
 /// Параметры CKKS-контекста, используемые при создании SealAdapter.
 struct CkksProfile {
     /// Степень полиномиального модуля; должна быть степенью двойки.
@@ -63,6 +65,23 @@ private:
     friend class SealAdapter;
 };
 
+/// Ciphertext, успешно прошедший centered RNS ModRaise до верхнего уровня chain.
+class RaisedCipher {
+public:
+    RaisedCipher(RaisedCipher&&) noexcept;
+    RaisedCipher& operator=(RaisedCipher&&) noexcept;
+    RaisedCipher(const RaisedCipher&) = delete;
+    RaisedCipher& operator=(const RaisedCipher&) = delete;
+
+private:
+    explicit RaisedCipher(Cipher&& cipher, std::size_t sourceCoeffModulusSize);
+    Cipher cipher_;
+    std::size_t sourceCoeffModulusSize_{};
+
+    friend class SealAdapter;
+    friend class ::m2424::CoeffToSlot;
+};
+
 class SealAdapter {
 public:
     /**
@@ -102,6 +121,10 @@ public:
     Cipher encrypt(const Plain&);
     /// Расшифровывает ciphertext secret key; ключ должен быть сгенерирован или загружен заранее.
     Plain decrypt(const Cipher&);
+    /// Raw coefficients m + qI: inverse NTT и centered CRT по поднятой базе Q.
+    std::vector<double> decryptRaisedCoefficientsAtRaisedModulus(const RaisedCipher&);
+    /// Raw coefficients m mod q: inverse NTT и centered CRT по исходной базе q.
+    std::vector<double> decryptRaisedCoefficientsAtSourceModulus(const RaisedCipher&);
     /// Декодирует вещественные CKKS-слоты plaintext.
     std::vector<double> decode(const Plain&);
     /// Декодирует комплексные CKKS-слоты plaintext.
@@ -125,9 +148,14 @@ public:
     Cipher rescaleToNext(const Cipher&);
     /// Снижает ciphertext до уровня target; повышение уровня невозможно.
     Cipher modSwitchTo(const Cipher&, const Cipher&);
+    /// Поднимает ciphertext с нижнего уровня текущей modulus chain на верхний уровень через centered RNS lift.
+    /// Операция сохраняет residues исходной базы и не использует secret key.
+    RaisedCipher modRaiseToTop(const Cipher&);
     /// Выполняет ротацию CKKS-слотов с ранее сгенерированным Galois key.
     /// @param steps Число позиций ротации; для него должен существовать Galois key.
     Cipher rotate(const Cipher&, int steps);
+    /// Применяет CKKS automorphism комплексного сопряжения; требуется Galois key шага 0.
+    Cipher conjugate(const Cipher&);
 
     /// Возвращает метаданные ciphertext и размеры сериализованных ключей/данных.
     std::size_t serializedSize(const Cipher&) const;
@@ -135,6 +163,8 @@ public:
     std::size_t serializedSize(const Plain&) const;
     /// Возвращает уровень, scale, размер и доступный modulus chain ciphertext.
     CipherInfo info(const Cipher&) const;
+    /// Возвращает метаданные ciphertext после ModRaise.
+    CipherInfo info(const RaisedCipher&) const;
     /// Возвращает scale ciphertext.
     double scale(const Cipher&) const;
     /// Возвращает суммарный логарифм modulus chain ciphertext по основанию два.
@@ -155,6 +185,8 @@ public:
     bool hasRelinKeys() const noexcept;
     /// Проверяет наличие Galois keys для всех указанных шагов ротации.
     bool hasRotationKeys(const std::vector<int>& rotationSteps) const;
+    /// Проверяет наличие Galois key для automorphism комплексного сопряжения.
+    bool hasConjugationKey() const;
 
     /// Сериализует public key для передачи вычислительному контексту.
     SerializedBuffer savePublicKey() const;
@@ -186,6 +218,8 @@ public:
     SealAdapter& operator=(SealAdapter&&) noexcept;
 
 private:
+    std::vector<double> decryptRaisedCoefficients(const RaisedCipher&, std::size_t modulusCount);
+
     struct Impl;
     std::unique_ptr<Impl> pimpl_;
 };

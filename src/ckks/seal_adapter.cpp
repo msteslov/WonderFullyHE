@@ -7,6 +7,7 @@
 #include <seal/util/uintarith.h>
 #include <seal/util/uintarithmod.h>
 #include <seal/util/uintarithsmallmod.h>
+#include <seal/util/uintcore.h>
 #include <algorithm>
 #include <cmath>
 #include <complex>
@@ -18,6 +19,56 @@
 #include <vector>
 
 namespace m2424 {
+namespace {
+
+std::size_t significantBitCount(const std::uint64_t* limbs, std::size_t limbCount) {
+    while (limbCount > 0 && limbs[limbCount - 1] == 0) {
+        --limbCount;
+    }
+    if (limbCount == 0) {
+        return 0;
+    }
+    const auto high = limbs[limbCount - 1];
+    return (limbCount - 1) * 64
+        + static_cast<std::size_t>(64 - __builtin_clzll(high));
+}
+
+bool bitAt(const std::uint64_t* limbs, std::size_t bit) {
+    return ((limbs[bit / 64] >> (bit % 64)) & 1U) != 0;
+}
+
+double roundedUnsignedIntegerToDouble(const std::uint64_t* limbs, std::size_t limbCount) {
+    constexpr std::size_t kDoublePrecisionBits = 53;
+    const std::size_t bitCount = significantBitCount(limbs, limbCount);
+    if (bitCount == 0) {
+        return 0.0;
+    }
+    const std::size_t retainedBits = std::min(bitCount, kDoublePrecisionBits);
+    const std::size_t discardedBits = bitCount - retainedBits;
+    std::uint64_t significand = 0;
+    for (std::size_t offset = 0; offset < retainedBits; ++offset) {
+        significand = (significand << 1)
+            | static_cast<std::uint64_t>(bitAt(limbs, bitCount - 1 - offset));
+    }
+    if (discardedBits > 0) {
+        const bool roundBit = bitAt(limbs, discardedBits - 1);
+        bool sticky = false;
+        for (std::size_t bit = 0; bit + 1 < discardedBits && !sticky; ++bit) {
+            sticky = bitAt(limbs, bit);
+        }
+        if (roundBit && (sticky || (significand & 1U) != 0)) {
+            ++significand;
+            if (significand == (std::uint64_t{1} << kDoublePrecisionBits)) {
+                significand >>= 1;
+                return std::ldexp(static_cast<double>(significand),
+                                  static_cast<int>(discardedBits + 1));
+            }
+        }
+    }
+    return std::ldexp(static_cast<double>(significand), static_cast<int>(discardedBits));
+}
+
+} // namespace
 
 // ---- Plain ----
 struct Plain::Impl {
@@ -52,6 +103,11 @@ Cipher& Cipher::operator=(const Cipher& other) {
 }
 Cipher::Cipher(Cipher&&) noexcept = default;
 Cipher& Cipher::operator=(Cipher&&) noexcept = default;
+
+RaisedCipher::RaisedCipher(Cipher&& cipher, std::size_t sourceCoeffModulusSize)
+    : cipher_(std::move(cipher)), sourceCoeffModulusSize_(sourceCoeffModulusSize) {}
+RaisedCipher::RaisedCipher(RaisedCipher&&) noexcept = default;
+RaisedCipher& RaisedCipher::operator=(RaisedCipher&&) noexcept = default;
 
 // ---- SealAdapter ----
 struct SealAdapter::Impl {
@@ -316,6 +372,75 @@ Plain SealAdapter::decrypt(const Cipher& cipher) {
     return out;
 }
 
+std::vector<double> SealAdapter::decryptRaisedCoefficientsAtRaisedModulus(const RaisedCipher& cipher) {
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+    const auto contextData = pimpl_->context->get_context_data(cipher.cipher_.pimpl_->ct.parms_id());
+    if (!contextData) throw std::runtime_error("RaisedCipher parameters are not valid for this context");
+    return decryptRaisedCoefficients(cipher, contextData->parms().coeff_modulus().size());
+}
+
+std::vector<double> SealAdapter::decryptRaisedCoefficientsAtSourceModulus(const RaisedCipher& cipher) {
+    return decryptRaisedCoefficients(cipher, cipher.sourceCoeffModulusSize_);
+}
+
+std::vector<double> SealAdapter::decryptRaisedCoefficients(
+    const RaisedCipher& cipher,
+    std::size_t reconstructionModulusCount) {
+    if (!pimpl_->has_secret || !pimpl_->decryptor) throw std::runtime_error("secret key not loaded");
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+
+    seal::Plaintext plaintext;
+    pimpl_->decryptor->decrypt(cipher.cipher_.pimpl_->ct, plaintext);
+    const auto contextData = pimpl_->context->get_context_data(plaintext.parms_id());
+    if (!contextData || !plaintext.is_ntt_form()) {
+        throw std::runtime_error("raised CKKS plaintext must be in NTT form");
+    }
+    const auto& targetModuli = contextData->parms().coeff_modulus();
+    const std::size_t sourceSize = reconstructionModulusCount;
+    const std::size_t degree = contextData->parms().poly_modulus_degree();
+    if (sourceSize == 0 || sourceSize > targetModuli.size()) {
+        throw std::runtime_error("RaisedCipher has invalid reconstruction RNS base");
+    }
+
+    std::vector<std::uint64_t> coefficientRns(plaintext.data(),
+                                               plaintext.data() + degree * targetModuli.size());
+    seal::util::inverse_ntt_negacyclic_harvey(
+        seal::util::RNSIter(coefficientRns.data(), degree),
+        targetModuli.size(),
+        contextData->small_ntt_tables());
+    coefficientRns.resize(degree * sourceSize);
+
+    std::vector<seal::Modulus> sourceModuli(targetModuli.begin(),
+                                            targetModuli.begin() + static_cast<std::ptrdiff_t>(sourceSize));
+    const auto pool = seal::MemoryManager::GetPool();
+    seal::util::RNSBase sourceBase(sourceModuli, pool);
+    sourceBase.compose_array(coefficientRns.data(), degree, pool);
+
+    std::vector<std::uint64_t> halfModulus(sourceSize);
+    seal::util::half_round_up_uint(sourceBase.base_prod(), sourceSize, halfModulus.data());
+    std::vector<double> result(degree);
+    std::vector<std::uint64_t> negativeMagnitude(sourceSize);
+    for (std::size_t coefficient = 0; coefficient < degree; ++coefficient) {
+        const auto* value = coefficientRns.data() + coefficient * sourceSize;
+        const bool negative = seal::util::is_greater_than_or_equal_uint(
+            value, halfModulus.data(), sourceSize);
+        const auto* magnitudeWords = value;
+        if (negative) {
+            seal::util::sub_uint(
+                sourceBase.base_prod(), value, sourceSize, negativeMagnitude.data());
+            magnitudeWords = negativeMagnitude.data();
+        }
+        const double magnitude = roundedUnsignedIntegerToDouble(magnitudeWords, sourceSize);
+        const double rounded = (negative ? -magnitude : magnitude)
+            / cipher.cipher_.pimpl_->ct.scale();
+        if (!std::isfinite(rounded)) {
+            throw std::overflow_error("raw raised coefficient does not fit finite double");
+        }
+        result[coefficient] = rounded;
+    }
+    return result;
+}
+
 std::vector<double> SealAdapter::decode(const Plain& plain) {
     if (!pimpl_->encoder) throw std::runtime_error("CKKSEncoder not initialized");
     std::vector<double> result;
@@ -395,11 +520,95 @@ Cipher SealAdapter::modSwitchTo(const Cipher& cipher, const Cipher& target) {
     return out;
 }
 
+RaisedCipher SealAdapter::modRaiseToTop(const Cipher& cipher) {
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+    const auto sourceData = pimpl_->context->get_context_data(cipher.pimpl_->ct.parms_id());
+    const auto targetData = pimpl_->context->first_context_data();
+    if (!sourceData || !targetData) throw std::runtime_error("ciphertext parameters are not valid for this context");
+    const auto& sourceModuli = sourceData->parms().coeff_modulus();
+    const auto& targetModuli = targetData->parms().coeff_modulus();
+    if (sourceModuli.size() >= targetModuli.size()) {
+        throw std::invalid_argument("modRaiseToTop requires a ciphertext below the top level");
+    }
+    const std::size_t degree = sourceData->parms().poly_modulus_degree();
+    for (std::size_t index = 0; index < sourceModuli.size(); ++index) {
+        if (sourceModuli[index] != targetModuli[index]) {
+            throw std::invalid_argument("source modulus is not a prefix of the top modulus");
+        }
+    }
+
+    const auto pool = seal::MemoryManager::GetPool();
+    seal::util::RNSBase sourceBase(sourceModuli, pool);
+    std::vector<seal::Modulus> extraModuli(targetModuli.begin() + static_cast<std::ptrdiff_t>(sourceModuli.size()),
+                                           targetModuli.end());
+    std::vector<std::uint64_t> halfModulus(sourceBase.size());
+    seal::util::half_round_up_uint(sourceBase.base_prod(), sourceBase.size(), halfModulus.data());
+
+    Cipher result;
+    result.pimpl_->ct.resize(*pimpl_->context, targetData->parms_id(), cipher.pimpl_->ct.size());
+    result.pimpl_->ct.is_ntt_form() = true;
+    result.pimpl_->ct.scale() = cipher.pimpl_->ct.scale();
+    for (std::size_t component = 0; component < cipher.pimpl_->ct.size(); ++component) {
+        std::vector<std::uint64_t> sourceCoefficients(
+            cipher.pimpl_->ct.data(component),
+            cipher.pimpl_->ct.data(component) + degree * sourceModuli.size());
+        seal::util::inverse_ntt_negacyclic_harvey(
+            seal::util::RNSIter(sourceCoefficients.data(), degree), sourceModuli.size(), sourceData->small_ntt_tables());
+        std::vector<std::uint64_t> centered = sourceCoefficients;
+        sourceBase.compose_array(centered.data(), degree, pool);
+        std::vector<std::uint64_t> extraCoefficients(degree * extraModuli.size());
+        for (std::size_t extraIndex = 0; extraIndex < extraModuli.size(); ++extraIndex) {
+            const auto qModuloExtra = seal::util::modulo_uint(sourceBase.base_prod(), sourceBase.size(), extraModuli[extraIndex]);
+            for (std::size_t coefficient = 0; coefficient < degree; ++coefficient) {
+                // centered хранит точный CRT-представитель x из [0, q). Новая
+                // residue строится непосредственно из него, без приближённого
+                // fast base conversion.
+                auto value = seal::util::modulo_uint(
+                    centered.data() + coefficient * sourceBase.size(), sourceBase.size(), extraModuli[extraIndex]);
+                if (seal::util::is_greater_than_or_equal_uint(centered.data() + coefficient * sourceBase.size(),
+                                                               halfModulus.data(), sourceBase.size())) {
+                    value = seal::util::sub_uint_mod(value, qModuloExtra, extraModuli[extraIndex]);
+                }
+                extraCoefficients[extraIndex * degree + coefficient] = value;
+            }
+        }
+        auto* output = result.pimpl_->ct.data(component);
+        std::copy(sourceCoefficients.begin(), sourceCoefficients.end(), output);
+        std::copy(extraCoefficients.begin(), extraCoefficients.end(), output + sourceCoefficients.size());
+        seal::util::ntt_negacyclic_harvey(
+            seal::util::RNSIter(output, degree), targetModuli.size(), targetData->small_ntt_tables());
+#ifdef M2424_ENABLE_MOD_RAISE_CHECKS
+        // В тестовой сборке проверяем и сохранённую исходную базу, и каждую
+        // новую residue centered lift. Иначе ошибка в знаке новых limbs могла
+        // бы пройти проверку prefix-инварианта.
+        std::vector<std::uint64_t> verification(output, output + degree * targetModuli.size());
+        seal::util::inverse_ntt_negacyclic_harvey(
+            seal::util::RNSIter(verification.data(), degree), targetModuli.size(), targetData->small_ntt_tables());
+        if (!std::equal(sourceCoefficients.begin(), sourceCoefficients.end(), verification.begin())) {
+            throw std::logic_error("modRaise residue invariant failed");
+        }
+        if (!std::equal(extraCoefficients.begin(), extraCoefficients.end(),
+                        verification.begin() + static_cast<std::ptrdiff_t>(sourceCoefficients.size()))) {
+            throw std::logic_error("modRaise centered extension invariant failed");
+        }
+#endif
+    }
+    return RaisedCipher(std::move(result), sourceModuli.size());
+}
+
 Cipher SealAdapter::rotate(const Cipher& c, int steps) {
     if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
     if (!pimpl_->has_galois) throw std::runtime_error("galois keys not generated");
     Cipher out;
     pimpl_->evaluator->rotate_vector(c.pimpl_->ct, steps, pimpl_->gk, out.pimpl_->ct);
+    return out;
+}
+
+Cipher SealAdapter::conjugate(const Cipher& cipher) {
+    if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
+    if (!hasConjugationKey()) throw std::runtime_error("conjugation key not generated");
+    Cipher out;
+    pimpl_->evaluator->complex_conjugate(cipher.pimpl_->ct, pimpl_->gk, out.pimpl_->ct);
     return out;
 }
 
@@ -426,6 +635,10 @@ CipherInfo SealAdapter::info(const Cipher& cipher) const {
         cipher.pimpl_->ct.size(),
         coeffModulusLog2
     };
+}
+
+CipherInfo SealAdapter::info(const RaisedCipher& cipher) const {
+    return info(cipher.cipher_);
 }
 
 double SealAdapter::scale(const Cipher& cipher) const {
@@ -484,6 +697,15 @@ bool SealAdapter::hasRotationKeys(const std::vector<int>& rotationSteps) const {
         }
     }
     return true;
+}
+
+bool SealAdapter::hasConjugationKey() const {
+    if (!pimpl_ || !pimpl_->context || !pimpl_->has_galois) {
+        return false;
+    }
+    const auto keyContext = pimpl_->context->key_context_data();
+    return keyContext && keyContext->galois_tool()
+        && pimpl_->gk.has_key(keyContext->galois_tool()->get_elt_from_step(0));
 }
 
 SerializedBuffer SealAdapter::savePublicKey() const {

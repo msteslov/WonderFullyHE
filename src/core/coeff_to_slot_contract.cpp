@@ -37,7 +37,7 @@ bool isCoeffToSlotPlanRequirementsValid(const CoeffToSlotPlanRequirements& requi
 }
 
 CoeffToSlotPreflight preflightCoeffToSlot(const SealAdapter& adapter,
-                                          const Cipher& input,
+                                          const RaisedCipher& input,
                                           const CoeffToSlotContract& contract,
                                           const CoeffToSlotPlanRequirements& requirements) {
     if (!isFinitePositive(contract.inputScaleLog2) || !isFinitePositive(contract.outputScaleLog2)
@@ -55,7 +55,9 @@ CoeffToSlotPreflight preflightCoeffToSlot(const SealAdapter& adapter,
         <= contract.inputScaleToleranceLog2;
     const bool levelsAvailable = info.chainIndex >= requirements.minRemainingLevels;
     const bool rotationKeysAvailable = adapter.hasRotationKeys(requirements.rotationSteps);
-    const bool ready = physicalSlotsAvailable && inputScaleMatches && levelsAvailable && rotationKeysAvailable;
+    const bool conjugationKeyAvailable = !requirements.requiresConjugation || adapter.hasConjugationKey();
+    const bool ready = physicalSlotsAvailable && inputScaleMatches && levelsAvailable
+        && rotationKeysAvailable && conjugationKeyAvailable;
 
     std::string blocker;
     if (!physicalSlotsAvailable) {
@@ -66,8 +68,11 @@ CoeffToSlotPreflight preflightCoeffToSlot(const SealAdapter& adapter,
         blocker = "insufficient_remaining_levels";
     } else if (!rotationKeysAvailable) {
         blocker = "missing_rotation_keys";
+    } else if (!conjugationKeyAvailable) {
+        blocker = "missing_conjugation_key";
     }
-    return {physicalSlotsAvailable, inputScaleMatches, levelsAvailable, rotationKeysAvailable, ready, blocker};
+    return {physicalSlotsAvailable, inputScaleMatches, levelsAvailable, rotationKeysAvailable,
+            conjugationKeyAvailable, ready, blocker};
 }
 
 } // namespace m2424

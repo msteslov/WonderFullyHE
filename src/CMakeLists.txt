@@ -9,8 +9,7 @@ add_library(m2424
     ckks/seal_adapter.cpp
 
     math/canonical_embedding_reference.cpp
-    math/coeff_to_slot_bsgs_plan.cpp
-    math/coeff_to_slot_fft_plan.cpp
+    math/coeff_to_slot.cpp
     math/homomorphic_linear_transform.cpp
 
     planning/profile_report.cpp
@@ -25,6 +24,7 @@ target_include_directories(m2424
 )
 
 target_compile_features(m2424 PUBLIC cxx_std_17)
+target_compile_definitions(m2424 PRIVATE $<$<BOOL:${BUILD_TESTING}>:M2424_ENABLE_MOD_RAISE_CHECKS>)
 
 target_link_libraries(m2424
     PUBLIC

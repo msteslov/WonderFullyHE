@@ -30,6 +30,7 @@ struct CoeffToSlotContract {
 struct CoeffToSlotPlanRequirements {
     std::size_t minRemainingLevels{};
     std::vector<int> rotationSteps;
+    bool requiresConjugation{};
 };
 
 /// Результат проверки совместимости ciphertext с контрактом и выбранным планом CoeffToSlot.
@@ -38,6 +39,7 @@ struct CoeffToSlotPreflight {
     bool inputScaleMatches{};
     bool levelsAvailable{};
     bool rotationKeysAvailable{};
+    bool conjugationKeyAvailable{};
     bool ready{};
     std::string blocker;
 };
@@ -50,7 +52,7 @@ bool isCoeffToSlotPlanRequirementsValid(const CoeffToSlotPlanRequirements& requi
 
 /// Проверяет, что ciphertext можно передать выбранному CoeffToSlot-плану без неявных преобразований scale.
 CoeffToSlotPreflight preflightCoeffToSlot(const SealAdapter& adapter,
-                                          const Cipher& input,
+                                          const RaisedCipher& input,
                                           const CoeffToSlotContract& contract,
                                           const CoeffToSlotPlanRequirements& requirements);
 

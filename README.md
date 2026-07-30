@@ -58,31 +58,9 @@ bootstrap-алгоритмы:
 
 Последняя базовая калибровка: `docs/bootstrap_candidate_baseline.md`.
 
-Для CoeffToSlot сейчас реализованы FFT- и BSGS-кандидаты. До их benchmark
-сравнения ни один не считается оптимальным; критерии и подготовительные работы
-зафиксированы в `docs/coeff_to_slot_comparison_plan.md`.
-
-Единый benchmark подготовленной реализации запускается так:
-
-```bash
-./build/bin/bench_coeff_to_slot
-./build/bin/bench_coeff_to_slot --profile precision_16384_s59 --size 64
-```
-
-Он сравнивает FFT с BSGS при нескольких `babyStep`, но выводит данные для
-исследования, а не объявляет автоматического победителя. Последний baseline:
-`docs/coeff_to_slot_baseline.md`.
-
-Полная матрица и результаты больших размеров: `docs/coeff_to_slot_matrix.md`.
-
-Единый benchmark подготовленной реализации запускается так:
-
-```bash
-./build/bin/bench_coeff_to_slot
-```
-
-Он сравнивает FFT с BSGS при нескольких `babyStep`, но выводит данные для
-исследования, а не объявляет автоматического победителя.
+Synthetic DFT-планы над обычными CKKS-слотами не входят в API CoeffToSlot.
+Bootstrap `CoeffToSlot` принимает только результат `modRaiseToTop` и возвращает
+два ciphertext с первой и второй половинами coefficient-side plaintext.
 
 ## Пример API
 
@@ -103,9 +81,6 @@ auto decoded = adapter.decode(adapter.decrypt(squared));
 
 - `docs/architecture.md`
 - `docs/bootstrap_candidate_baseline.md`
-- `docs/coeff_to_slot_comparison_plan.md`
-- `docs/coeff_to_slot_baseline.md`
-- `docs/coeff_to_slot_matrix.md`
 
 Публичные классы и методы документированы в заголовочных файлах через Doxygen. После установки Doxygen HTML-документацию можно сгенерировать так:
 

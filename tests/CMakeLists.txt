@@ -12,12 +12,14 @@ set(M2424_TESTS
     test_bootstrap_candidates
     test_canonical_embedding_reference
     test_coeff_to_slot_contract
-    test_coeff_to_slot_bsgs_plan
-    test_coeff_to_slot_fft_plan
+    test_coeff_to_slot
     test_ckks_primitives
     test_homomorphic_linear_transform
+    test_mod_raise
 )
 
 foreach(target IN LISTS M2424_TESTS)
     m2424_add_test(${target})
 endforeach()
+
+set_tests_properties(test_coeff_to_slot PROPERTIES TIMEOUT 600)
