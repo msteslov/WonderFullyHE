@@ -32,7 +32,7 @@ int main() {
     m2424::CoeffToSlot transform(degree);
     const auto requirements = transform.requirements();
     const auto metrics = transform.plan().metrics();
-    const auto ranked = m2424::CoeffToSlotPlan::rankFactorizations(degree, 4, 5);
+    const auto ranked = m2424::CoeffToSlotPlan::estimateFactorizations(degree, 4, 5);
     const auto stageRotations = transform.plan().stageRotationSteps();
     const auto& radices = transform.plan().factorization().radices;
     auto keySteps = requirements.rotationSteps;
@@ -68,6 +68,23 @@ int main() {
     auto prepared = transform.prepare(adapter, raised, contract);
     const bool preparedBeforeApply =
         transform.plan().isPreparedFor(prepared, adapter, raised, contract);
+    m2424::CoeffToSlot wrongDegreeTransform(degree / 2);
+    bool rejectsWrongPlanDegreePrepare = false;
+    try {
+        (void)wrongDegreeTransform.prepare(adapter, raised, contract);
+    } catch (const std::invalid_argument&) {
+        rejectsWrongPlanDegreePrepare = true;
+    }
+    const bool rejectsWrongPlanDegreePreparedState =
+        !wrongDegreeTransform.plan().isPreparedFor(prepared, adapter, raised, contract);
+    bool rejectsWrongPlanDegreeApply = false;
+    auto wrongDegreeRaised = adapter.modRaiseToTop(lowered);
+    try {
+        (void)wrongDegreeTransform.apply(
+            adapter, std::move(wrongDegreeRaised), contract, prepared);
+    } catch (const std::invalid_argument&) {
+        rejectsWrongPlanDegreeApply = true;
+    }
     auto wrongContract = contract;
     wrongContract.inputScaleLog2 = 55.0;
     bool rejectsWrongContract = false;
@@ -92,6 +109,9 @@ int main() {
     const bool ok = preflight.ready
         && requirements.requiresConjugation
         && rejectsWrongContract
+        && rejectsWrongPlanDegreePrepare
+        && rejectsWrongPlanDegreePreparedState
+        && rejectsWrongPlanDegreeApply
         && preparedBeforeApply
         && transform.plan().butterflyStageCount() == 13
         && !ranked.empty()

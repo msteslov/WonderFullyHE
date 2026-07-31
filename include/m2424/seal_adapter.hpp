@@ -126,6 +126,8 @@ public:
     Plain encodeComplexFor(const std::vector<std::complex<double>>&, const Cipher&);
     /// Кодирует данные на уровне целевого ciphertext с явно заданным и проверенным scale.
     Plain encodeComplexAtScaleFor(const std::vector<std::complex<double>>&, double scale, const Cipher&);
+    /// Кодирует NTT plaintext в полной key-базе QP для проверенных backend-операций.
+    Plain encodeComplexAtKeyScale(const std::vector<std::complex<double>>&, double scale);
     /// Кодирует скаляр на уровне и со scale целевого ciphertext.
     Plain encodeScalarFor(double, const Cipher&);
     /// Кодирует скаляр на уровне target с явно заданным scale.
@@ -242,8 +244,6 @@ private:
     std::vector<double> decryptRaisedCoefficients(const RaisedCipher&, std::size_t modulusCount);
     std::array<std::uint64_t, 4> contextFingerprint() const;
     std::array<std::uint64_t, 4> parmsFingerprint(const RaisedCipher&) const;
-    Plain encodeComplexAtKeyScale(
-        const std::vector<std::complex<double>>&, double scale);
     double rescalePlaintextScaleAtChainIndex(std::size_t chainIndex) const;
 
     struct Impl;

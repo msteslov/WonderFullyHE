@@ -91,9 +91,11 @@ RaisedCipher, выполняет inverse NTT и centered CRT по поднято
 разреженные стадии перестановки bit-reversal и группирует соседние факторы
 согласно `factorization().radices`. План заранее хранит только диагонали этих
 разреженных факторов, вычисляет точный набор rotations и реальную глубину.
-Для стандартного `N=16384`, depth 4 cost model выбирает измеренный план
-`{6,5,5,3}`: 55 evaluation keys и 134 automorphisms вместо 69 и 152 у
-balanced `{5,5,5,4}`.
+Для стандартного `N=16384`, depth 4 явно зарегистрирован измеренный preset
+`knownTunedFactorization() = {6,5,5,3}`: 55 evaluation keys и 134
+automorphisms вместо 69 и 152 у balanced `{5,5,5,4}`. Это не результат
+скрытого поиска в конструкторе. `estimateFactorizations()` использует более
+дешёвую support-based модель и не обещает порядок фактического benchmark.
 Исходные radix-2 факторы освобождаются сразу после merge. Внутри каждого
 сгруппированного фактора rotations исполняются по BSGS. Baby-step rotations
 одного ciphertext используют double-hoisting inner loop: DCRT-разложение
@@ -114,8 +116,8 @@ SEAL-контекста, точному входному `parms_id`, начал�
 
 `bench_coeff_to_slot` отдельно измеряет создание контекста, построение плана,
 генерацию ключей, ModRaise, oracle, `prepare`, первый и повторный `apply`, а
-также публикует число операций, объём prepared plaintext и лучшие варианты
-radix-разбиения по cost model.
+также публикует число операций, объём prepared plaintext и оценочные варианты
+radix-разбиения; измеренный preset хранится отдельно от этих оценок.
 
 ### `abft`
 

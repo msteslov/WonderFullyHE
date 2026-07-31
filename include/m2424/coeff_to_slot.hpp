@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace m2424 {
@@ -103,7 +104,12 @@ public:
     /// Независимое plaintext-исполнение факторизации для математических тестов.
     std::pair<ComplexVector, ComplexVector> applyPlain(const ComplexVector& slots) const;
 
-    static std::vector<CoeffToSlotFactorizationEstimate> rankFactorizations(
+    /// Возвращает измеренный preset, если он явно подтверждён для пары N/depth.
+    static std::optional<CoeffToSlotFactorization> knownTunedFactorization(
+        std::size_t polyModulusDegree, std::size_t depth);
+
+    /// Оценивает варианты по support-based модели; порядок не является runtime benchmark.
+    static std::vector<CoeffToSlotFactorizationEstimate> estimateFactorizations(
         std::size_t polyModulusDegree,
         std::size_t depth,
         std::size_t limit = 10);

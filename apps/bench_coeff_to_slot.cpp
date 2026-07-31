@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
     m2424::SealAdapter adapter;
     double contextMs = elapsedMs([&] { adapter = m2424::SealAdapter::create(profile); });
 
-    const auto ranked = m2424::CoeffToSlotPlan::rankFactorizations(degree, 4, 5);
+    const auto ranked = m2424::CoeffToSlotPlan::estimateFactorizations(degree, 4, 5);
     const int candidateIndex = argc > 1 ? std::atoi(argv[1]) : -1;
     if (candidateIndex >= static_cast<int>(ranked.size())) return 2;
     std::optional<m2424::CoeffToSlot> transform;

@@ -312,9 +312,9 @@ struct CoeffToSlotPlan::Impl {
         }
         rawStageCount = raw.size();
         if (requestedFactorization.radices.empty()) {
-            factorization.radices = raw.size() == 19 && targetDepth == 4
-                ? std::vector<std::size_t>{6, 5, 5, 3}
-                : balancedRadices(raw.size(), targetDepth);
+            const auto tuned = CoeffToSlotPlan::knownTunedFactorization(degree, targetDepth);
+            factorization = tuned.value_or(
+                CoeffToSlotFactorization{balancedRadices(raw.size(), targetDepth)});
         } else {
             const bool valid = std::all_of(requestedFactorization.radices.begin(),
                                            requestedFactorization.radices.end(),
@@ -366,6 +366,8 @@ struct CoeffToSlotPlan::Impl {
 };
 
 struct PreparedCoeffToSlotPlan::Impl {
+    std::size_t planDegree{};
+    CoeffToSlotFactorization factorization;
     std::array<std::uint64_t, 4> contextFingerprint{};
     std::array<std::uint64_t, 4> parmsFingerprint{};
     std::size_t startChainIndex{};
@@ -485,7 +487,15 @@ CoeffToSlotPlanMetrics CoeffToSlotPlan::metrics() const {
     return result;
 }
 
-std::vector<CoeffToSlotFactorizationEstimate> CoeffToSlotPlan::rankFactorizations(
+std::optional<CoeffToSlotFactorization> CoeffToSlotPlan::knownTunedFactorization(
+    std::size_t polyModulusDegree, std::size_t depth) {
+    if (polyModulusDegree == 16384 && depth == 4) {
+        return CoeffToSlotFactorization{{6, 5, 5, 3}};
+    }
+    return std::nullopt;
+}
+
+std::vector<CoeffToSlotFactorizationEstimate> CoeffToSlotPlan::estimateFactorizations(
     std::size_t polyModulusDegree,
     std::size_t requestedDepth,
     std::size_t limit) {
@@ -573,6 +583,9 @@ PreparedCoeffToSlotPlan CoeffToSlotPlan::prepare(
     SealAdapter& adapter,
     const RaisedCipher& input,
     const CoeffToSlotContract& contract) const {
+    if (pimpl_->degree != contract.polyModulusDegree) {
+        throw std::invalid_argument("CoeffToSlot plan degree does not match contract");
+    }
     const auto requirements = this->requirements();
     const auto preflight = preflightCoeffToSlot(adapter, input, contract, requirements);
     if (!preflight.ready) {
@@ -615,6 +628,8 @@ PreparedCoeffToSlotPlan CoeffToSlotPlan::prepare(
         pimpl_->secondFirstFactor, pimpl_->babySteps.front(), info.chainIndex);
 
     auto result = std::make_unique<PreparedCoeffToSlotPlan::Impl>();
+    result->planDegree = pimpl_->degree;
+    result->factorization = pimpl_->factorization;
     result->factors = std::move(preparedFactors);
     result->secondFirstFactor = std::move(preparedSecond);
     result->contextFingerprint = adapter.contextFingerprint();
@@ -630,11 +645,13 @@ bool CoeffToSlotPlan::isPreparedFor(const PreparedCoeffToSlotPlan& prepared,
                                     const SealAdapter& adapter,
                                     const RaisedCipher& input,
                                     const CoeffToSlotContract& contract) const {
-    if (!prepared.pimpl_) {
+    if (!prepared.pimpl_ || pimpl_->degree != contract.polyModulusDegree) {
         return false;
     }
     const auto& state = *prepared.pimpl_;
-    if (state.contextFingerprint != adapter.contextFingerprint()) {
+    if (state.planDegree != pimpl_->degree
+        || state.factorization.radices != pimpl_->factorization.radices
+        || state.contextFingerprint != adapter.contextFingerprint()) {
         return false;
     }
     const auto info = adapter.info(input);
@@ -670,6 +687,9 @@ CoeffToSlotResult CoeffToSlot::apply(SealAdapter& adapter,
                                      const CoeffToSlotContract& contract,
                                      const PreparedCoeffToSlotPlan& prepared) const {
     const auto& plan = *plan_.pimpl_;
+    if (plan.degree != contract.polyModulusDegree) {
+        throw std::invalid_argument("CoeffToSlot plan degree does not match contract");
+    }
     const auto preflight = preflightCoeffToSlot(adapter, input, contract, requirements());
     if (!preflight.ready) {
         throw std::invalid_argument("CoeffToSlot preflight failed: " + preflight.blocker);
