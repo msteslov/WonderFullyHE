@@ -14,6 +14,7 @@ set(M2424_STABLE_APPS
     bench_chain_accuracy
     bench_bootstrap_candidates
     bench_ckks
+    bench_coeff_to_slot
     bench_parallel_throughput
     demo_abft
     demo_basic

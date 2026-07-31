@@ -14,7 +14,6 @@ set(M2424_TESTS
     test_coeff_to_slot_contract
     test_coeff_to_slot
     test_ckks_primitives
-    test_homomorphic_linear_transform
     test_mod_raise
 )
 

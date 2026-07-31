@@ -26,7 +26,7 @@ struct CoeffToSlotContract {
     double maxAbsError{};
 };
 
-/// Требования конкретного FFT или BSGS-плана к ключам и доступным уровням ciphertext.
+/// Требования factorized canonical FFT plan к ключам и доступным уровням ciphertext.
 struct CoeffToSlotPlanRequirements {
     std::size_t minRemainingLevels{};
     std::vector<int> rotationSteps;

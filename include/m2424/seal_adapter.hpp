@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <array>
 #include <complex>
 #include <cstdint>
 #include <memory>
@@ -9,6 +10,7 @@
 namespace m2424 {
 
 class CoeffToSlot;
+class CoeffToSlotPlan;
 
 /// Параметры CKKS-контекста, используемые при создании SealAdapter.
 struct CkksProfile {
@@ -80,6 +82,7 @@ private:
 
     friend class SealAdapter;
     friend class ::m2424::CoeffToSlot;
+    friend class ::m2424::CoeffToSlotPlan;
 };
 
 class SealAdapter {
@@ -219,9 +222,15 @@ public:
 
 private:
     std::vector<double> decryptRaisedCoefficients(const RaisedCipher&, std::size_t modulusCount);
+    std::array<std::uint64_t, 4> contextFingerprint() const;
+    std::array<std::uint64_t, 4> parmsFingerprint(const RaisedCipher&) const;
+    Plain encodeComplexAtScaleAtChainIndex(
+        const std::vector<std::complex<double>>&, double scale, std::size_t chainIndex);
+    double rescalePlaintextScaleAtChainIndex(std::size_t chainIndex) const;
 
     struct Impl;
     std::unique_ptr<Impl> pimpl_;
+    friend class ::m2424::CoeffToSlotPlan;
 };
 
 } // namespace m2424

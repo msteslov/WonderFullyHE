@@ -12,9 +12,7 @@ WonderFullyHE определяет C++17 API для приближённых з�
         +-- Bootstrap candidates
         +-- Canonical embedding reference
         +-- CoeffToSlot contract
-        +-- CoeffToSlot FFT plan
-        +-- CoeffToSlot BSGS plan
-        +-- Homomorphic linear transform
+        +-- CoeffToSlotPlan
         +-- accuracy
         +-- abft
         +-- ProfileReport и SecurityReport
@@ -81,18 +79,34 @@ conjugation key; `preflightCoeffToSlot` отклоняет несовмести�
 ### `CoeffToSlot`
 
 `CoeffToSlot` принимает только `RaisedCipher` и вычисляет две половины
-coefficient-side plaintext через canonical inverse embedding `U₀ᵀ/N`,
-BSGS-диагонали, rotations и conjugated sums. Результат содержит
+coefficient-side plaintext через factorized canonical inverse embedding
+`U₀ᵀ/N`, rotations, plaintext multiplication и conjugated sums. Результат содержит
 `slotCipherFirst` и `slotCipherSecond`. Независимый oracle расшифровывает
 RaisedCipher, выполняет inverse NTT и centered CRT по поднятой базе Q, после
 чего отдельно сравнивает обе половины. CRT по исходной базе q используется
 только для проверки ModRaise residues и будущего результата EvalMod.
 
-### `HomomorphicLinearTransform`
+`CoeffToSlotPlan` является единственным рабочим планом этого преобразования.
+Он строит radix-2 special FFT в порядке корней Microsoft SEAL, добавляет
+разреженные стадии перестановки bit-reversal и группирует соседние факторы
+согласно `factorization().radices`. План заранее хранит только диагонали этих
+разреженных факторов, вычисляет точный набор rotations и реальную глубину.
+Исходные radix-2 факторы освобождаются сразу после merge. Внутри каждого
+сгруппированного фактора rotations исполняются по BSGS, при этом все
+plaintext multiplication по-прежнему суммируются до единственного rescale.
 
-`HomomorphicLinearTransform` исполняет проверяемую сумму plaintext-диагоналей
-и rotations с одним контролируемым rescale. Это внутреннее вычислительное ядро,
-но само по себе не является CoeffToSlot.
+Encoded plaintext для каждого уровня обязательно готовятся явным `prepare`
+после preflight и до рабочего `apply`. `prepare` возвращает отдельный
+неизменяемый `PreparedCoeffToSlotPlan`, привязанный к fingerprint
+SEAL-контекста, точному входному `parms_id`, начальному уровню, scale и
+контракту преобразования. `apply` повторяет preflight и отклоняет
+несовместимый prepared-план; скрытого encode или mutable cache в рабочем
+пути нет. Плотная матрица из 8192 диагоналей в runtime отсутствует.
+
+`bench_coeff_to_slot` отдельно измеряет создание контекста, построение плана,
+генерацию ключей, ModRaise, oracle, `prepare`, первый и повторный `apply`, а
+также публикует число операций, объём prepared plaintext и лучшие варианты
+radix-разбиения по cost model.
 
 ### `abft`
 
@@ -125,6 +139,7 @@ ABFT-слой реализует checksum-проверки для:
 
 - `src/core/` — базовые типы, профили, метрики точности и ABFT.
 - `src/ckks/` — адаптер Microsoft SEAL.
+- `src/math/` — canonical reference и factorized `CoeffToSlotPlan`.
 - `src/planning/` — отчёты по профилю и безопасности.
 
 ## Артефакты сборки

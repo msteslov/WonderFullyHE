@@ -10,7 +10,6 @@ add_library(m2424
 
     math/canonical_embedding_reference.cpp
     math/coeff_to_slot.cpp
-    math/homomorphic_linear_transform.cpp
 
     planning/profile_report.cpp
     planning/security_report.cpp

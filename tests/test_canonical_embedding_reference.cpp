@@ -1,4 +1,5 @@
 #include "m2424/canonical_embedding_reference.hpp"
+#include "m2424/coeff_to_slot.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -26,6 +27,18 @@ bool rejectsInvalidDegree() {
         return true;
     }
     return false;
+}
+
+double factorizedError(const std::vector<double>& coefficients, std::size_t depth) {
+    m2424::CoeffToSlotPlan plan(coefficients.size(), depth);
+    const auto transformed = plan.applyPlain(m2424::coeffToSlotReference(coefficients));
+    const std::size_t slots = coefficients.size() / 2;
+    double error = 0.0;
+    for (std::size_t index = 0; index < slots; ++index) {
+        error = std::max(error, std::abs(transformed.first[index] - coefficients[index]));
+        error = std::max(error, std::abs(transformed.second[index] - coefficients[index + slots]));
+    }
+    return error;
 }
 
 } // namespace
@@ -62,7 +75,28 @@ int main() {
     }
     ok = ok && maxError <= kReferenceTolerance && rejectsInvalidDegree();
 
-    std::printf("[test_canonical_embedding_reference] max_abs_error=%.3e %s\n",
-                maxError, ok ? "PASS" : "FAIL");
+    std::vector<double> basis(32);
+    basis[0] = 1.0;
+    const double basisError = factorizedError(basis, 3);
+    basis.assign(32, 0.0);
+    basis[31] = -1.0;
+    const double boundaryError = factorizedError(basis, 3);
+    std::vector<double> deterministic(32);
+    for (std::size_t index = 0; index < deterministic.size(); ++index) {
+        deterministic[index] =
+            static_cast<double>(static_cast<int>((index * 29) % 41) - 20) / 32.0;
+    }
+    double factorizedRandomError = 0.0;
+    for (std::size_t depth = 1; depth <= 5; ++depth) {
+        factorizedRandomError =
+            std::max(factorizedRandomError, factorizedError(deterministic, depth));
+    }
+    ok = ok && basisError <= kReferenceTolerance
+        && boundaryError <= kReferenceTolerance
+        && factorizedRandomError <= kReferenceTolerance;
+
+    std::printf("[test_canonical_embedding_reference] roundtrip=%.3e factorized=%.3e %s\n",
+                maxError, std::max({basisError, boundaryError, factorizedRandomError}),
+                ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

@@ -17,6 +17,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <limits>
 
 namespace m2424 {
 namespace {
@@ -28,9 +29,8 @@ std::size_t significantBitCount(const std::uint64_t* limbs, std::size_t limbCoun
     if (limbCount == 0) {
         return 0;
     }
-    const auto high = limbs[limbCount - 1];
     return (limbCount - 1) * 64
-        + static_cast<std::size_t>(64 - __builtin_clzll(high));
+        + static_cast<std::size_t>(64 - __builtin_clzll(limbs[limbCount - 1]));
 }
 
 bool bitAt(const std::uint64_t* limbs, std::size_t bit) {
@@ -38,34 +38,49 @@ bool bitAt(const std::uint64_t* limbs, std::size_t bit) {
 }
 
 double roundedUnsignedIntegerToDouble(const std::uint64_t* limbs, std::size_t limbCount) {
-    constexpr std::size_t kDoublePrecisionBits = 53;
+    constexpr std::size_t precision = 53;
     const std::size_t bitCount = significantBitCount(limbs, limbCount);
-    if (bitCount == 0) {
-        return 0.0;
-    }
-    const std::size_t retainedBits = std::min(bitCount, kDoublePrecisionBits);
-    const std::size_t discardedBits = bitCount - retainedBits;
+    if (bitCount == 0) return 0.0;
+    const std::size_t retained = std::min(bitCount, precision);
+    const std::size_t discarded = bitCount - retained;
     std::uint64_t significand = 0;
-    for (std::size_t offset = 0; offset < retainedBits; ++offset) {
+    for (std::size_t offset = 0; offset < retained; ++offset) {
         significand = (significand << 1)
             | static_cast<std::uint64_t>(bitAt(limbs, bitCount - 1 - offset));
     }
-    if (discardedBits > 0) {
-        const bool roundBit = bitAt(limbs, discardedBits - 1);
+    if (discarded != 0) {
+        const bool roundBit = bitAt(limbs, discarded - 1);
         bool sticky = false;
-        for (std::size_t bit = 0; bit + 1 < discardedBits && !sticky; ++bit) {
+        for (std::size_t bit = 0; bit + 1 < discarded && !sticky; ++bit) {
             sticky = bitAt(limbs, bit);
         }
-        if (roundBit && (sticky || (significand & 1U) != 0)) {
+        if (roundBit && (sticky || (significand & 1U))) {
             ++significand;
-            if (significand == (std::uint64_t{1} << kDoublePrecisionBits)) {
+            if (significand == (std::uint64_t{1} << precision)) {
                 significand >>= 1;
                 return std::ldexp(static_cast<double>(significand),
-                                  static_cast<int>(discardedBits + 1));
+                                  static_cast<int>(discarded + 1));
             }
         }
     }
-    return std::ldexp(static_cast<double>(significand), static_cast<int>(discardedBits));
+    return std::ldexp(static_cast<double>(significand), static_cast<int>(discarded));
+}
+
+double scaledIntegerToDouble(const std::uint64_t* limbs, std::size_t limbCount,
+                             bool negative, double scale) {
+    constexpr double maxOracleConversionError = 1e-12;
+    const std::size_t bitCount = significantBitCount(limbs, limbCount);
+    const double magnitude = roundedUnsignedIntegerToDouble(limbs, limbCount);
+    const double result = (negative ? -magnitude : magnitude) / scale;
+    const std::size_t discarded = bitCount > 53 ? bitCount - 53 : 0;
+    const double integerRoundingBound =
+        discarded == 0 ? 0.0 : std::ldexp(0.5, static_cast<int>(discarded)) / scale;
+    const double divisionRoundingBound =
+        std::abs(result) * std::numeric_limits<double>::epsilon();
+    if (integerRoundingBound + divisionRoundingBound > maxOracleConversionError) {
+        throw std::overflow_error("raw coefficient conversion exceeds oracle precision budget");
+    }
+    return result;
 }
 
 } // namespace
@@ -137,6 +152,65 @@ SealAdapter::~SealAdapter() = default;
 // non-copyable
 SealAdapter::SealAdapter(SealAdapter&&) noexcept = default;
 SealAdapter& SealAdapter::operator=(SealAdapter&&) noexcept = default;
+
+std::array<std::uint64_t, 4> SealAdapter::contextFingerprint() const {
+    if (!pimpl_->context || !pimpl_->context->key_context_data()) {
+        throw std::runtime_error("SEALContext not initialized");
+    }
+    return pimpl_->context->key_context_data()->parms_id();
+}
+
+std::array<std::uint64_t, 4>
+SealAdapter::parmsFingerprint(const RaisedCipher& cipher) const {
+    if (!cipher.cipher_.pimpl_ || !pimpl_->context
+        || !pimpl_->context->get_context_data(cipher.cipher_.pimpl_->ct.parms_id())) {
+        throw std::invalid_argument("RaisedCipher does not belong to this SEAL context");
+    }
+    return cipher.cipher_.pimpl_->ct.parms_id();
+}
+
+Plain SealAdapter::encodeComplexAtScaleAtChainIndex(
+    const std::vector<std::complex<double>>& values,
+    double scale,
+    std::size_t chainIndex) {
+    if (!pimpl_->encoder || !pimpl_->context) {
+        throw std::runtime_error("SealAdapter not initialized");
+    }
+    if (values.empty() || values.size() > pimpl_->slotCount
+        || (pimpl_->profile.slots && values.size() > pimpl_->profile.slots)) {
+        throw std::invalid_argument("invalid CKKS preparation vector size");
+    }
+    for (const auto& value : values) {
+        if (!std::isfinite(value.real()) || !std::isfinite(value.imag())) {
+            throw std::invalid_argument("CKKS preparation values must be finite");
+        }
+    }
+    auto contextData = pimpl_->context->first_context_data();
+    while (contextData && contextData->chain_index() != chainIndex) {
+        contextData = contextData->next_context_data();
+    }
+    if (!contextData) {
+        throw std::invalid_argument("unknown CKKS chain index");
+    }
+    Plain result;
+    pimpl_->encoder->encode(values, contextData->parms_id(), scale, result.pimpl_->pt);
+    return result;
+}
+
+double SealAdapter::rescalePlaintextScaleAtChainIndex(std::size_t chainIndex) const {
+    if (!pimpl_->context) {
+        throw std::runtime_error("SEALContext not initialized");
+    }
+    auto contextData = pimpl_->context->first_context_data();
+    while (contextData && contextData->chain_index() != chainIndex) {
+        contextData = contextData->next_context_data();
+    }
+    if (!contextData || contextData->parms().coeff_modulus().empty()) {
+        throw std::invalid_argument("unknown CKKS chain index");
+    }
+    return std::exp2(static_cast<double>(
+        contextData->parms().coeff_modulus().back().bit_count()));
+}
 
 static seal::EncryptionParameters make_ckks_parms(const CkksProfile& prof) {
     using namespace seal;
@@ -430,9 +504,8 @@ std::vector<double> SealAdapter::decryptRaisedCoefficients(
                 sourceBase.base_prod(), value, sourceSize, negativeMagnitude.data());
             magnitudeWords = negativeMagnitude.data();
         }
-        const double magnitude = roundedUnsignedIntegerToDouble(magnitudeWords, sourceSize);
-        const double rounded = (negative ? -magnitude : magnitude)
-            / cipher.cipher_.pimpl_->ct.scale();
+        const double rounded = scaledIntegerToDouble(
+            magnitudeWords, sourceSize, negative, cipher.cipher_.pimpl_->ct.scale());
         if (!std::isfinite(rounded)) {
             throw std::overflow_error("raw raised coefficient does not fit finite double");
         }

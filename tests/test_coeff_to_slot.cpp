@@ -4,6 +4,7 @@
 #include <cmath>
 #include <complex>
 #include <cstdio>
+#include <numeric>
 #include <vector>
 
 namespace {
@@ -25,11 +26,15 @@ int main() {
     constexpr std::size_t slots = degree / 2;
     constexpr double errorLimit = 2e-10;
     const m2424::CkksProfile profile{
-        degree, {60, 60, 60, 60}, std::exp2(59.0), slots
+        degree, {60, 60, 60, 60, 60, 60, 60}, std::exp2(59.5), slots
     };
 
     m2424::CoeffToSlot transform(degree);
     const auto requirements = transform.requirements();
+    const auto metrics = transform.plan().metrics();
+    const auto ranked = m2424::CoeffToSlotPlan::rankFactorizations(degree, 4, 5);
+    const auto stageRotations = transform.plan().stageRotationSteps();
+    const auto& radices = transform.plan().factorization().radices;
     auto keySteps = requirements.rotationSteps;
     keySteps.push_back(0);
 
@@ -40,37 +45,83 @@ int main() {
         values[index] = static_cast<double>(static_cast<int>(index % 17) - 8) / 32.0;
     }
     const auto encrypted = adapter.encrypt(adapter.encode(values));
-    const auto loweredOnce = adapter.rescaleToNext(adapter.multiplyPlain(
-        encrypted, adapter.encodeScalarAtScaleFor(1.0, std::exp2(60.0), encrypted)));
-    const auto lowered = adapter.rescaleToNext(adapter.multiplyPlain(
-        loweredOnce, adapter.encodeScalarAtScaleFor(1.0, std::exp2(60.0), loweredOnce)));
+    auto lowered = encrypted;
+    const std::size_t sourceDropCount = adapter.info(encrypted).chainIndex;
+    for (std::size_t level = 0; level < sourceDropCount; ++level) {
+        lowered = adapter.rescaleToNext(adapter.multiplyPlain(
+            lowered, adapter.encodeScalarAtScaleFor(1.0, std::exp2(60.0), lowered)));
+    }
     auto raised = adapter.modRaiseToTop(lowered);
     const auto raisedInfo = adapter.info(raised);
     const auto coefficients = adapter.decryptRaisedCoefficientsAtRaisedModulus(raised);
+    const auto sourceCoefficients = adapter.decryptRaisedCoefficientsAtSourceModulus(raised);
+    bool raisedTermObserved = false;
+    for (std::size_t index = 0; index < coefficients.size(); ++index) {
+        raisedTermObserved = raisedTermObserved
+            || std::abs(coefficients[index] - sourceCoefficients[index]) > 1e-6;
+    }
 
     const m2424::CoeffToSlotContract contract{
-        "validation_full_s59", slots, degree, 59.0, 59.0, 0.25, errorLimit
+        "validation_full_s59_5", slots, degree, 59.5, 59.5, 0.25, errorLimit
     };
     const auto preflight = m2424::preflightCoeffToSlot(adapter, raised, contract, requirements);
-    const auto result = transform.apply(adapter, std::move(raised));
+    auto prepared = transform.prepare(adapter, raised, contract);
+    const bool preparedBeforeApply =
+        transform.plan().isPreparedFor(prepared, adapter, raised, contract);
+    auto wrongContract = contract;
+    wrongContract.inputScaleLog2 = 55.0;
+    bool rejectsWrongContract = false;
+    try {
+        (void)transform.apply(adapter, std::move(raised), wrongContract, prepared);
+    } catch (const std::invalid_argument&) {
+        rejectsWrongContract = true;
+    }
+    const auto result = transform.apply(adapter, std::move(raised), contract, prepared);
     const auto firstInfo = adapter.info(result.slotCipherFirst);
     const auto secondInfo = adapter.info(result.slotCipherSecond);
     const auto first = adapter.decodeComplex(adapter.decrypt(result.slotCipherFirst));
     const auto second = adapter.decodeComplex(adapter.decrypt(result.slotCipherSecond));
     const double firstError = maxHalfError(coefficients, 0, first);
     const double secondError = maxHalfError(coefficients, slots, second);
+    double oracleMax = 0.0;
+    double actualMax = 0.0;
+    for (double value : coefficients) oracleMax = std::max(oracleMax, std::abs(value));
+    for (const auto& value : first) actualMax = std::max(actualMax, std::abs(value));
+    for (const auto& value : second) actualMax = std::max(actualMax, std::abs(value));
 
     const bool ok = preflight.ready
         && requirements.requiresConjugation
+        && rejectsWrongContract
+        && preparedBeforeApply
+        && transform.plan().butterflyStageCount() == 13
+        && !ranked.empty()
+        && metrics.depth == requirements.minRemainingLevels
+        && metrics.rescalesPerApply == 2 * metrics.depth
+        && metrics.uniqueEvaluationKeys == requirements.rotationSteps.size() + 1
+        && metrics.storedComplexValues > 0
+        && stageRotations.size() == transform.plan().depth()
+        && radices.size() == transform.plan().depth()
+        && std::accumulate(radices.begin(), radices.end(), std::size_t{0})
+            == transform.plan().rawStageCount()
+        && raisedTermObserved
         && adapter.hasConjugationKey()
         && firstError <= errorLimit
         && secondError <= errorLimit
         && firstInfo.chainIndex + requirements.minRemainingLevels == raisedInfo.chainIndex
         && secondInfo.chainIndex == firstInfo.chainIndex
-        && std::abs(std::log2(firstInfo.scale) - 59.0) <= 0.25
-        && std::abs(std::log2(secondInfo.scale) - 59.0) <= 0.25;
-    std::printf("[test_coeff_to_slot] first=%.3e second=%.3e levels=%zu keys=%zu %s\n",
-                firstError, secondError, requirements.minRemainingLevels,
-                requirements.rotationSteps.size() + 1, ok ? "PASS" : "FAIL");
-    return ok ? 0 : 1;
+        && std::abs(std::log2(firstInfo.scale) - 59.5) <= 0.25
+        && std::abs(std::log2(secondInfo.scale) - 59.5) <= 0.25;
+
+    auto replacement = m2424::SealAdapter::create({
+        degree, {60, 60, 60, 60, 60, 59, 60}, std::exp2(59.5), slots
+    });
+    adapter = std::move(replacement);
+    const bool staleContextRejected =
+        !transform.plan().isPreparedFor(prepared, adapter, raised, contract);
+    const bool finalOk = ok && staleContextRejected;
+    std::printf("[test_coeff_to_slot] first=%.3e second=%.3e oracle=%.3e actual=%.3e raw=%zu levels=%zu keys=%zu qI=%s %s\n",
+                firstError, secondError, oracleMax, actualMax, transform.plan().rawStageCount(),
+                requirements.minRemainingLevels, requirements.rotationSteps.size() + 1,
+                raisedTermObserved ? "yes" : "no", finalOk ? "PASS" : "FAIL");
+    return finalOk ? 0 : 1;
 }

@@ -35,6 +35,8 @@ ctest --test-dir build --output-on-failure
 - `demo_basic` — минимальный цикл шифрования и вычисления.
 - `demo_secure_stats` — зашифрованные сумма и среднее.
 - `bench_ckks` — измерение базовых CKKS-операций.
+- `bench_coeff_to_slot` — раздельные измерения setup, prepare и warm apply
+  factorized CoeffToSlot, а также счётчики операций, ключей и памяти.
 
 Остальные demos и benchmarks собираются по умолчанию и служат примерами API или измерительными утилитами.
 

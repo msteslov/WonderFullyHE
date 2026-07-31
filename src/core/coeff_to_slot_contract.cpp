@@ -42,7 +42,7 @@ CoeffToSlotPreflight preflightCoeffToSlot(const SealAdapter& adapter,
                                           const CoeffToSlotPlanRequirements& requirements) {
     if (!isFinitePositive(contract.inputScaleLog2) || !isFinitePositive(contract.outputScaleLog2)
         || !isFinitePositive(contract.inputScaleToleranceLog2) || !isFinitePositive(contract.maxAbsError)
-        || contract.activeSlots == 0 || contract.polyModulusDegree < 2 * contract.activeSlots) {
+        || contract.activeSlots == 0 || contract.polyModulusDegree != 2 * contract.activeSlots) {
         throw std::invalid_argument("invalid CoeffToSlot contract");
     }
     if (!isCoeffToSlotPlanRequirementsValid(requirements)) {
@@ -50,7 +50,7 @@ CoeffToSlotPreflight preflightCoeffToSlot(const SealAdapter& adapter,
     }
 
     const auto info = adapter.info(input);
-    const bool physicalSlotsAvailable = adapter.slotCount() >= contract.activeSlots;
+    const bool physicalSlotsAvailable = adapter.slotCount() == contract.activeSlots;
     const bool inputScaleMatches = std::abs(std::log2(info.scale) - contract.inputScaleLog2)
         <= contract.inputScaleToleranceLog2;
     const bool levelsAvailable = info.chainIndex >= requirements.minRemainingLevels;
