@@ -67,6 +67,16 @@ private:
     friend class SealAdapter;
 };
 
+struct HoistedBsgsTerm {
+    int babyRotation{};
+    const Plain* extendedDiagonal{};
+};
+
+struct HoistedBsgsGroup {
+    int giantRotation{};
+    std::vector<HoistedBsgsTerm> terms;
+};
+
 /// Ciphertext, успешно прошедший centered RNS ModRaise до верхнего уровня chain.
 class RaisedCipher {
 public:
@@ -160,6 +170,10 @@ public:
     /// Выполняет пачку независимых ротаций одного ciphertext с единственным
     /// RNS-разложением его key-switching компонента (single hoisting).
     std::vector<Cipher> rotateManyHoisted(const Cipher&, const std::vector<int>& steps);
+    /// Выполняет BSGS-фактор с умножением и суммированием baby-step членов в
+    /// расширенной базе PQ и одним ModDown на inner group.
+    Cipher applyBsgsInnerDoubleHoisted(
+        const Cipher&, const std::vector<HoistedBsgsGroup>& groups);
     /// Применяет CKKS automorphism комплексного сопряжения; требуется Galois key шага 0.
     Cipher conjugate(const Cipher&);
 
@@ -227,8 +241,8 @@ private:
     std::vector<double> decryptRaisedCoefficients(const RaisedCipher&, std::size_t modulusCount);
     std::array<std::uint64_t, 4> contextFingerprint() const;
     std::array<std::uint64_t, 4> parmsFingerprint(const RaisedCipher&) const;
-    Plain encodeComplexAtScaleAtChainIndex(
-        const std::vector<std::complex<double>>&, double scale, std::size_t chainIndex);
+    Plain encodeComplexAtKeyScale(
+        const std::vector<std::complex<double>>&, double scale);
     double rescalePlaintextScaleAtChainIndex(std::size_t chainIndex) const;
 
     struct Impl;

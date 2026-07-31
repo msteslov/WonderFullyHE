@@ -93,10 +93,12 @@ RaisedCipher, выполняет inverse NTT и centered CRT по поднято
 разреженных факторов, вычисляет точный набор rotations и реальную глубину.
 Исходные radix-2 факторы освобождаются сразу после merge. Внутри каждого
 сгруппированного фактора rotations исполняются по BSGS. Baby-step rotations
-одного ciphertext используют single hoisting: DCRT-разложение второй
-компоненты выполняется один раз на фактор, после чего переиспользуется для
-всей пачки automorphisms. Giant-step rotations остаются обычными; их
-совместное исполнение относится к отдельной double-hoisting оптимизации.
+одного ciphertext используют double-hoisting inner loop: DCRT-разложение
+второй компоненты выполняется один раз на фактор, key-products остаются в
+расширенной базе PQ, а plaintext multiplication и сумма baby-step членов
+предшествуют единственному ModDown каждой giant-группы. Giant-step rotations
+пока остаются обычными; перенос их ModDown за outer loop является оставшейся
+частью полного Algorithm 6.
 Все plaintext multiplication по-прежнему суммируются до единственного rescale.
 
 Encoded plaintext для каждого уровня обязательно готовятся явным `prepare`

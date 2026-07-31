@@ -169,12 +169,10 @@ SealAdapter::parmsFingerprint(const RaisedCipher& cipher) const {
     return cipher.cipher_.pimpl_->ct.parms_id();
 }
 
-Plain SealAdapter::encodeComplexAtScaleAtChainIndex(
-    const std::vector<std::complex<double>>& values,
-    double scale,
-    std::size_t chainIndex) {
+Plain SealAdapter::encodeComplexAtKeyScale(
+        const std::vector<std::complex<double>>& values, double scale) {
     if (!pimpl_->encoder || !pimpl_->context) {
-        throw std::runtime_error("SealAdapter not initialized");
+        throw std::runtime_error("CKKS encoder not initialized");
     }
     if (values.empty() || values.size() > pimpl_->slotCount
         || (pimpl_->profile.slots && values.size() > pimpl_->profile.slots)) {
@@ -185,15 +183,9 @@ Plain SealAdapter::encodeComplexAtScaleAtChainIndex(
             throw std::invalid_argument("CKKS preparation values must be finite");
         }
     }
-    auto contextData = pimpl_->context->first_context_data();
-    while (contextData && contextData->chain_index() != chainIndex) {
-        contextData = contextData->next_context_data();
-    }
-    if (!contextData) {
-        throw std::invalid_argument("unknown CKKS chain index");
-    }
     Plain result;
-    pimpl_->encoder->encode(values, contextData->parms_id(), scale, result.pimpl_->pt);
+    pimpl_->encoder->encode(
+        values, pimpl_->context->key_parms_id(), scale, result.pimpl_->pt);
     return result;
 }
 
@@ -689,6 +681,31 @@ std::vector<Cipher> SealAdapter::rotateManyHoisted(
         outputs[index].pimpl_->ct = std::move(nativeOutputs[index]);
     }
     return outputs;
+}
+
+Cipher SealAdapter::applyBsgsInnerDoubleHoisted(
+        const Cipher& cipher, const std::vector<HoistedBsgsGroup>& groups) {
+    if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
+    if (!pimpl_->has_galois) throw std::runtime_error("galois keys not generated");
+    std::vector<seal::HoistedBSGSGroup> nativeGroups;
+    nativeGroups.reserve(groups.size());
+    for (const auto& group : groups) {
+        seal::HoistedBSGSGroup nativeGroup;
+        nativeGroup.giant_step = group.giantRotation;
+        nativeGroup.terms.reserve(group.terms.size());
+        for (const auto& term : group.terms) {
+            if (!term.extendedDiagonal) {
+                throw std::invalid_argument("null extended BSGS diagonal");
+            }
+            nativeGroup.terms.push_back({
+                term.babyRotation, &term.extendedDiagonal->pimpl_->pt});
+        }
+        nativeGroups.push_back(std::move(nativeGroup));
+    }
+    Cipher output;
+    pimpl_->evaluator->apply_bsgs_inner_double_hoisted(
+        cipher.pimpl_->ct, nativeGroups, pimpl_->gk, output.pimpl_->ct);
+    return output;
 }
 
 Cipher SealAdapter::conjugate(const Cipher& cipher) {

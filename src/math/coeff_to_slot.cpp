@@ -227,7 +227,7 @@ DiagonalMap withInputMultiplier(DiagonalMap matrix, const ComplexVector& multipl
 
 struct PreparedBsgsTerm {
     std::size_t babyRotation{};
-    Plain diagonal;
+    Plain extendedDiagonal;
 };
 
 struct PreparedBsgsGroup {
@@ -279,53 +279,20 @@ std::size_t selectBabyStep(const DiagonalMap& factor, std::size_t slots) {
 
 Cipher applyCipherMatrix(SealAdapter& adapter, const PreparedFactor& factor,
                          const Cipher& input) {
-    Cipher output;
-    bool outputInitialized = false;
-    std::map<std::size_t, Cipher> babies;
-    babies.emplace(0, input);
-    std::set<std::size_t> requiredBabyRotations;
+    std::vector<HoistedBsgsGroup> groups;
+    groups.reserve(factor.size());
     for (const auto& group : factor) {
+        HoistedBsgsGroup backendGroup;
+        backendGroup.giantRotation = static_cast<int>(group.giantRotation);
+        backendGroup.terms.reserve(group.terms.size());
         for (const auto& term : group.terms) {
-            if (term.babyRotation != 0) requiredBabyRotations.insert(term.babyRotation);
+            backendGroup.terms.push_back({
+                static_cast<int>(term.babyRotation), &term.extendedDiagonal});
         }
+        groups.push_back(std::move(backendGroup));
     }
-    std::vector<int> babySteps;
-    babySteps.reserve(requiredBabyRotations.size());
-    for (const auto rotation : requiredBabyRotations) {
-        babySteps.push_back(static_cast<int>(rotation));
-    }
-    const auto hoistedBabies = adapter.rotateManyHoisted(input, babySteps);
-    for (std::size_t index = 0; index < babySteps.size(); ++index) {
-        babies.emplace(static_cast<std::size_t>(babySteps[index]), hoistedBabies[index]);
-    }
-    for (const auto& group : factor) {
-        Cipher inner;
-        bool innerInitialized = false;
-        for (const auto& term : group.terms) {
-            Cipher weighted = adapter.multiplyPlain(
-                babies.at(term.babyRotation), term.diagonal);
-            if (!innerInitialized) {
-                inner = std::move(weighted);
-                innerInitialized = true;
-            } else {
-                inner = adapter.add(inner, weighted);
-            }
-        }
-        if (!innerInitialized) continue;
-        Cipher shifted = group.giantRotation == 0
-            ? std::move(inner)
-            : adapter.rotate(inner, static_cast<int>(group.giantRotation));
-        if (!outputInitialized) {
-            output = std::move(shifted);
-            outputInitialized = true;
-        } else {
-            output = adapter.add(output, shifted);
-        }
-    }
-    if (!outputInitialized) {
-        throw std::logic_error("empty CoeffToSlot factor");
-    }
-    return adapter.rescaleToNext(output);
+    return adapter.rescaleToNext(
+        adapter.applyBsgsInnerDoubleHoisted(input, groups));
 }
 
 } // namespace
@@ -430,13 +397,13 @@ std::size_t PreparedCoeffToSlotPlan::serializedPlaintextBytes(const SealAdapter&
     for (const auto& factor : pimpl_->factors) {
         for (const auto& group : factor) {
             for (const auto& term : group.terms) {
-                result += adapter.serializedSize(term.diagonal);
+                result += adapter.serializedSize(term.extendedDiagonal);
             }
         }
     }
     for (const auto& group : pimpl_->secondFirstFactor) {
         for (const auto& term : group.terms) {
-            result += adapter.serializedSize(term.diagonal);
+            result += adapter.serializedSize(term.extendedDiagonal);
         }
     }
     return result;
@@ -628,8 +595,9 @@ PreparedCoeffToSlotPlan CoeffToSlotPlan::prepare(
             }
             auto& group = grouped[giant];
             group.giantRotation = giant;
-            group.terms.push_back({baby, adapter.encodeComplexAtScaleAtChainIndex(
-                adjusted, plaintextScale, chainIndex)});
+            group.terms.push_back({
+                baby,
+                adapter.encodeComplexAtKeyScale(adjusted, plaintextScale)});
         }
         PreparedFactor result;
         result.reserve(grouped.size());
