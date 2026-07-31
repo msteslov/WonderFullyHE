@@ -170,9 +170,10 @@ public:
     /// Выполняет пачку независимых ротаций одного ciphertext с единственным
     /// RNS-разложением его key-switching компонента (single hoisting).
     std::vector<Cipher> rotateManyHoisted(const Cipher&, const std::vector<int>& steps);
-    /// Выполняет BSGS-фактор с умножением и суммированием baby-step членов в
-    /// расширенной базе PQ и одним ModDown на inner group.
-    Cipher applyBsgsInnerDoubleHoisted(
+    /// Выполняет полный double-hoisted BSGS-фактор: baby-step произведения
+    /// суммируются в PQ до inner ModDown, giant-step результаты — до общего
+    /// финального ModDown.
+    Cipher applyBsgsDoubleHoisted(
         const Cipher&, const std::vector<HoistedBsgsGroup>& groups);
     /// Применяет CKKS automorphism комплексного сопряжения; требуется Galois key шага 0.
     Cipher conjugate(const Cipher&);

@@ -138,6 +138,8 @@ int main(int argc, char** argv) {
                 metrics.hoistedDecompositionsPerApply,
                 metrics.hoistedAutomorphismsPerApply,
                 metrics.ordinaryGiantRotationsPerApply);
+    std::printf("inner_moddowns,%zu\nfinal_moddowns,%zu\n",
+                metrics.innerModDownsPerApply, metrics.finalModDownsPerApply);
     std::printf("first_error,%.3e\nsecond_error,%.3e\n", firstError, secondError);
     for (std::size_t index = 0; index < ranked.size(); ++index) {
         m2424::CoeffToSlotPlan candidatePlan(degree, ranked[index].factorization);

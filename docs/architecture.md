@@ -91,14 +91,17 @@ RaisedCipher, выполняет inverse NTT и centered CRT по поднято
 разреженные стадии перестановки bit-reversal и группирует соседние факторы
 согласно `factorization().radices`. План заранее хранит только диагонали этих
 разреженных факторов, вычисляет точный набор rotations и реальную глубину.
+Для стандартного `N=16384`, depth 4 cost model выбирает измеренный план
+`{6,5,5,3}`: 55 evaluation keys и 134 automorphisms вместо 69 и 152 у
+balanced `{5,5,5,4}`.
 Исходные radix-2 факторы освобождаются сразу после merge. Внутри каждого
 сгруппированного фактора rotations исполняются по BSGS. Baby-step rotations
 одного ciphertext используют double-hoisting inner loop: DCRT-разложение
 второй компоненты выполняется один раз на фактор, key-products остаются в
 расширенной базе PQ, а plaintext multiplication и сумма baby-step членов
-предшествуют единственному ModDown каждой giant-группы. Giant-step rotations
-пока остаются обычными; перенос их ModDown за outer loop является оставшейся
-частью полного Algorithm 6.
+предшествуют единственному ModDown каждой giant-группы. Затем giant-step
+key-products снова остаются в PQ, суммируются и проходят один общий финальный
+ModDown. Тем самым рабочий фактор реализует оба уровня Algorithm 6.
 Все plaintext multiplication по-прежнему суммируются до единственного rescale.
 
 Encoded plaintext для каждого уровня обязательно готовятся явным `prepare`

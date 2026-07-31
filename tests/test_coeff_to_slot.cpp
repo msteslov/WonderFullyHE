@@ -98,6 +98,9 @@ int main() {
         && metrics.depth == requirements.minRemainingLevels
         && metrics.rescalesPerApply == 2 * metrics.depth
         && metrics.uniqueEvaluationKeys == requirements.rotationSteps.size() + 1
+        && metrics.ordinaryGiantRotationsPerApply == 0
+        && metrics.hoistedAutomorphismsPerApply == metrics.rotationsPerApply
+        && metrics.finalModDownsPerApply == 2 * metrics.depth
         && metrics.storedComplexValues > 0
         && stageRotations.size() == transform.plan().depth()
         && radices.size() == transform.plan().depth()

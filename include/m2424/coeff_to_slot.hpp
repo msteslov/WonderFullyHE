@@ -30,6 +30,8 @@ struct CoeffToSlotPlanMetrics {
     std::size_t hoistedDecompositionsPerApply{};
     std::size_t hoistedAutomorphismsPerApply{};
     std::size_t ordinaryGiantRotationsPerApply{};
+    std::size_t innerModDownsPerApply{};
+    std::size_t finalModDownsPerApply{};
     std::size_t additionsPerApply{};
     std::size_t rescalesPerApply{};
     std::size_t uniqueEvaluationKeys{};

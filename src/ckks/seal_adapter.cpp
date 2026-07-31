@@ -683,7 +683,7 @@ std::vector<Cipher> SealAdapter::rotateManyHoisted(
     return outputs;
 }
 
-Cipher SealAdapter::applyBsgsInnerDoubleHoisted(
+Cipher SealAdapter::applyBsgsDoubleHoisted(
         const Cipher& cipher, const std::vector<HoistedBsgsGroup>& groups) {
     if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
     if (!pimpl_->has_galois) throw std::runtime_error("galois keys not generated");
@@ -703,7 +703,7 @@ Cipher SealAdapter::applyBsgsInnerDoubleHoisted(
         nativeGroups.push_back(std::move(nativeGroup));
     }
     Cipher output;
-    pimpl_->evaluator->apply_bsgs_inner_double_hoisted(
+    pimpl_->evaluator->apply_bsgs_double_hoisted(
         cipher.pimpl_->ct, nativeGroups, pimpl_->gk, output.pimpl_->ct);
     return output;
 }

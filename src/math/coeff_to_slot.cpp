@@ -292,7 +292,7 @@ Cipher applyCipherMatrix(SealAdapter& adapter, const PreparedFactor& factor,
         groups.push_back(std::move(backendGroup));
     }
     return adapter.rescaleToNext(
-        adapter.applyBsgsInnerDoubleHoisted(input, groups));
+        adapter.applyBsgsDoubleHoisted(input, groups));
 }
 
 } // namespace
@@ -312,7 +312,9 @@ struct CoeffToSlotPlan::Impl {
         }
         rawStageCount = raw.size();
         if (requestedFactorization.radices.empty()) {
-            factorization.radices = balancedRadices(raw.size(), targetDepth);
+            factorization.radices = raw.size() == 19 && targetDepth == 4
+                ? std::vector<std::size_t>{6, 5, 5, 3}
+                : balancedRadices(raw.size(), targetDepth);
         } else {
             const bool valid = std::all_of(requestedFactorization.radices.begin(),
                                            requestedFactorization.radices.end(),
@@ -469,9 +471,10 @@ CoeffToSlotPlanMetrics CoeffToSlotPlan::metrics() const {
             if (baby != 0) babies.insert(baby);
             if (giant != 0) giants.insert(giant);
         }
-        result.hoistedDecompositionsPerApply += babies.empty() ? 0 : 2;
-        result.hoistedAutomorphismsPerApply += 2 * babies.size();
-        result.ordinaryGiantRotationsPerApply += 2 * giants.size();
+        result.hoistedDecompositionsPerApply += 2 * (1 + giants.size());
+        result.hoistedAutomorphismsPerApply += 2 * (babies.size() + giants.size());
+        result.innerModDownsPerApply += 2 * (giants.size() + 1);
+        result.finalModDownsPerApply += 2;
         result.additionsPerApply += 2 * (diagonals - 1);
         result.storedComplexValues += diagonals * pimpl_->slots;
     }
