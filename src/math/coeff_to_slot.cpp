@@ -283,13 +283,20 @@ Cipher applyCipherMatrix(SealAdapter& adapter, const PreparedFactor& factor,
     bool outputInitialized = false;
     std::map<std::size_t, Cipher> babies;
     babies.emplace(0, input);
+    std::set<std::size_t> requiredBabyRotations;
     for (const auto& group : factor) {
         for (const auto& term : group.terms) {
-            if (term.babyRotation != 0 && !babies.count(term.babyRotation)) {
-                babies.emplace(term.babyRotation,
-                    adapter.rotate(input, static_cast<int>(term.babyRotation)));
-            }
+            if (term.babyRotation != 0) requiredBabyRotations.insert(term.babyRotation);
         }
+    }
+    std::vector<int> babySteps;
+    babySteps.reserve(requiredBabyRotations.size());
+    for (const auto rotation : requiredBabyRotations) {
+        babySteps.push_back(static_cast<int>(rotation));
+    }
+    const auto hoistedBabies = adapter.rotateManyHoisted(input, babySteps);
+    for (std::size_t index = 0; index < babySteps.size(); ++index) {
+        babies.emplace(static_cast<std::size_t>(babySteps[index]), hoistedBabies[index]);
     }
     for (const auto& group : factor) {
         Cipher inner;
@@ -486,6 +493,18 @@ CoeffToSlotPlanMetrics CoeffToSlotPlan::metrics() const {
         result.plaintextMultiplicationsPerApply += 2 * diagonals;
         result.rotationsPerApply += 2 * bsgsRotationOperationCount(
             factor, pimpl_->babySteps[index]);
+        std::set<std::size_t> babies;
+        std::set<std::size_t> giants;
+        for (const auto& [rotation, diagonal] : factor) {
+            (void)diagonal;
+            const auto baby = rotation % pimpl_->babySteps[index];
+            const auto giant = rotation - baby;
+            if (baby != 0) babies.insert(baby);
+            if (giant != 0) giants.insert(giant);
+        }
+        result.hoistedDecompositionsPerApply += babies.empty() ? 0 : 2;
+        result.hoistedAutomorphismsPerApply += 2 * babies.size();
+        result.ordinaryGiantRotationsPerApply += 2 * giants.size();
         result.additionsPerApply += 2 * (diagonals - 1);
         result.storedComplexValues += diagonals * pimpl_->slots;
     }

@@ -677,6 +677,20 @@ Cipher SealAdapter::rotate(const Cipher& c, int steps) {
     return out;
 }
 
+std::vector<Cipher> SealAdapter::rotateManyHoisted(
+        const Cipher& cipher, const std::vector<int>& steps) {
+    if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
+    if (!pimpl_->has_galois) throw std::runtime_error("galois keys not generated");
+    std::vector<seal::Ciphertext> nativeOutputs;
+    pimpl_->evaluator->rotate_vector_many_hoisted(
+        cipher.pimpl_->ct, steps, pimpl_->gk, nativeOutputs);
+    std::vector<Cipher> outputs(nativeOutputs.size());
+    for (std::size_t index = 0; index < nativeOutputs.size(); ++index) {
+        outputs[index].pimpl_->ct = std::move(nativeOutputs[index]);
+    }
+    return outputs;
+}
+
 Cipher SealAdapter::conjugate(const Cipher& cipher) {
     if (!pimpl_->evaluator) throw std::runtime_error("Evaluator not initialized");
     if (!hasConjugationKey()) throw std::runtime_error("conjugation key not generated");

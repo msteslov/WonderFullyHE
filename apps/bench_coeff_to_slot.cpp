@@ -134,6 +134,10 @@ int main(int argc, char** argv) {
                 metrics.plaintextMultiplicationsPerApply, metrics.rotationsPerApply,
                 metrics.additionsPerApply, metrics.rescalesPerApply,
                 metrics.uniqueEvaluationKeys);
+    std::printf("hoisted_decompositions,%zu\nhoisted_automorphisms,%zu\nordinary_giant_rotations,%zu\n",
+                metrics.hoistedDecompositionsPerApply,
+                metrics.hoistedAutomorphismsPerApply,
+                metrics.ordinaryGiantRotationsPerApply);
     std::printf("first_error,%.3e\nsecond_error,%.3e\n", firstError, secondError);
     for (std::size_t index = 0; index < ranked.size(); ++index) {
         m2424::CoeffToSlotPlan candidatePlan(degree, ranked[index].factorization);

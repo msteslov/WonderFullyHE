@@ -27,6 +27,9 @@ struct CoeffToSlotPlanMetrics {
     std::vector<std::size_t> diagonalsPerStage;
     std::size_t plaintextMultiplicationsPerApply{};
     std::size_t rotationsPerApply{};
+    std::size_t hoistedDecompositionsPerApply{};
+    std::size_t hoistedAutomorphismsPerApply{};
+    std::size_t ordinaryGiantRotationsPerApply{};
     std::size_t additionsPerApply{};
     std::size_t rescalesPerApply{};
     std::size_t uniqueEvaluationKeys{};

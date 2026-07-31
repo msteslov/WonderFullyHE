@@ -157,6 +157,9 @@ public:
     /// Выполняет ротацию CKKS-слотов с ранее сгенерированным Galois key.
     /// @param steps Число позиций ротации; для него должен существовать Galois key.
     Cipher rotate(const Cipher&, int steps);
+    /// Выполняет пачку независимых ротаций одного ciphertext с единственным
+    /// RNS-разложением его key-switching компонента (single hoisting).
+    std::vector<Cipher> rotateManyHoisted(const Cipher&, const std::vector<int>& steps);
     /// Применяет CKKS automorphism комплексного сопряжения; требуется Galois key шага 0.
     Cipher conjugate(const Cipher&);
 
