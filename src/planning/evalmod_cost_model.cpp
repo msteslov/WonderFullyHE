@@ -1,5 +1,6 @@
 #include "m2424/experimental/evalmod_analysis/cost_model.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -21,9 +22,11 @@ EvalModCostEstimate estimateEvalModCost(const EvalModCircuitCost& circuit,
         throw std::invalid_argument("invalid EvalMod cost input");
     }
     const auto maximum = std::numeric_limits<std::size_t>::max();
+    const std::size_t scaleGrowthSteps = std::max(circuit.multiplicativeDepth,
+                                                   circuit.levelConsumption);
     if (circuit.peakLiveCiphertexts > maximum / backend.bytesPerLiveCiphertext
-        || circuit.levelConsumption == maximum
-        || circuit.levelConsumption + 1 > maximum / scaleBits
+        || scaleGrowthSteps == maximum
+        || scaleGrowthSteps + 1 > maximum / scaleBits
         || circuit.preparedPlaintextBytes > maximum - circuit.backendScratchBytes
         || circuit.peakLiveCiphertexts * backend.bytesPerLiveCiphertext
             > maximum - circuit.preparedPlaintextBytes - circuit.backendScratchBytes) {
@@ -39,7 +42,7 @@ EvalModCostEstimate estimateEvalModCost(const EvalModCircuitCost& circuit,
         latency,
         circuit.peakLiveCiphertexts * backend.bytesPerLiveCiphertext
             + circuit.preparedPlaintextBytes + circuit.backendScratchBytes,
-        (circuit.levelConsumption + 1) * scaleBits
+        (scaleGrowthSteps + 1) * scaleBits
     };
 }
 

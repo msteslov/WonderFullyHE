@@ -55,6 +55,9 @@ void evaluate(const std::vector<Real>& coefficients, const Real& xr, const Real&
 }
 
 double magnitudeUp(const Real& real, const Real& imag) {
+    if (!mpfr_number_p(real.get()) || !mpfr_number_p(imag.get())) {
+        throw std::overflow_error("non-finite MPFR diagnostic result");
+    }
     Real magnitude(mpfr_get_prec(real.get()));
     mpfr_hypot(magnitude.get(), real.get(), imag.get(), MPFR_RNDU);
     return mpfr_get_d(magnitude.get(), MPFR_RNDU);
@@ -86,13 +89,20 @@ EvalModGridDiagnostic diagnoseEvalModPolynomialOnGrid(const EvalModPolynomial& p
     coefficients.reserve(polynomial.decimalCoefficients.size());
     for (const auto& decimal : polynomial.decimalCoefficients) {
         coefficients.emplace_back(precision);
-        if (mpfr_set_str(coefficients.back().get(), decimal.c_str(), 10, MPFR_RNDN) != 0) {
+        if (mpfr_set_str(coefficients.back().get(), decimal.c_str(), 10, MPFR_RNDN) != 0
+            || !mpfr_number_p(coefficients.back().get())) {
             throw std::invalid_argument("invalid decimal polynomial coefficient");
         }
     }
     Real radius(precision);
-    if (mpfr_set_str(radius.get(), radiusDecimal.c_str(), 10, MPFR_RNDU) != 0 || mpfr_sgn(radius.get()) < 0) {
+    if (mpfr_set_str(radius.get(), radiusDecimal.c_str(), 10, MPFR_RNDU) != 0
+        || !mpfr_number_p(radius.get()) || mpfr_sgn(radius.get()) < 0) {
         throw std::invalid_argument("invalid complex radius");
+    }
+    Real rho(precision);
+    if (mpfr_set_str(rho.get(), domain.normalizedResidualBoundDecimal.c_str(), 10, MPFR_RNDU) != 0
+        || !mpfr_number_p(rho.get()) || mpfr_sgn(rho.get()) < 0) {
+        throw std::invalid_argument("invalid high-precision residual bound");
     }
 
     EvalModGridDiagnostic result;
@@ -100,8 +110,8 @@ EvalModGridDiagnostic diagnoseEvalModPolynomialOnGrid(const EvalModPolynomial& p
     result.precisionBits = precisionBits;
     Real xr(precision), xi(precision), expectedReal(precision), errorReal(precision), errorImag(precision);
     ComplexValue value(precision), derivative(precision);
-    const auto observe = [&](double real, double imag, std::int64_t integer, bool realAxis) {
-        mpfr_set_d(xr.get(), real, MPFR_RNDN); mpfr_set_d(xi.get(), imag, MPFR_RNDN);
+    const auto observe = [&](const Real& real, const Real& imag, std::int64_t integer, bool realAxis) {
+        mpfr_set(xr.get(), real.get(), MPFR_RNDN); mpfr_set(xi.get(), imag.get(), MPFR_RNDN);
         evaluate(coefficients, xr, xi, value, derivative);
         mpfr_set_si(expectedReal.get(), integer, MPFR_RNDN);
         mpfr_sub(errorReal.get(), value.real.get(), xr.get(), MPFR_RNDN);
@@ -119,19 +129,29 @@ EvalModGridDiagnostic diagnoseEvalModPolynomialOnGrid(const EvalModPolynomial& p
         ++result.evaluations;
     };
 
-    const double rho = domain.normalizedResidualBound;
-    const double radiusValue = mpfr_get_d(radius.get(), MPFR_RNDU);
+    Real zero(precision), t(precision), real(precision), imag(precision), twiceRho(precision), integerMpfr(precision);
+    mpfr_set_zero(zero.get(), 0);
+    mpfr_mul_ui(twiceRho.get(), rho.get(), 2, MPFR_RNDU);
     for (std::int64_t integer = -static_cast<std::int64_t>(domain.integerBound);;
          ++integer) {
+        mpfr_set_si(integerMpfr.get(), integer, MPFR_RNDN);
         for (std::size_t sample = 0; sample < samplesPerEdge; ++sample) {
-            const double t = static_cast<double>(sample) / static_cast<double>(samplesPerEdge - 1);
-            const double real = static_cast<double>(integer) - rho + 2.0 * rho * t;
-            observe(real, 0.0, integer, true);
-            observe(real, -radiusValue, integer, false);
-            observe(real, radiusValue, integer, false);
-            const double imag = -radiusValue + 2.0 * radiusValue * t;
-            observe(static_cast<double>(integer) - rho, imag, integer, false);
-            observe(static_cast<double>(integer) + rho, imag, integer, false);
+            mpfr_set_ui(t.get(), sample, MPFR_RNDN);
+            mpfr_div_ui(t.get(), t.get(), samplesPerEdge - 1, MPFR_RNDN);
+            mpfr_mul(real.get(), twiceRho.get(), t.get(), MPFR_RNDN);
+            mpfr_sub(real.get(), real.get(), rho.get(), MPFR_RNDN);
+            mpfr_add(real.get(), real.get(), integerMpfr.get(), MPFR_RNDN);
+            observe(real, zero, integer, true);
+            mpfr_neg(imag.get(), radius.get(), MPFR_RNDN);
+            observe(real, imag, integer, false);
+            observe(real, radius, integer, false);
+            mpfr_mul_ui(imag.get(), radius.get(), 2, MPFR_RNDN);
+            mpfr_mul(imag.get(), imag.get(), t.get(), MPFR_RNDN);
+            mpfr_sub(imag.get(), imag.get(), radius.get(), MPFR_RNDN);
+            mpfr_sub(real.get(), integerMpfr.get(), rho.get(), MPFR_RNDN);
+            observe(real, imag, integer, false);
+            mpfr_add(real.get(), integerMpfr.get(), rho.get(), MPFR_RNDN);
+            observe(real, imag, integer, false);
         }
         if (integer == static_cast<std::int64_t>(domain.integerBound)) break;
     }

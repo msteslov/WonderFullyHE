@@ -1,47 +1,95 @@
 #include "m2424/experimental/evalmod_analysis/domain_analysis.hpp"
 
+#include <mpfr.h>
+
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <stdexcept>
 
 namespace m2424::experimental {
+namespace {
 
-EvalModDomain analyzeEvalModDomain(const EvalModCiphertextModel& model) {
-    if (model.coefficientCount == 0 || !std::isfinite(model.deterministicIntegerOffset)
-        || model.deterministicIntegerOffset < 0.0 || !std::isfinite(model.integerNoiseStddev)
-        || model.integerNoiseStddev < 0.0 || !std::isfinite(model.normalizedMessageAbsBound)
-        || model.normalizedMessageAbsBound < 0.0
-        || !std::isfinite(model.normalizedEncodingErrorAbsBound)
-        || model.normalizedEncodingErrorAbsBound < 0.0
-        || !std::isfinite(model.normalizedCoeffToSlotErrorAbsBound)
-        || model.normalizedCoeffToSlotErrorAbsBound < 0.0
-        || !std::isfinite(model.normalizedScalePeriodErrorAbsBound)
-        || model.normalizedScalePeriodErrorAbsBound < 0.0
-        || !std::isfinite(model.failureProbabilityLog2)
-        || model.failureProbabilityLog2 >= 0.0) {
+class Real {
+public:
+    explicit Real(mpfr_prec_t precision) { mpfr_init2(value_, precision); }
+    ~Real() { mpfr_clear(value_); }
+    mpfr_ptr get() { return value_; }
+    mpfr_srcptr get() const { return value_; }
+private:
+    mpfr_t value_;
+};
+
+bool finiteNonNegative(double value) { return std::isfinite(value) && value >= 0.0; }
+
+std::string decimalUp(mpfr_srcptr value, std::size_t precisionBits) {
+    char* text = nullptr;
+    const int digits = static_cast<int>(std::ceil(precisionBits * 0.30103)) + 3;
+    mpfr_asprintf(&text, "%.*RUg", digits, value);
+    std::string result = text ? text : "";
+    mpfr_free_str(text);
+    return result;
+}
+
+} // namespace
+
+EvalModDomain estimateEvalModDomain(const EvalModCiphertextModel& model) {
+    if (model.coefficientCount == 0 || !finiteNonNegative(model.deterministicIntegerOffset)
+        || !finiteNonNegative(model.integerNoiseSubgaussianSigma)
+        || !finiteNonNegative(model.normalizedMessageAbsBound)
+        || !finiteNonNegative(model.normalizedEncodingErrorAbsBound)
+        || !finiteNonNegative(model.normalizedCoeffToSlotErrorAbsBound)
+        || !finiteNonNegative(model.relativePeriodMismatchAbsBound)
+        || !finiteNonNegative(model.additiveNormalizationErrorAbsBound)
+        || !std::isfinite(model.failureProbabilityLog2) || model.failureProbabilityLog2 >= 0.0
+        || model.analysisPrecisionBits < 64
+        || model.analysisPrecisionBits > static_cast<std::size_t>(std::numeric_limits<int>::max() / 2)
+        || (model.tailModel == TailModel::Deterministic
+            && model.integerNoiseSubgaussianSigma != 0.0)) {
         throw std::invalid_argument("invalid EvalMod ciphertext model");
     }
 
-    // P(max_i |X_i| > t) <= 2*n*exp(-t^2/(2*sigma^2)).
-    const double logFailure = model.failureProbabilityLog2 * std::log(2.0);
-    const double logUnionFactor = std::log(2.0 * static_cast<double>(model.coefficientCount));
-    const double infinity = std::numeric_limits<double>::infinity();
-    const double rawTail = model.integerNoiseStddev
-        * std::sqrt(2.0 * (logUnionFactor - logFailure));
-    const double tail = rawTail == 0.0 ? 0.0 : std::nextafter(rawTail, infinity);
-    const double rawIntegerBound = model.deterministicIntegerOffset + tail;
-    const double integerBound = std::ceil(tail == 0.0 ? rawIntegerBound
-                                                       : std::nextafter(rawIntegerBound, infinity));
-    if (!std::isfinite(integerBound)
-        || integerBound > static_cast<double>(std::numeric_limits<std::size_t>::max())) {
+    const auto precision = static_cast<mpfr_prec_t>(model.analysisPrecisionBits);
+    Real tail(precision), work(precision), logarithm(precision), sigma(precision), offset(precision);
+    mpfr_set_d(offset.get(), model.deterministicIntegerOffset, MPFR_RNDU);
+    if (model.tailModel == TailModel::Deterministic) {
+        mpfr_set_zero(tail.get(), 0);
+    } else {
+        mpfr_set_ui(work.get(), model.coefficientCount, MPFR_RNDU);
+        mpfr_mul_ui(work.get(), work.get(), 2, MPFR_RNDU);
+        mpfr_log(logarithm.get(), work.get(), MPFR_RNDU);
+        mpfr_const_log2(work.get(), MPFR_RNDU);
+        mpfr_mul_d(work.get(), work.get(), -model.failureProbabilityLog2, MPFR_RNDU);
+        mpfr_add(logarithm.get(), logarithm.get(), work.get(), MPFR_RNDU);
+        mpfr_mul_ui(logarithm.get(), logarithm.get(), 2, MPFR_RNDU);
+        mpfr_sqrt(logarithm.get(), logarithm.get(), MPFR_RNDU);
+        mpfr_set_d(sigma.get(), model.integerNoiseSubgaussianSigma, MPFR_RNDU);
+        mpfr_mul(tail.get(), sigma.get(), logarithm.get(), MPFR_RNDU);
+    }
+    mpfr_add(work.get(), offset.get(), tail.get(), MPFR_RNDU);
+    mpfr_ceil(work.get(), work.get());
+    if (!mpfr_fits_ulong_p(work.get(), MPFR_RNDU)) {
         throw std::overflow_error("EvalMod integer bound does not fit size_t");
     }
+    const std::size_t integerBound = mpfr_get_ui(work.get(), MPFR_RNDU);
 
-    double rho = std::nextafter(model.normalizedMessageAbsBound
-                                + model.normalizedEncodingErrorAbsBound, infinity);
-    rho = std::nextafter(rho + model.normalizedCoeffToSlotErrorAbsBound, infinity);
-    rho = std::nextafter(rho + model.normalizedScalePeriodErrorAbsBound, infinity);
-    EvalModDomain result{static_cast<std::size_t>(integerBound), rho, 0.5 - rho,
+    Real residual(precision), term(precision);
+    mpfr_set_d(residual.get(), model.normalizedMessageAbsBound, MPFR_RNDU);
+    mpfr_set_d(term.get(), model.normalizedEncodingErrorAbsBound, MPFR_RNDU);
+    mpfr_add(residual.get(), residual.get(), term.get(), MPFR_RNDU);
+    mpfr_set_d(term.get(), model.normalizedCoeffToSlotErrorAbsBound, MPFR_RNDU);
+    mpfr_add(residual.get(), residual.get(), term.get(), MPFR_RNDU);
+    mpfr_set_ui(term.get(), integerBound, MPFR_RNDU);
+    mpfr_add(term.get(), term.get(), residual.get(), MPFR_RNDU);
+    Real mismatch(precision);
+    mpfr_set_d(mismatch.get(), model.relativePeriodMismatchAbsBound, MPFR_RNDU);
+    mpfr_mul(term.get(), term.get(), mismatch.get(), MPFR_RNDU);
+    mpfr_add(residual.get(), residual.get(), term.get(), MPFR_RNDU);
+    mpfr_set_d(term.get(), model.additiveNormalizationErrorAbsBound, MPFR_RNDU);
+    mpfr_add(residual.get(), residual.get(), term.get(), MPFR_RNDU);
+
+    const double rho = mpfr_get_d(residual.get(), MPFR_RNDU);
+    EvalModDomain result{integerBound, rho, decimalUp(residual.get(), model.analysisPrecisionBits),
                          model.failureProbabilityLog2};
     if (!isEvalModDomainValid(result)) {
         throw std::domain_error("EvalMod residual reaches a rounding discontinuity");
@@ -49,12 +97,27 @@ EvalModDomain analyzeEvalModDomain(const EvalModCiphertextModel& model) {
     return result;
 }
 
+double EvalModDomain::discontinuityMargin() const {
+    const double raw = 0.5 - normalizedResidualBound;
+    return std::nextafter(raw, -std::numeric_limits<double>::infinity());
+}
+
 bool isEvalModDomainValid(const EvalModDomain& domain) {
-    return std::isfinite(domain.normalizedResidualBound)
-        && domain.normalizedResidualBound >= 0.0 && domain.normalizedResidualBound < 0.5
-        && std::isfinite(domain.discontinuityMargin) && domain.discontinuityMargin > 0.0
-        && std::abs(domain.discontinuityMargin - (0.5 - domain.normalizedResidualBound)) < 1e-12
-        && std::isfinite(domain.failureProbabilityLog2) && domain.failureProbabilityLog2 < 0.0;
+    if (!std::isfinite(domain.normalizedResidualBound)
+        || domain.normalizedResidualBound < 0.0 || domain.normalizedResidualBound >= 0.5
+        || domain.normalizedResidualBoundDecimal.empty()
+        || !std::isfinite(domain.failureProbabilityLog2) || domain.failureProbabilityLog2 >= 0.0) {
+        return false;
+    }
+    Real exact(128);
+    if (mpfr_set_str(exact.get(), domain.normalizedResidualBoundDecimal.c_str(), 10, MPFR_RNDN) != 0
+        || !mpfr_number_p(exact.get()) || mpfr_sgn(exact.get()) < 0
+        || mpfr_cmp_d(exact.get(), domain.normalizedResidualBound) > 0) {
+        return false;
+    }
+    const double previous = std::nextafter(domain.normalizedResidualBound,
+                                           -std::numeric_limits<double>::infinity());
+    return mpfr_cmp_d(exact.get(), previous) > 0 && domain.discontinuityMargin() > 0.0;
 }
 
 } // namespace m2424::experimental

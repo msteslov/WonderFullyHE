@@ -1,33 +1,39 @@
 #pragma once
 
 #include <cstddef>
-#include <cstdint>
+#include <string>
 
 namespace m2424::experimental {
 
-/// Явный вероятностный контракт для целой части после ModRaise.
+enum class TailModel { Deterministic, Gaussian, Subgaussian };
+
+/// Параметр sigma является доказанным subgaussian parameter, а не standard deviation.
 struct EvalModCiphertextModel {
+    TailModel tailModel{TailModel::Deterministic};
     std::size_t coefficientCount{};
     double deterministicIntegerOffset{};
-    double integerNoiseStddev{};
+    double integerNoiseSubgaussianSigma{};
     double normalizedMessageAbsBound{};
     double normalizedEncodingErrorAbsBound{};
     double normalizedCoeffToSlotErrorAbsBound{};
-    double normalizedScalePeriodErrorAbsBound{};
+    double relativePeriodMismatchAbsBound{};
+    double additiveNormalizationErrorAbsBound{};
     double failureProbabilityLog2{-128.0};
+    std::size_t analysisPrecisionBits{256};
 };
 
 struct EvalModDomain {
     std::size_t integerBound{};
     double normalizedResidualBound{};
-    double discontinuityMargin{};
+    std::string normalizedResidualBoundDecimal;
     double failureProbabilityLog2{};
+
+    /// Консервативный margin, округлённый только вниз.
+    double discontinuityMargin() const;
 };
 
-/// Выводит K по union bound, а rho из всех консервативно нормированных bounds.
-/// Нормировку на exact qSource вызывающая сторона должна выполнить без double.
-/// Модель должна быть получена отдельно из параметров secret/error/ciphertext state.
-EvalModDomain analyzeEvalModDomain(const EvalModCiphertextModel& model);
+/// MPFR estimate с направленным вверх округлением; proof зависит от корректности model sigma.
+EvalModDomain estimateEvalModDomain(const EvalModCiphertextModel& model);
 
 bool isEvalModDomainValid(const EvalModDomain& domain);
 

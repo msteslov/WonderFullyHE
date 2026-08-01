@@ -17,28 +17,37 @@ z = (S_CtS / q_src) x = I + (m_tilde + e) / q_src
 - `integerBound = K`, определяющую число допустимых интервалов;
 - `normalizedResidualBound = rho < 1/2`, определяющую расстояние до разрывов.
 
-`analyzeEvalModDomain` принимает уже явно построенную субгауссову модель состояния
-ciphertext. Он не пытается вывести её только из `q`, `Q` и message bound. Для `K`
-используется union bound по всем коэффициентам с заданной failure probability;
+`estimateEvalModDomain` принимает уже явно построенную tail-модель состояния
+ciphertext. `integerNoiseSubgaussianSigma` — доказанный subgaussian parameter, а не
+обычная standard deviation. Его необходимо вывести из распределений secret и
+encryption error, key-switching noise и фактического состояния ciphertext. Тип модели
+фиксируется как deterministic, Gaussian или subgaussian. Функция не пытается вывести
+его только из `q`, `Q` и message bound. Для `K` используется MPFR union bound с
+направленным вверх округлением по всем коэффициентам и заданной failure probability;
 `rho` включает bounds на encoded message, существующую encoding error, нормированную
-ошибку CoeffToSlot и scale/period mismatch, заранее
+ошибку CoeffToSlot и additive normalization error, заранее
 консервативно поделённых на exact `q_src`. API специально не принимает `q_src` как
 `double`: exact division должна происходить в high-precision слое вызывающей стороны.
-Операции над переданными bounds округляются вверх через `nextafter`.
+Relative period mismatch умножается внутри анализа на `K + residual`, поэтому caller
+не может забыть зависимость period error от найденного integer bound. Derived
+discontinuity margin не хранится и вычисляется с округлением вниз.
 
 ## Oracle
 
 `exactCoefficientOracle` выполняет CRT в GMP integer, затем exact centered reduction
 modulo полного `q_src`. Только после этого выполняется высокоточное деление на
 semantic output scale. Это исключает потерю младших битов большого `Q` через
-промежуточный `double`.
+промежуточный `double`. Scale хранится как exact rational; `fromBinaryDouble`
+импортирует точные mantissa/exponent фактического SEAL scale. Результат сохраняет
+exact numerator/scale, rounded decimal и MPFR rounding-error bound.
 
 ## Аппроксимация
 
 `diagnoseEvalModPolynomialOnGrid` измеряет polynomial на объединении интервалов
 `[k-rho,k+rho]`, а не на сплошном интервале с разрывами. Он сообщает maximum error,
 real/complex derivative maxima и ошибку на всей границе комплексной окрестности.
-Коэффициенты передаются десятичными строками и вычисляются в MPFR. Сейчас реализован
+Коэффициенты, radius и координаты grid передаются/строятся в MPFR без промежуточного
+`double`; NaN и infinity отклоняются. Сейчас реализован
 только monomial evaluator; Chebyshev и Composite являются явными, но пока отклоняемыми
 вариантами basis, а не неявно смешанными схемами.
 
@@ -57,7 +66,9 @@ interval-arithmetic proof. Будущий Arb API получит отдельн�
 где `G_out = q_src / S_out` — консервативная денормировка.
 
 `estimateEvalModCost` отдельно оценивает latency, working set и нижнюю оценку data
-modulus bits по
+modulus bits по maximum из multiplicative depth и level consumption; это учитывает
+минимальный scale headroom lazy evaluation. Полный scale/prime schedule всё ещё должен
+заменить эту временную нижнюю оценку. Cost строится по
 скомпилированному circuit description и измеренной backend cost model. Это ещё не
 optimizer modulus chain и не security estimator. Исследовательские компоненты собраны
 в optional target `m2424::evalmod_analysis`; стабильная библиотека `m2424::m2424` не
