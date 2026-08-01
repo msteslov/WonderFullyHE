@@ -1,5 +1,6 @@
 #include "m2424/bootstrap_candidates.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <stdexcept>
 
@@ -18,6 +19,9 @@ int main() {
     const auto infeasible = m2424::forecastBootstrapFeasibility(selected, {
         1e-11, 1e-11, 3e-10, 1e-10, 5e-11
     });
+    const double propagated = m2424::propagatedBootstrapError({
+        1e-11, 2e-11, 3e-11, 4e-11, 5e-11, 2.0, 3.0, 6e-11, 7e-11
+    });
 
     bool unknownRejected = false;
     try {
@@ -28,7 +32,8 @@ int main() {
 
     const bool ok = allValid && !incomplete.complete && !incomplete.passes
         && feasible.complete && feasible.passes && feasible.predictedTotalError <= m2424::kTargetAbsoluteError
-        && infeasible.complete && !infeasible.passes && unknownRejected;
+        && infeasible.complete && !infeasible.passes && unknownRejected
+        && std::abs(propagated - 6.1e-10) < 1e-22;
     std::printf("[test_bootstrap_candidates] count=%zu %s\n", candidates.size(), ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

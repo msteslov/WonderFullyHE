@@ -56,6 +56,23 @@ struct BootstrapFeasibilityForecast {
     std::string blocker;
 };
 
+/// Ошибки в нормированных координатах z и параметры их распространения.
+struct BootstrapPropagationBounds {
+    double coeffToSlotNormalized{};
+    double approximation{};
+    double polynomialArithmetic{};
+    double scaleMismatch{};
+    double periodMismatch{};
+    double evalModDerivativeMax{};
+    double slotToCoeffOperatorNorm{};
+    double slotToCoeffAdditive{};
+    double finalAdditive{};
+};
+
+/// Bound: ||T_StC||(L_F e_CtS + e_approx + e_poly + e_scale + e_period)
+///        + e_StC + e_final.
+double propagatedBootstrapError(const BootstrapPropagationBounds& bounds);
+
 /// Возвращает каталог кандидатов для экспериментов; ни один из них не означает готовую реализацию.
 const std::vector<BootstrapCandidate>& bootstrapCandidates();
 

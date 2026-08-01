@@ -122,4 +122,22 @@ BootstrapFeasibilityForecast forecastBootstrapFeasibility(const BootstrapCandida
             withinComponentBudgets && predicted <= kTargetAbsoluteError ? "" : "error_budget_exceeded"};
 }
 
+double propagatedBootstrapError(const BootstrapPropagationBounds& bounds) {
+    const double values[]{bounds.coeffToSlotNormalized, bounds.approximation,
+                          bounds.polynomialArithmetic, bounds.scaleMismatch,
+                          bounds.periodMismatch, bounds.evalModDerivativeMax,
+                          bounds.slotToCoeffOperatorNorm, bounds.slotToCoeffAdditive,
+                          bounds.finalAdditive};
+    for (double value : values) {
+        if (!std::isfinite(value) || value < 0.0) {
+            throw std::invalid_argument("invalid bootstrap propagation bound");
+        }
+    }
+    return bounds.slotToCoeffOperatorNorm
+        * (bounds.evalModDerivativeMax * bounds.coeffToSlotNormalized
+           + bounds.approximation + bounds.polynomialArithmetic
+           + bounds.scaleMismatch + bounds.periodMismatch)
+        + bounds.slotToCoeffAdditive + bounds.finalAdditive;
+}
+
 } // namespace m2424

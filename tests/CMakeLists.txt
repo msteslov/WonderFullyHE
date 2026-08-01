@@ -15,6 +15,7 @@ set(M2424_TESTS
     test_coeff_to_slot
     test_ckks_primitives
     test_double_hoisted_bsgs
+    test_evalmod_contract
     test_mod_raise
 )
 
