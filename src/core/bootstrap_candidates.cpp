@@ -126,6 +126,7 @@ double propagatedBootstrapError(const BootstrapPropagationBounds& bounds) {
     const double values[]{bounds.coeffToSlotNormalized, bounds.approximation,
                           bounds.polynomialArithmetic, bounds.scaleMismatch,
                           bounds.periodMismatch, bounds.evalModDerivativeMax,
+                          bounds.evalModOutputGain,
                           bounds.slotToCoeffOperatorNorm, bounds.slotToCoeffAdditive,
                           bounds.finalAdditive};
     for (double value : values) {
@@ -133,11 +134,15 @@ double propagatedBootstrapError(const BootstrapPropagationBounds& bounds) {
             throw std::invalid_argument("invalid bootstrap propagation bound");
         }
     }
-    return bounds.slotToCoeffOperatorNorm
+    const double result = bounds.slotToCoeffOperatorNorm * bounds.evalModOutputGain
         * (bounds.evalModDerivativeMax * bounds.coeffToSlotNormalized
            + bounds.approximation + bounds.polynomialArithmetic
            + bounds.scaleMismatch + bounds.periodMismatch)
         + bounds.slotToCoeffAdditive + bounds.finalAdditive;
+    if (!std::isfinite(result)) {
+        throw std::overflow_error("bootstrap propagation bound overflow");
+    }
+    return result;
 }
 
 } // namespace m2424

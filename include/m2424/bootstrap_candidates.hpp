@@ -64,6 +64,7 @@ struct BootstrapPropagationBounds {
     double scaleMismatch{};
     double periodMismatch{};
     double evalModDerivativeMax{};
+    double evalModOutputGain{};
     double slotToCoeffOperatorNorm{};
     double slotToCoeffAdditive{};
     double finalAdditive{};

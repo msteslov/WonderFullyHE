@@ -1,10 +1,10 @@
-#include "m2424/evalmod_domain_analysis.hpp"
+#include "m2424/experimental/evalmod_analysis/domain_analysis.hpp"
 
 #include <cmath>
 #include <limits>
 #include <stdexcept>
 
-namespace m2424 {
+namespace m2424::experimental {
 
 EvalModDomain analyzeEvalModDomain(const EvalModCiphertextModel& model) {
     if (model.coefficientCount == 0 || !std::isfinite(model.deterministicIntegerOffset)
@@ -13,6 +13,10 @@ EvalModDomain analyzeEvalModDomain(const EvalModCiphertextModel& model) {
         || model.normalizedMessageAbsBound < 0.0
         || !std::isfinite(model.normalizedEncodingErrorAbsBound)
         || model.normalizedEncodingErrorAbsBound < 0.0
+        || !std::isfinite(model.normalizedCoeffToSlotErrorAbsBound)
+        || model.normalizedCoeffToSlotErrorAbsBound < 0.0
+        || !std::isfinite(model.normalizedScalePeriodErrorAbsBound)
+        || model.normalizedScalePeriodErrorAbsBound < 0.0
         || !std::isfinite(model.failureProbabilityLog2)
         || model.failureProbabilityLog2 >= 0.0) {
         throw std::invalid_argument("invalid EvalMod ciphertext model");
@@ -21,15 +25,22 @@ EvalModDomain analyzeEvalModDomain(const EvalModCiphertextModel& model) {
     // P(max_i |X_i| > t) <= 2*n*exp(-t^2/(2*sigma^2)).
     const double logFailure = model.failureProbabilityLog2 * std::log(2.0);
     const double logUnionFactor = std::log(2.0 * static_cast<double>(model.coefficientCount));
-    const double tail = model.integerNoiseStddev
+    const double infinity = std::numeric_limits<double>::infinity();
+    const double rawTail = model.integerNoiseStddev
         * std::sqrt(2.0 * (logUnionFactor - logFailure));
-    const double integerBound = std::ceil(model.deterministicIntegerOffset + tail);
+    const double tail = rawTail == 0.0 ? 0.0 : std::nextafter(rawTail, infinity);
+    const double rawIntegerBound = model.deterministicIntegerOffset + tail;
+    const double integerBound = std::ceil(tail == 0.0 ? rawIntegerBound
+                                                       : std::nextafter(rawIntegerBound, infinity));
     if (!std::isfinite(integerBound)
         || integerBound > static_cast<double>(std::numeric_limits<std::size_t>::max())) {
         throw std::overflow_error("EvalMod integer bound does not fit size_t");
     }
 
-    const double rho = model.normalizedMessageAbsBound + model.normalizedEncodingErrorAbsBound;
+    double rho = std::nextafter(model.normalizedMessageAbsBound
+                                + model.normalizedEncodingErrorAbsBound, infinity);
+    rho = std::nextafter(rho + model.normalizedCoeffToSlotErrorAbsBound, infinity);
+    rho = std::nextafter(rho + model.normalizedScalePeriodErrorAbsBound, infinity);
     EvalModDomain result{static_cast<std::size_t>(integerBound), rho, 0.5 - rho,
                          model.failureProbabilityLog2};
     if (!isEvalModDomainValid(result)) {
@@ -46,4 +57,4 @@ bool isEvalModDomainValid(const EvalModDomain& domain) {
         && std::isfinite(domain.failureProbabilityLog2) && domain.failureProbabilityLog2 < 0.0;
 }
 
-} // namespace m2424
+} // namespace m2424::experimental

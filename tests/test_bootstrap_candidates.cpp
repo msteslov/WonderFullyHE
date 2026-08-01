@@ -20,8 +20,16 @@ int main() {
         1e-11, 1e-11, 3e-10, 1e-10, 5e-11
     });
     const double propagated = m2424::propagatedBootstrapError({
-        1e-11, 2e-11, 3e-11, 4e-11, 5e-11, 2.0, 3.0, 6e-11, 7e-11
+        1e-11, 2e-11, 3e-11, 4e-11, 5e-11, 2.0, 4.0, 3.0, 6e-11, 7e-11
     });
+    bool propagationOverflowRejected = false;
+    try {
+        (void)m2424::propagatedBootstrapError({
+            1.0, 1.0, 1.0, 1.0, 1.0, 1e308, 1e308, 1e308, 0.0, 0.0
+        });
+    } catch (const std::overflow_error&) {
+        propagationOverflowRejected = true;
+    }
 
     bool unknownRejected = false;
     try {
@@ -33,7 +41,7 @@ int main() {
     const bool ok = allValid && !incomplete.complete && !incomplete.passes
         && feasible.complete && feasible.passes && feasible.predictedTotalError <= m2424::kTargetAbsoluteError
         && infeasible.complete && !infeasible.passes && unknownRejected
-        && std::abs(propagated - 6.1e-10) < 1e-22;
+        && std::abs(propagated - 2.05e-9) < 1e-21 && propagationOverflowRejected;
     std::printf("[test_bootstrap_candidates] count=%zu %s\n", candidates.size(), ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

@@ -15,12 +15,19 @@ set(M2424_TESTS
     test_coeff_to_slot
     test_ckks_primitives
     test_double_hoisted_bsgs
-    test_evalmod_contract
     test_mod_raise
 )
 
 foreach(target IN LISTS M2424_TESTS)
     m2424_add_test(${target})
 endforeach()
+
+if(M2424_ENABLE_EVALMOD_ANALYSIS)
+    add_executable(test_evalmod_contract test_evalmod_contract.cpp)
+    target_compile_features(test_evalmod_contract PRIVATE cxx_std_17)
+    target_link_libraries(test_evalmod_contract PRIVATE m2424::evalmod_analysis)
+    add_test(NAME test_evalmod_contract COMMAND test_evalmod_contract)
+    set_tests_properties(test_evalmod_contract PROPERTIES TIMEOUT 60)
+endif()
 
 set_tests_properties(test_coeff_to_slot PROPERTIES TIMEOUT 600)

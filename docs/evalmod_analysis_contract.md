@@ -20,9 +20,11 @@ z = (S_CtS / q_src) x = I + (m_tilde + e) / q_src
 `analyzeEvalModDomain` принимает уже явно построенную субгауссову модель состояния
 ciphertext. Он не пытается вывести её только из `q`, `Q` и message bound. Для `K`
 используется union bound по всем коэффициентам с заданной failure probability;
-`rho` выводится из bounds на encoded message и существующую ошибку, заранее
+`rho` включает bounds на encoded message, существующую encoding error, нормированную
+ошибку CoeffToSlot и scale/period mismatch, заранее
 консервативно поделённых на exact `q_src`. API специально не принимает `q_src` как
 `double`: exact division должна происходить в high-precision слое вызывающей стороны.
+Операции над переданными bounds округляются вверх через `nextafter`.
 
 ## Oracle
 
@@ -33,26 +35,34 @@ semantic output scale. Это исключает потерю младших б�
 
 ## Аппроксимация
 
-`certifyEvalModPolynomial` измеряет monomial polynomial на объединении интервалов
+`diagnoseEvalModPolynomialOnGrid` измеряет polynomial на объединении интервалов
 `[k-rho,k+rho]`, а не на сплошном интервале с разрывами. Он сообщает maximum error,
-maximum derivative и ошибку на границе заданной комплексной окрестности.
+real/complex derivative maxima и ошибку на всей границе комплексной окрестности.
+Коэффициенты передаются десятичными строками и вычисляются в MPFR. Сейчас реализован
+только monomial evaluator; Chebyshev и Composite являются явными, но пока отклоняемыми
+вариантами basis, а не неявно смешанными схемами.
 
 Текущая реализация является детерминированным grid diagnostic, но не формальным
-interval-arithmetic proof. Поле называется certificate на уровне API, однако перед
-использованием как доказательства его необходимо подкрепить interval/Arb backend.
+interval-arithmetic proof. Будущий Arb API получит отдельный тип interval certificate.
 
 ## Распространение ошибки и стоимость
 
 `propagatedBootstrapError` реализует
 
 ```text
-||T_StC|| (L_F e_CtS + e_approx + e_poly + e_scale + e_period)
+||T_StC|| G_out (L_F e_CtS + e_approx + e_poly + e_scale + e_period)
   + e_StC + e_final.
 ```
 
-`estimateEvalModCost` отдельно оценивает latency, working set и modulus bits по
+где `G_out = q_src / S_out` — консервативная денормировка.
+
+`estimateEvalModCost` отдельно оценивает latency, working set и нижнюю оценку data
+modulus bits по
 скомпилированному circuit description и измеренной backend cost model. Это ещё не
-optimizer modulus chain и не security estimator.
+optimizer modulus chain и не security estimator. Исследовательские компоненты собраны
+в optional target `m2424::evalmod_analysis`; стабильная библиотека `m2424::m2424` не
+зависит от GMP/MPFR. API находится в `m2424/experimental/evalmod_analysis/` и не входит
+в стабильный umbrella header.
 
 ## Следующий эксперимент
 

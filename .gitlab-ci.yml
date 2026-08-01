@@ -13,11 +13,11 @@ verify:linux:
   allow_failure: true
   before_script:
     - apt-get update
-    - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates cmake git
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential ca-certificates cmake git libgmp-dev libmpfr-dev pkg-config
     - git submodule sync --recursive
     - git submodule update --init --recursive --depth 1
   script:
-    - cmake -S . -B build -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE" -DBUILD_TESTING=ON
+    - cmake -S . -B build -DCMAKE_BUILD_TYPE="$CMAKE_BUILD_TYPE" -DBUILD_TESTING=ON -DM2424_ENABLE_EVALMOD_ANALYSIS=ON
     - cmake --build build -j"$(nproc)"
     - ctest --test-dir build --output-on-failure
     - mkdir -p ci_results
