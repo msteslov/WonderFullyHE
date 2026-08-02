@@ -1,6 +1,7 @@
 #include "m2424/experimental/evalmod_analysis/domain_analysis.hpp"
 
 #include <mpfr.h>
+#include <gmpxx.h>
 
 #include <cmath>
 #include <cstdlib>
@@ -44,6 +45,8 @@ EvalModDomain estimateEvalModDomain(const EvalModCiphertextModel& model) {
         || !std::isfinite(model.failureProbabilityLog2) || model.failureProbabilityLog2 >= 0.0
         || model.analysisPrecisionBits < 64
         || model.analysisPrecisionBits > static_cast<std::size_t>(std::numeric_limits<int>::max() / 2)
+        || model.provenance.derivation.empty() || model.provenance.includedNoiseSources.empty()
+        || model.provenance.assumptions.empty()
         || (model.tailModel == TailModel::Deterministic
             && model.integerNoiseSubgaussianSigma != 0.0)) {
         throw std::invalid_argument("invalid EvalMod ciphertext model");
@@ -68,10 +71,20 @@ EvalModDomain estimateEvalModDomain(const EvalModCiphertextModel& model) {
     }
     mpfr_add(work.get(), offset.get(), tail.get(), MPFR_RNDU);
     mpfr_ceil(work.get(), work.get());
-    if (!mpfr_fits_ulong_p(work.get(), MPFR_RNDU)) {
+    mpz_class sizeMaximum;
+    const std::size_t nativeMaximum = std::numeric_limits<std::size_t>::max();
+    mpz_import(sizeMaximum.get_mpz_t(), 1, 1, sizeof(nativeMaximum), 0, 0, &nativeMaximum);
+    Real sizeMaximumMpfr(precision);
+    mpfr_set_z(sizeMaximumMpfr.get(), sizeMaximum.get_mpz_t(), MPFR_RNDN);
+    if (mpfr_cmp(work.get(), sizeMaximumMpfr.get()) > 0) {
         throw std::overflow_error("EvalMod integer bound does not fit size_t");
     }
-    const std::size_t integerBound = mpfr_get_ui(work.get(), MPFR_RNDU);
+    mpz_class integerBoundExact;
+    mpfr_get_z(integerBoundExact.get_mpz_t(), work.get(), MPFR_RNDU);
+    std::size_t integerBound{};
+    std::size_t imported{};
+    mpz_export(&integerBound, &imported, 1, sizeof(integerBound), 0, 0,
+               integerBoundExact.get_mpz_t());
 
     Real residual(precision), term(precision);
     mpfr_set_d(residual.get(), model.normalizedMessageAbsBound, MPFR_RNDU);

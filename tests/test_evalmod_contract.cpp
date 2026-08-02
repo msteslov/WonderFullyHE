@@ -11,7 +11,9 @@ namespace em = m2424::experimental;
 
 em::EvalModCiphertextModel model(std::size_t count, double sigma, double failure = -128.0) {
     return {em::TailModel::Subgaussian, count, 1.0, sigma, 0.1, 0.0004, 0.00005,
-            0.00001, 0.00002, failure, 384};
+            0.00001, 0.00002, failure, 384,
+            {"union bound from component subgaussian parameters",
+             "encryption,key-switching,CtS", "independent centered component bounds"}};
 }
 
 int main() {
@@ -20,7 +22,8 @@ int main() {
     const auto moreCoefficients = em::estimateEvalModDomain(model(8192, 0.25));
     const auto lowerFailure = em::estimateEvalModDomain(model(4096, 0.25, -192.0));
     const auto deterministic = em::estimateEvalModDomain({
-        em::TailModel::Deterministic, 1, 2.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0, -128.0, 256
+        em::TailModel::Deterministic, 1, 2.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0, -128.0, 256,
+        {"deterministic bound", "none", "fixed integer offset"}
     });
     auto highKModel = model(4096, 0.75);
     const auto highK = em::estimateEvalModDomain(highKModel);
@@ -53,13 +56,15 @@ int main() {
     bool discontinuityRejected = false;
     try {
         (void)em::estimateEvalModDomain({em::TailModel::Deterministic, 1, 0.0, 0.0,
-            0.49, 0.0, 0.02, 0.0, 0.0, -128.0, 256});
+            0.49, 0.0, 0.02, 0.0, 0.0, -128.0, 256,
+            {"deterministic bound", "CtS", "absolute bounds"}});
     } catch (const std::domain_error&) { discontinuityRejected = true; }
 
     bool unprovedSigmaRejected = false;
     try {
         (void)em::estimateEvalModDomain({em::TailModel::Deterministic, 1, 0.0, 1.0,
-            0.1, 0.0, 0.0, 0.0, 0.0, -128.0, 256});
+            0.1, 0.0, 0.0, 0.0, 0.0, -128.0, 256,
+            {"invalid deterministic sigma", "noise", "none"}});
     } catch (const std::invalid_argument&) { unprovedSigmaRejected = true; }
 
     bool nonDivisorRejected = false;
@@ -127,7 +132,9 @@ int main() {
         && oracle.crtModulus == 10403 && oracle.centeredSourceCoefficient == 34
         && oracle.scaleNumerator == 16 && oracle.scaleDenominator == 1
         && oracle.precisionBits == 512 && oracle.expectedValueDecimal.find("2.125") == 0
+        && oracle.roundingErrorAbsBound.mantissa == 0
         && positiveHalf.centeredSourceCoefficient == 50
+        && positiveHalf.roundingErrorAbsBound.mantissa == 1
         && negativeHalf.centeredSourceCoefficient == -50
         && binaryScale.numerator == 13 && binaryScale.denominator == 4
         && diagnostic.approximationMaxError > 0.9

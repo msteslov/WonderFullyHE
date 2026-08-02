@@ -79,18 +79,21 @@ ExactCoefficientOracleResult exactCoefficientOracle(const std::vector<std::uint6
     mpfr_asprintf(&digits, "%.*Rg", static_cast<int>(std::ceil(precisionBits * 0.30103)) + 2, expected);
     std::string decimal = digits ? digits : "";
     mpfr_free_str(digits);
+    long errorExponent = 0;
     if (inexact == 0) {
         mpfr_set_zero(error, 0);
     } else {
-        mpfr_set_ui_2exp(error, 1, mpfr_get_exp(expected) - precision, MPFR_RNDU);
+        errorExponent = mpfr_get_exp(expected) - precision;
+        mpfr_set_ui_2exp(error, 1, errorExponent, MPFR_RNDU);
     }
     digits = nullptr;
-    mpfr_asprintf(&digits, "%.Re", error);
+    mpfr_asprintf(&digits, "%.RUe", error);
     std::string errorDecimal = digits ? digits : "";
     mpfr_free_str(digits);
     mpfr_clears(expected, error, static_cast<mpfr_ptr>(nullptr));
     return {reconstructed, product, centered, outputScale.numerator, outputScale.denominator,
-            std::move(decimal), std::move(errorDecimal), precisionBits};
+            std::move(decimal), std::move(errorDecimal), {inexact == 0 ? 0 : 1, errorExponent},
+            precisionBits};
 }
 
 ExactScale ExactScale::rational(ExactInteger numerator, ExactInteger denominator) {

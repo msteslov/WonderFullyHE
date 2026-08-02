@@ -7,6 +7,12 @@ namespace m2424::experimental {
 
 enum class TailModel { Deterministic, Gaussian, Subgaussian };
 
+struct TailModelProvenance {
+    std::string derivation;
+    std::string includedNoiseSources;
+    std::string assumptions;
+};
+
 /// Параметр sigma является доказанным subgaussian parameter, а не standard deviation.
 struct EvalModCiphertextModel {
     TailModel tailModel{TailModel::Deterministic};
@@ -20,6 +26,7 @@ struct EvalModCiphertextModel {
     double additiveNormalizationErrorAbsBound{};
     double failureProbabilityLog2{-128.0};
     std::size_t analysisPrecisionBits{256};
+    TailModelProvenance provenance;
 };
 
 struct EvalModDomain {

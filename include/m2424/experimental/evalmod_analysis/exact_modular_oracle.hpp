@@ -10,6 +10,10 @@
 namespace m2424::experimental {
 
 using ExactInteger = mpz_class;
+struct BinaryErrorBound {
+    ExactInteger mantissa;
+    long exponent{};
+};
 struct ExactCoefficientOracleResult {
     ExactInteger reconstructed;
     ExactInteger crtModulus;
@@ -18,6 +22,7 @@ struct ExactCoefficientOracleResult {
     ExactInteger scaleDenominator;
     std::string expectedValueDecimal;
     std::string roundingErrorAbsBoundDecimal;
+    BinaryErrorBound roundingErrorAbsBound;
     std::size_t precisionBits{};
 };
 

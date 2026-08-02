@@ -82,3 +82,17 @@ optimizer modulus chain и не security estimator. Исследовательс
    эмпирическим максимумом.
 3. Добавить generator periodic/minimax candidates и interval-certified derivative.
 4. После этого формировать единый CSV synthesis report и выбирать circuit/chain.
+
+## Approximation synthesis milestone
+
+`synthesizeEvalMod` теперь связывает problem, rigorous domain estimate, два контрольных
+кандидата, polynomial circuit, scale schedule, MPFR diagnostic, propagation и backend
+cost. Генерируются `PeriodicSineBaseline` и честно помеченный
+`MultiIntervalLeastSquaresPrototype`; planner выбирает
+проходящий ограничения вариант с меньшей оценкой latency. `report_evalmod_synthesis`
+выдаёт JSON, а с `--csv` — табличный машинно-читаемый отчёт.
+
+Текущий multi-interval generator использует дискретный least-squares fit как первую
+контрольную реализацию. Это ещё не Remez/interval-certified minimax и не основание для
+homomorphic execution. Следующий узкий шаг — заменить fit на MPFR Remez и добавить
+inverse-sine correction, не меняя уже сформированный synthesis contract.

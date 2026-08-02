@@ -28,3 +28,9 @@ set(M2424_STABLE_APPS
 foreach(target IN LISTS M2424_STABLE_APPS)
     m2424_add_app(${target})
 endforeach()
+
+if(M2424_ENABLE_EVALMOD_ANALYSIS)
+    add_executable(report_evalmod_synthesis report_evalmod_synthesis.cpp)
+    target_compile_features(report_evalmod_synthesis PRIVATE cxx_std_17)
+    target_link_libraries(report_evalmod_synthesis PRIVATE m2424::evalmod_analysis)
+endif()
