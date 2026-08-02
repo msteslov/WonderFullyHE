@@ -85,14 +85,18 @@ optimizer modulus chain и не security estimator. Исследовательс
 
 ## Approximation synthesis milestone
 
-`synthesizeEvalMod` теперь связывает problem, rigorous domain estimate, два контрольных
-кандидата, polynomial circuit, scale schedule, MPFR diagnostic, propagation и backend
-cost. Генерируются `PeriodicSineBaseline` и честно помеченный
-`MultiIntervalLeastSquaresPrototype`; planner выбирает
-проходящий ограничения вариант с меньшей оценкой latency. `report_evalmod_synthesis`
-выдаёт JSON, а с `--csv` — табличный машинно-читаемый отчёт.
+`synthesizeEvalMod` связывает problem, rigorous domain estimate, parameter search,
+polynomial DAG, scale schedule, MPFR diagnostic/certificate, propagation и backend
+cost. Поиск перебирает degree и Paterson–Stockmeyer baby step для odd multi-interval
+MPFR Remez. Дополнительно строятся periodic-sine baseline, исключённый из выбора
+least-squares diagnostic prototype и inverse-sine composition.
 
-Текущий multi-interval generator использует дискретный least-squares fit как первую
-контрольную реализацию. Это ещё не Remez/interval-certified minimax и не основание для
-homomorphic execution. Следующий узкий шаг — заменить fit на MPFR Remez и добавить
-inverse-sine correction, не меняя уже сформированный synthesis contract.
+Operation counts, depth, level consumption и peak liveness выводятся из узлов DAG.
+Нормировка `S_CtS/q_src` и денормировка `q_src/S_out` хранятся exact rational и входят
+в scale propagation. Arithmetic error оценивается по операциям DAG; неизвестное
+значение никогда не трактуется как ноль.
+
+Кандидаты имеют отдельные maturity/status flags. Planner возвращает только
+`provisionalSelection`; ни grid diagnostic, ни interval certificate не делают circuit
+`executable` без ciphertext backend validation. JSON/CSV сохраняют stage, rejection
+reason, certification, strategy, baby step, gains и scale schedule.

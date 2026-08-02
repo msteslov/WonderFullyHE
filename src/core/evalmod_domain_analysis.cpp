@@ -102,8 +102,25 @@ EvalModDomain estimateEvalModDomain(const EvalModCiphertextModel& model) {
     mpfr_add(residual.get(), residual.get(), term.get(), MPFR_RNDU);
 
     const double rho = mpfr_get_d(residual.get(), MPFR_RNDU);
+    EvalModDomainErrorBreakdown errors{
+        std::nextafter(model.normalizedMessageAbsBound, std::numeric_limits<double>::infinity()),
+        std::nextafter(model.normalizedEncodingErrorAbsBound, std::numeric_limits<double>::infinity()),
+        std::nextafter(model.normalizedCoeffToSlotErrorAbsBound, std::numeric_limits<double>::infinity()),
+        mpfr_get_d(term.get(), MPFR_RNDU),
+        std::nextafter(model.additiveNormalizationErrorAbsBound,
+                       std::numeric_limits<double>::infinity())
+    };
+    // term сейчас содержит additive error; period вычисляем повторно строго вверх.
+    mpfr_set_ui(term.get(), integerBound, MPFR_RNDU);
+    Real baseResidual(precision);
+    mpfr_set_d(baseResidual.get(), model.normalizedMessageAbsBound, MPFR_RNDU);
+    mpfr_add_d(baseResidual.get(), baseResidual.get(), model.normalizedEncodingErrorAbsBound, MPFR_RNDU);
+    mpfr_add_d(baseResidual.get(), baseResidual.get(), model.normalizedCoeffToSlotErrorAbsBound, MPFR_RNDU);
+    mpfr_add(term.get(), term.get(), baseResidual.get(), MPFR_RNDU);
+    mpfr_mul(term.get(), term.get(), mismatch.get(), MPFR_RNDU);
+    errors.periodMismatch = mpfr_get_d(term.get(), MPFR_RNDU);
     EvalModDomain result{integerBound, rho, decimalUp(residual.get(), model.analysisPrecisionBits),
-                         model.failureProbabilityLog2};
+                         model.failureProbabilityLog2, errors};
     if (!isEvalModDomainValid(result)) {
         throw std::domain_error("EvalMod residual reaches a rounding discontinuity");
     }

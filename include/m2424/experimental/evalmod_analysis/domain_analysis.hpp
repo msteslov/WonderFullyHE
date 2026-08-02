@@ -29,11 +29,20 @@ struct EvalModCiphertextModel {
     TailModelProvenance provenance;
 };
 
+struct EvalModDomainErrorBreakdown {
+    double message{};
+    double encoding{};
+    double coeffToSlot{};
+    double periodMismatch{};
+    double additiveNormalization{};
+};
+
 struct EvalModDomain {
     std::size_t integerBound{};
     double normalizedResidualBound{};
     std::string normalizedResidualBoundDecimal;
     double failureProbabilityLog2{};
+    EvalModDomainErrorBreakdown errors;
 
     /// Консервативный margin, округлённый только вниз.
     double discontinuityMargin() const;

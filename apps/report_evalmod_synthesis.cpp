@@ -20,5 +20,5 @@ int main(int argc, char** argv) {
     const std::string report = argc == 2 ? em::evalModSynthesisCsv(result)
                                          : em::evalModSynthesisJson(result) + "\n";
     std::fwrite(report.data(), 1, report.size(), stdout);
-    return result.selectedCandidate ? 0 : 1;
+    return result.provisionalSelection ? 0 : 1;
 }

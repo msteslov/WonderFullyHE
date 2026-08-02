@@ -25,6 +25,16 @@ struct EvalModGridDiagnostic {
     std::size_t precisionBits{};
 };
 
+struct EvalModIntervalCertificate {
+    std::string approximationErrorUpperBound;
+    std::string derivativeUpperBound;
+    std::string complexErrorUpperBound;
+    double approximationErrorUpperBoundDouble{};
+    double derivativeUpperBoundDouble{};
+    double complexErrorUpperBoundDouble{};
+    bool proved{};
+};
+
 /// MPFR grid diagnostic; это не interval certificate.
 EvalModGridDiagnostic diagnoseEvalModPolynomialOnGrid(const EvalModPolynomial& polynomial,
                                                       const EvalModDomain& domain,
@@ -33,5 +43,10 @@ EvalModGridDiagnostic diagnoseEvalModPolynomialOnGrid(const EvalModPolynomial& p
                                                       double arithmeticErrorEstimate,
                                                       std::size_t precisionBits = 256,
                                                       std::size_t maxEvaluations = 1'000'000);
+
+EvalModIntervalCertificate certifyEvalModPolynomialIntervals(
+    const EvalModPolynomial& polynomial, const EvalModDomain& domain,
+    const std::string& complexRadiusDecimal, std::size_t subdivisions = 4096,
+    std::size_t precisionBits = 384);
 
 } // namespace m2424::experimental

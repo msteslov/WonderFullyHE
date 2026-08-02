@@ -13,6 +13,26 @@ int main() {
         12, 40, 1.0, {1.0, 0.2, 0.05, 0.2, 0.1, 4096}, 1.0, 0.0, 0.0
     };
     const auto result = em::synthesizeEvalMod(problem);
+    auto strictProblem = problem;
+    strictProblem.targetAbsoluteError = 1e-10;
+    const auto strict = em::synthesizeEvalMod(strictProblem);
+    auto shallowProblem = problem;
+    shallowProblem.availableLevels = 1;
+    const auto shallow = em::synthesizeEvalMod(shallowProblem);
+    auto changedCts = problem;
+    changedCts.coeffToSlotScale = em::ExactScale::rational(32, 1);
+    const auto changedCtsCircuit = em::compileEvalModPolynomial(
+        result.candidates[0].polynomial, changedCts, 3);
+    auto changedOutput = problem;
+    changedOutput.outputScale = em::ExactScale::rational(32, 1);
+    const auto changedOutputCircuit = em::compileEvalModPolynomial(
+        result.candidates[0].polynomial, changedOutput, 3);
+    auto profile8192 = problem;
+    profile8192.coeffToSlotScale = em::ExactScale::fromBinaryDouble(std::exp2(59.5));
+    profile8192.outputScale = profile8192.coeffToSlotScale;
+    profile8192.ciphertextModel.coefficientCount = 16384;
+    profile8192.ciphertextModel.provenance.derivation = "N=16384, slots=8192 validation model";
+    const auto profileResult = em::synthesizeEvalMod(profile8192);
     const auto csv = em::evalModSynthesisCsv(result);
     const auto json = em::evalModSynthesisJson(result);
     bool plaintextMatches = true;
@@ -30,11 +50,37 @@ int main() {
                                 * (101.0 / 16.0) - expected) < 0.01;
         }
     }
-    const bool ok = result.domain.integerBound == 1 && result.candidates.size() == 2
-        && result.selectedCandidate.has_value() && result.candidates[0].circuit.degree == 9
-        && result.candidates[1].circuit.degree == 15
+    const auto& compiled = result.candidates[0].compiledCircuit;
+    std::size_t ctCt = 0, ctPt = 0, relin = 0, rescales = 0, additions = 0;
+    for (const auto& node : compiled.nodes) {
+        ctCt += node.operation == em::EvalModOperation::MultiplyCipher;
+        ctPt += node.operation == em::EvalModOperation::MultiplyPlain;
+        relin += node.operation == em::EvalModOperation::Relinearize;
+        rescales += node.operation == em::EvalModOperation::Rescale;
+        additions += node.operation == em::EvalModOperation::Add;
+    }
+    bool prototypeSelected = result.provisionalSelection
+        && result.candidates[*result.provisionalSelection].family
+            == em::EvalModApproximationFamily::MultiIntervalLeastSquaresPrototype;
+    const bool ok = result.domain.integerBound == 1 && result.candidates.size() >= 22
+        && result.provisionalSelection.has_value()
+        && result.candidates[0].compiledCircuit.cost.degree == 9
+        && result.candidates[1].compiledCircuit.cost.degree == 15
         && !result.candidates[0].scaleSchedule.empty()
         && result.candidates[1].diagnostic.evaluations > 0
+        && result.candidates[0].intervalCertified && !result.candidates[0].executable
+        && result.candidates[0].polynomialArithmeticError.has_value()
+        && !prototypeSelected && !strict.provisionalSelection.has_value()
+        && !shallow.candidates[0].satisfiesLevelBudget
+        && compiled.cost.ciphertextMultiplications == ctCt
+        && compiled.cost.ciphertextPlaintextMultiplications == ctPt
+        && compiled.cost.relinearizations == relin && compiled.cost.rescales == rescales
+        && compiled.cost.additions == additions
+        && changedCtsCircuit.normalizationGain.numerator
+            != compiled.normalizationGain.numerator
+        && changedOutputCircuit.denormalizationGain.denominator
+            != compiled.denormalizationGain.denominator
+        && profileResult.domain.integerBound >= 1 && profileResult.candidates.size() >= 22
         && csv.find("periodic_sine_baseline") != std::string::npos
         && json.find("multi_interval_least_squares_prototype") != std::string::npos
         && json.find("tail_model_provenance") != std::string::npos && plaintextMatches;
