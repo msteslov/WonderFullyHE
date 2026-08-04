@@ -206,6 +206,15 @@ std::size_t exactScaleBitsUp(const ExactScale& scale) {
     return static_cast<std::size_t>(std::max(0.0, std::ceil(std::log2(value))));
 }
 
+std::string exactScaleDecimal(const ExactScale& scale) {
+    mpfr_t value; mpfr_init2(value, 384);
+    mpq_class rational(scale.numerator, scale.denominator); rational.canonicalize();
+    mpfr_set_q(value, rational.get_mpq_t(), MPFR_RNDN);
+    char* text = nullptr; mpfr_asprintf(&text, "%.120Rg", value);
+    std::string result = text ? text : "0"; mpfr_free_str(text); mpfr_clear(value);
+    return result;
+}
+
 const char* familyName(EvalModApproximationFamily family) {
     switch (family) {
     case EvalModApproximationFamily::PeriodicSineBaseline: return "periodic_sine_baseline";
@@ -277,7 +286,8 @@ CompiledEvalModCircuit compileEvalModPolynomial(const EvalModPolynomial& polynom
     };
     const std::size_t input = addNode(EvalModOperation::Input, {}, 0, workingScale, workingScale);
     const std::size_t normalization = addNode(EvalModOperation::EncodeConstant, {}, 0,
-                                              workingScale, workingScale);
+                                              workingScale, workingScale,
+                                              exactScaleDecimal(compiled.normalizationGain));
     std::size_t x = addNode(EvalModOperation::MultiplyPlain, {input, normalization}, 0,
                             workingScale, multiplyScale(workingScale, workingScale));
     x = addNode(EvalModOperation::Rescale, {x}, 1, compiled.nodes[x].outputScale, workingScale);
@@ -317,6 +327,7 @@ CompiledEvalModCircuit compileEvalModPolynomial(const EvalModPolynomial& polynom
         for (std::size_t offset = 0; offset < babyStep; ++offset) {
             const std::size_t coefficient = block * babyStep + offset;
             if (coefficient > degree) break;
+            if (std::stold(polynomial.decimalCoefficients[coefficient]) == 0.0L) continue;
             auto constant = addNode(EvalModOperation::EncodeConstant, {}, block, workingScale, workingScale,
                                     polynomial.decimalCoefficients[coefficient]);
             std::size_t term = constant;
@@ -338,6 +349,7 @@ CompiledEvalModCircuit compileEvalModPolynomial(const EvalModPolynomial& polynom
             } else depths.resize(compiled.nodes.size());
             blockValue = term;
         }
+        if (!blockValue) continue;
         std::size_t term = *blockValue;
         if (block > 0) {
             auto mul = addNode(EvalModOperation::MultiplyCipher, {term, giantPowers[block]}, block + 1,
@@ -360,8 +372,9 @@ CompiledEvalModCircuit compileEvalModPolynomial(const EvalModPolynomial& polynom
         } else depths.resize(compiled.nodes.size());
         total = term;
     }
+    if (!total) throw std::invalid_argument("zero polynomial has no ciphertext circuit");
     const auto denorm = addNode(EvalModOperation::EncodeConstant, {}, 0, problem.outputScale,
-                                problem.outputScale);
+                                problem.outputScale, exactScaleDecimal(compiled.denormalizationGain));
     auto output = addNode(EvalModOperation::MultiplyPlain, {*total, denorm}, 0, workingScale,
                           multiplyScale(workingScale, problem.outputScale));
     depths.resize(compiled.nodes.size()); depths[output] = depths[*total];
@@ -506,6 +519,131 @@ double evaluateEvalModPolynomial(const EvalModPolynomial& polynomial, double inp
     for (auto it = polynomial.decimalCoefficients.rbegin(); it != polynomial.decimalCoefficients.rend(); ++it)
         value = value * input + std::stold(*it);
     return static_cast<double>(value);
+}
+
+std::vector<double> executeEvalModDagPlaintext(const CompiledEvalModCircuit& circuit,
+                                               const std::vector<double>& input) {
+    struct Value { std::vector<double> slots; std::optional<double> scalar; };
+    std::vector<Value> values(circuit.nodes.size());
+    for (std::size_t index = 0; index < circuit.nodes.size(); ++index) {
+        const auto& node = circuit.nodes[index];
+        if (node.operation == EvalModOperation::Input) values[index].slots = input;
+        else if (node.operation == EvalModOperation::EncodeConstant)
+            values[index].scalar = std::stod(node.constantDecimal);
+        else if (node.operation == EvalModOperation::Relinearize
+                 || node.operation == EvalModOperation::Rescale) values[index] = values[node.inputs[0]];
+        else {
+            const auto apply = [&](double left, double right) {
+                return node.operation == EvalModOperation::Add ? left + right : left * right;
+            };
+            const auto& left = values[node.inputs[0]];
+            const auto& right = values[node.inputs[1]];
+            if (left.scalar && right.scalar) values[index].scalar = apply(*left.scalar, *right.scalar);
+            else {
+                const auto& source = left.scalar ? right.slots : left.slots;
+                values[index].slots.resize(source.size());
+                for (std::size_t slot = 0; slot < source.size(); ++slot) {
+                    const double a = left.scalar ? *left.scalar : left.slots[slot];
+                    const double b = right.scalar ? *right.scalar : right.slots[slot];
+                    values[index].slots[slot] = apply(a, b);
+                }
+            }
+        }
+    }
+    return values[circuit.outputNode].slots;
+}
+
+EvalModBackendValidation validateEvalModCandidateBackend(EvalModCandidate& candidate,
+                                                        const EvalModProblem& problem,
+                                                        const CkksProfile& profile,
+                                                        const std::vector<double>& rawInput,
+                                                        const std::vector<double>& expectedOutput) {
+    EvalModBackendValidation result;
+    std::size_t currentNode = 0;
+    candidate.executable = false;
+    if (rawInput.empty() || rawInput.size() != expectedOutput.size()
+        || candidate.family == EvalModApproximationFamily::MultiIntervalLeastSquaresPrototype
+        || !candidate.intervalCertified || !candidate.satisfiesLevelBudget) {
+        result.failure = "candidate_not_backend_eligible";
+        return result;
+    }
+    if (profile.coeffModulusBits.size() <= candidate.compiledCircuit.cost.levelConsumption) {
+        result.failure = "profile_chain_too_short";
+        return result;
+    }
+    try {
+        SealAdapter adapter = SealAdapter::create(profile);
+        adapter.generateKeys(std::vector<int>{}, true);
+        struct Value { std::optional<Cipher> cipher; std::optional<double> scalar; };
+        std::vector<Value> values(candidate.compiledCircuit.nodes.size());
+        const Cipher encrypted = adapter.encrypt(adapter.encode(rawInput));
+        auto align = [&](Cipher left, Cipher right) {
+            const auto leftIndex = adapter.chainIndex(left), rightIndex = adapter.chainIndex(right);
+            if (leftIndex > rightIndex) left = adapter.modSwitchTo(left, right);
+            else if (rightIndex > leftIndex) right = adapter.modSwitchTo(right, left);
+            const double ratio = adapter.scale(left) / adapter.scale(right);
+            if (!std::isfinite(ratio) || std::abs(std::log2(ratio)) > 0.05)
+                throw std::runtime_error("DAG scale alignment failed");
+            right = adapter.normalizeScale(right, adapter.scale(left));
+            return std::pair<Cipher, Cipher>{std::move(left), std::move(right)};
+        };
+        for (std::size_t index = 0; index < candidate.compiledCircuit.nodes.size(); ++index) {
+            currentNode = index;
+            const auto& node = candidate.compiledCircuit.nodes[index];
+            if (node.operation == EvalModOperation::Input) values[index].cipher = encrypted;
+            else if (node.operation == EvalModOperation::EncodeConstant)
+                values[index].scalar = std::stod(node.constantDecimal);
+            else if (node.operation == EvalModOperation::Relinearize)
+                values[index].cipher = adapter.relinearize(*values[node.inputs[0]].cipher);
+            else if (node.operation == EvalModOperation::Rescale)
+                values[index].cipher = adapter.rescaleToNext(*values[node.inputs[0]].cipher);
+            else if (node.operation == EvalModOperation::MultiplyPlain) {
+                const auto& left = values[node.inputs[0]], &right = values[node.inputs[1]];
+                const Cipher& cipher = left.cipher ? *left.cipher : *right.cipher;
+                const double scalar = left.scalar ? *left.scalar : *right.scalar;
+                values[index].cipher = adapter.multiplyPlain(
+                    cipher, adapter.encodeScalarAtScaleFor(scalar, adapter.scale(cipher), cipher));
+            } else if (node.operation == EvalModOperation::MultiplyCipher) {
+                auto operands = align(*values[node.inputs[0]].cipher, *values[node.inputs[1]].cipher);
+                values[index].cipher = adapter.multiply(operands.first, operands.second);
+            } else if (node.operation == EvalModOperation::Add) {
+                const auto& left = values[node.inputs[0]], &right = values[node.inputs[1]];
+                if (left.cipher && right.cipher) {
+                    auto operands = align(*left.cipher, *right.cipher);
+                    values[index].cipher = adapter.add(operands.first, operands.second);
+                } else {
+                    const Cipher& cipher = left.cipher ? *left.cipher : *right.cipher;
+                    const double scalar = left.scalar ? *left.scalar : *right.scalar;
+                    values[index].cipher = adapter.addPlain(cipher, adapter.encodeScalarFor(scalar, cipher));
+                }
+            }
+            if (values[index].cipher) {
+                const auto info = adapter.info(*values[index].cipher);
+                if (!std::isfinite(info.scale) || info.scale <= 0.0)
+                    throw std::runtime_error("non-finite backend scale");
+            }
+            ++result.executedNodes;
+        }
+        const Cipher& output = *values[candidate.compiledCircuit.outputNode].cipher;
+        const auto decoded = adapter.decode(adapter.decrypt(output));
+        for (std::size_t index = 0; index < expectedOutput.size(); ++index)
+            result.maxAbsoluteError = std::max(result.maxAbsoluteError,
+                                               std::abs(decoded[index] - expectedOutput[index]));
+        result.outputChainIndex = adapter.chainIndex(output);
+        result.outputScale = adapter.scale(output);
+        const double allowed = std::max(problem.targetAbsoluteError,
+                                        candidate.predictedBootstrapError * 1.25);
+        result.passed = result.maxAbsoluteError <= allowed;
+        if (!result.passed) result.failure = "backend_error_exceeded";
+        candidate.executable = result.passed && candidate.satisfiesNumericalTarget;
+        if (candidate.executable) {
+            candidate.stage = EvalModCandidateStage::BackendValidated;
+            candidate.rejectionReason = EvalModRejectionReason::None;
+        }
+    } catch (const std::exception& error) {
+        result.failure = "node_" + std::to_string(currentNode) + ":" + error.what();
+    }
+    return result;
 }
 
 std::string evalModSynthesisCsv(const EvalModSynthesisResult& result) {

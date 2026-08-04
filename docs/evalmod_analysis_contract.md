@@ -100,3 +100,17 @@ Operation counts, depth, level consumption и peak liveness выводятся �
 `provisionalSelection`; ни grid diagnostic, ни interval certificate не делают circuit
 `executable` без ciphertext backend validation. JSON/CSV сохраняют stage, rejection
 reason, certification, strategy, baby step, gains и scale schedule.
+
+## Backend validation
+
+`executeEvalModDagPlaintext` исполняет именно compiled DAG и независимо сверяется с
+polynomial/oracle reference. `validateEvalModCandidateBackend` затем выполняет те же
+узлы над CKKS ciphertext через SEAL: константы кодируются на текущем уровне,
+операнды mod-switch-ятся, близкие scale metadata безопасно нормализуются, а операции
+relinearize/rescale исполняются буквально. Слишком короткая chain отклоняется до
+создания контекста и выполнения первого узла.
+
+Только прошедший numerical/interval gate не-прототипный candidate после ciphertext
+сравнения получает `BackendValidated` и `executable=true`. Тест подтверждает этот
+переход на настоящем `MultiIntervalMinimax` при `N=16384`; least-squares prototype
+остаётся запрещённым для backend независимо от его grid error.

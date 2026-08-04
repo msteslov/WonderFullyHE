@@ -1,6 +1,7 @@
 #pragma once
 
 #include "m2424/bootstrap_candidates.hpp"
+#include "m2424/seal_adapter.hpp"
 #include "m2424/experimental/evalmod_analysis/approximation_lab.hpp"
 #include "m2424/experimental/evalmod_analysis/cost_model.hpp"
 #include "m2424/experimental/evalmod_analysis/exact_modular_oracle.hpp"
@@ -101,11 +102,27 @@ struct EvalModSynthesisResult {
     std::optional<std::size_t> provisionalSelection;
 };
 
+struct EvalModBackendValidation {
+    bool passed{};
+    double maxAbsoluteError{};
+    std::size_t executedNodes{};
+    std::size_t outputChainIndex{};
+    double outputScale{};
+    std::string failure;
+};
+
 EvalModSynthesisResult synthesizeEvalMod(const EvalModProblem& problem);
 CompiledEvalModCircuit compileEvalModPolynomial(const EvalModPolynomial& polynomial,
                                                const EvalModProblem& problem,
                                                std::size_t babyStep);
 double evaluateEvalModPolynomial(const EvalModPolynomial& polynomial, double input);
+std::vector<double> executeEvalModDagPlaintext(const CompiledEvalModCircuit& circuit,
+                                               const std::vector<double>& input);
+EvalModBackendValidation validateEvalModCandidateBackend(EvalModCandidate& candidate,
+                                                        const EvalModProblem& problem,
+                                                        const CkksProfile& profile,
+                                                        const std::vector<double>& rawInput,
+                                                        const std::vector<double>& expectedOutput);
 std::string evalModSynthesisJson(const EvalModSynthesisResult& result);
 std::string evalModSynthesisCsv(const EvalModSynthesisResult& result);
 

@@ -190,6 +190,8 @@ public:
     CipherInfo info(const RaisedCipher&) const;
     /// Возвращает scale ciphertext.
     double scale(const Cipher&) const;
+    /// Нормализует только metadata scale после близких rescale paths; значение не меняет.
+    Cipher normalizeScale(const Cipher&, double targetScale) const;
     /// Возвращает суммарный логарифм modulus chain ciphertext по основанию два.
     double coeffModulusLog2(const Cipher&) const;
     /// Возвращает битовые размеры modulus chain из исходного профиля.

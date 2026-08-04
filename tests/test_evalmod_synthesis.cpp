@@ -51,6 +51,15 @@ int main() {
         }
     }
     const auto& compiled = result.candidates[0].compiledCircuit;
+    const std::vector<double> dagRawInput{-6.5, -3.0, 0.0, 3.0, 6.5};
+    const auto dagOutput = em::executeEvalModDagPlaintext(compiled, dagRawInput);
+    bool dagMatchesReference = dagOutput.size() == dagRawInput.size();
+    for (std::size_t index = 0; index < dagRawInput.size(); ++index) {
+        const double z = dagRawInput[index] * (16.0 / 101.0);
+        const double expected = em::evaluateEvalModPolynomial(result.candidates[0].polynomial, z)
+            * (101.0 / 16.0);
+        dagMatchesReference = dagMatchesReference && std::abs(dagOutput[index] - expected) < 1e-10;
+    }
     std::size_t ctCt = 0, ctPt = 0, relin = 0, rescales = 0, additions = 0;
     for (const auto& node : compiled.nodes) {
         ctCt += node.operation == em::EvalModOperation::MultiplyCipher;
@@ -76,6 +85,7 @@ int main() {
         && compiled.cost.ciphertextPlaintextMultiplications == ctPt
         && compiled.cost.relinearizations == relin && compiled.cost.rescales == rescales
         && compiled.cost.additions == additions
+        && dagMatchesReference
         && changedCtsCircuit.normalizationGain.numerator
             != compiled.normalizationGain.numerator
         && changedOutputCircuit.denormalizationGain.denominator

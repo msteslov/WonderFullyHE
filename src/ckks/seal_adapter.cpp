@@ -749,6 +749,17 @@ double SealAdapter::scale(const Cipher& cipher) const {
     return info(cipher).scale;
 }
 
+Cipher SealAdapter::normalizeScale(const Cipher& cipher, double targetScale) const {
+    const double current = scale(cipher);
+    if (!std::isfinite(targetScale) || targetScale <= 0.0 || !std::isfinite(current)
+        || std::abs(std::log2(current / targetScale)) > 0.1) {
+        throw std::invalid_argument("unsafe ciphertext scale normalization");
+    }
+    Cipher result = cipher;
+    result.pimpl_->ct.scale() = targetScale;
+    return result;
+}
+
 double SealAdapter::coeffModulusLog2(const Cipher& cipher) const {
     return info(cipher).coeffModulusLog2;
 }
