@@ -18,6 +18,9 @@ EvalModCostEstimate estimateEvalModCost(const EvalModCircuitCost& circuit,
         || !std::isfinite(backend.ciphertextPlaintextMultiplyMs)
         || backend.ciphertextPlaintextMultiplyMs < 0.0 || !std::isfinite(backend.additionMs)
         || backend.additionMs < 0.0
+        || !std::isfinite(backend.modulusSwitchMs) || backend.modulusSwitchMs < 0.0
+        || !std::isfinite(backend.scaleAlignmentMs) || backend.scaleAlignmentMs < 0.0
+        || !std::isfinite(backend.plaintextAdditionMs) || backend.plaintextAdditionMs < 0.0
         || circuit.relinearizations > circuit.ciphertextMultiplications) {
         throw std::invalid_argument("invalid EvalMod cost input");
     }
@@ -36,7 +39,10 @@ EvalModCostEstimate estimateEvalModCost(const EvalModCircuitCost& circuit,
             + circuit.ciphertextPlaintextMultiplications * backend.ciphertextPlaintextMultiplyMs
             + circuit.additions * backend.additionMs
             + circuit.relinearizations * backend.relinearizeMs
-            + circuit.rescales * backend.rescaleMs;
+            + circuit.rescales * backend.rescaleMs
+            + circuit.modulusSwitches * backend.modulusSwitchMs
+            + circuit.scaleAlignments * backend.scaleAlignmentMs
+            + circuit.plaintextAdditions * backend.plaintextAdditionMs;
     if (!std::isfinite(latency)) throw std::overflow_error("EvalMod latency estimate overflow");
     return {
         latency,

@@ -204,7 +204,7 @@ EvalModIntervalCertificate certifyEvalModPolynomialIntervals(
     };
     return {decimal(approximation.get()), decimal(derivative.get()), decimal(complexError.get()),
             mpfr_get_d(approximation.get(), MPFR_RNDU), mpfr_get_d(derivative.get(), MPFR_RNDU),
-            mpfr_get_d(complexError.get(), MPFR_RNDU), true};
+            mpfr_get_d(complexError.get(), MPFR_RNDU), false};
 }
 
 } // namespace m2424::experimental

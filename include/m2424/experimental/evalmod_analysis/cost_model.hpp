@@ -16,6 +16,9 @@ struct EvalModCircuitCost {
     std::size_t peakLiveCiphertexts{};
     std::size_t preparedPlaintextBytes{};
     std::size_t backendScratchBytes{};
+    std::size_t modulusSwitches{};
+    std::size_t scaleAlignments{};
+    std::size_t plaintextAdditions{};
 };
 
 struct EvalModBackendCostModel {
@@ -25,6 +28,9 @@ struct EvalModBackendCostModel {
     double relinearizeMs{};
     double rescaleMs{};
     std::size_t bytesPerLiveCiphertext{};
+    double modulusSwitchMs{};
+    double scaleAlignmentMs{};
+    double plaintextAdditionMs{};
 };
 
 struct EvalModCostEstimate {

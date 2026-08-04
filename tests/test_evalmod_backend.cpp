@@ -6,41 +6,57 @@
 namespace em = m2424::experimental;
 
 int main() {
-    const em::ExactInteger scaleInteger = em::ExactInteger(1) << 40;
+    const em::ExactInteger qSource = em::ExactInteger(1) << 60;
+    const em::ExactInteger ctsScale = em::ExactInteger(1) << 59;
+    const em::ExactInteger outputScale = em::ExactInteger(1) << 57;
     em::EvalModProblem problem{
-        scaleInteger, em::ExactScale::rational(scaleInteger, 1),
-        em::ExactScale::rational(scaleInteger, 1),
-        {em::TailModel::Deterministic, 16384, 1.0, 0.0, 0.08, 0.0, 0.0, 0.0, 0.0,
-         -128.0, 256, {"backend deterministic validation", "CKKS arithmetic", "bounded slots"}},
-        8, 40, 1.0, {1.0, 0.2, 0.05, 0.2, 0.1, 4096}, 1.0, 0.0, 0.0
+        qSource, em::ExactScale::rational(ctsScale, 1), em::ExactScale::rational(outputScale, 1),
+        {em::TailModel::Deterministic, 32768, 1.0, 0.0, 0.08, 0.0, 0.0, 0.0, 0.0,
+         -128.0, 384, {"non-unit backend deterministic validation", "CKKS arithmetic",
+                       "bounded slots and exact binary scales"}},
+        7, 59, 1e-10, {1.0, 0.2, 0.05, 0.2, 0.1, 4096}, 1.0, 0.0, 0.0
     };
     auto synthesis = em::synthesizeEvalMod(problem);
     auto selected = synthesis.candidates.end();
     for (auto it = synthesis.candidates.begin(); it != synthesis.candidates.end(); ++it) {
-        if (it->family == em::EvalModApproximationFamily::MultiIntervalMinimax
-            && it->satisfiesNumericalTarget && it->satisfiesLevelBudget) { selected = it; break; }
+        if (it->family == em::EvalModApproximationFamily::PeriodicSineBaseline
+            && it->approximationConverged && it->satisfiesLevelBudget) { selected = it; break; }
     }
     if (selected == synthesis.candidates.end()) return 1;
     auto& candidate = *selected;
-    const std::vector<double> input{-1.06, -0.04, 0.0, 0.07, 1.03};
-    const auto expected = em::executeEvalModDagPlaintext(candidate.compiledCircuit, input);
-    const m2424::CkksProfile profile{16384, {50, 40, 40, 40, 40, 40, 40, 40, 50},
-                                      std::exp2(40.0), input.size()};
+    const double rho = synthesis.domain.normalizedResidualBound;
+    const std::vector<double> zValues{-1.0 - rho, -1.0 + rho, -0.037, 0.0, 0.061,
+                                      1.0 - rho, 1.0 + rho};
+    std::vector<double> rawInput;
+    for (double z : zValues) rawInput.push_back(2.0 * z); // normalization gain = 1/2.
+    const auto expected = em::evaluateEvalModReferenceMpfr(
+        candidate.polynomial, candidate.compiledCircuit.normalizationGain,
+        candidate.compiledCircuit.denormalizationGain, rawInput, 512);
+    const auto smokeReference = em::executeEvalModDagPlaintext(candidate.compiledCircuit, rawInput);
+    bool independentReferenceMatches = expected.size() == smokeReference.size();
+    for (std::size_t index = 0; index < expected.size(); ++index)
+        independentReferenceMatches = independentReferenceMatches
+            && std::abs(expected[index] - smokeReference[index]) < 1e-10;
+
+    const m2424::CkksProfile profile{32768, {60, 59, 59, 59, 59, 59, 59, 59, 60},
+                                      std::exp2(59.0), rawInput.size()};
     const auto validation = em::validateEvalModCandidateBackend(candidate, problem, profile,
-                                                                 input, expected);
-    const m2424::CkksProfile shortProfile{16384, {50, 40, 50}, std::exp2(40.0), input.size()};
+                                                                 rawInput, expected);
+    const m2424::CkksProfile shortProfile{32768, {60, 59, 60}, std::exp2(59.0), rawInput.size()};
     auto shortCandidate = candidate;
-    shortCandidate.executable = false;
     const auto shortValidation = em::validateEvalModCandidateBackend(
-        shortCandidate, problem, shortProfile, input, expected);
+        shortCandidate, problem, shortProfile, rawInput, expected);
     auto prototype = synthesis.candidates[1];
     const auto prototypeValidation = em::validateEvalModCandidateBackend(
-        prototype, problem, profile, input, expected);
-    const bool ok = validation.passed && candidate.executable
-        && candidate.stage == em::EvalModCandidateStage::BackendValidated
+        prototype, problem, profile, rawInput, expected);
+
+    const bool ok = validation.passed && independentReferenceMatches
+        && candidate.stage == em::EvalModCandidateStage::BackendMeasured
+        && candidate.measuredBackendError.has_value() && !candidate.executable
+        && !candidate.intervalCertified && !candidate.arithmeticErrorRigorous
         && validation.executedNodes == candidate.compiledCircuit.nodes.size()
         && validation.maxAbsoluteError <= candidate.predictedBootstrapError * 1.25
-        && std::abs(std::log2(validation.outputScale) - 40.0) < 0.1
+        && std::abs(std::log2(validation.outputScale) - 57.0) < 0.2
         && !prototypeValidation.passed && !prototype.executable
         && !shortValidation.passed && shortValidation.executedNodes == 0
         && shortValidation.failure == "profile_chain_too_short";

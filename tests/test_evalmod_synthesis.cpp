@@ -61,12 +61,17 @@ int main() {
         dagMatchesReference = dagMatchesReference && std::abs(dagOutput[index] - expected) < 1e-10;
     }
     std::size_t ctCt = 0, ctPt = 0, relin = 0, rescales = 0, additions = 0;
+    std::size_t modSwitches = 0, scaleAlignments = 0, plaintextAdditions = 0;
     for (const auto& node : compiled.nodes) {
         ctCt += node.operation == em::EvalModOperation::MultiplyCipher;
         ctPt += node.operation == em::EvalModOperation::MultiplyPlain;
         relin += node.operation == em::EvalModOperation::Relinearize;
         rescales += node.operation == em::EvalModOperation::Rescale;
-        additions += node.operation == em::EvalModOperation::Add;
+        additions += node.operation == em::EvalModOperation::Add
+            || node.operation == em::EvalModOperation::AddPlain;
+        modSwitches += node.operation == em::EvalModOperation::ModSwitch;
+        scaleAlignments += node.operation == em::EvalModOperation::AlignScale;
+        plaintextAdditions += node.operation == em::EvalModOperation::AddPlain;
     }
     bool prototypeSelected = result.provisionalSelection
         && result.candidates[*result.provisionalSelection].family
@@ -77,14 +82,19 @@ int main() {
         && result.candidates[1].compiledCircuit.cost.degree == 15
         && !result.candidates[0].scaleSchedule.empty()
         && result.candidates[1].diagnostic.evaluations > 0
-        && result.candidates[0].intervalCertified && !result.candidates[0].executable
+        && !result.candidates[0].intervalCertified
+        && !result.candidates[0].intervalCertificate.proved && !result.candidates[0].executable
         && result.candidates[0].polynomialArithmeticError.has_value()
+        && !result.candidates[0].arithmeticErrorRigorous
         && !prototypeSelected && !strict.provisionalSelection.has_value()
         && !shallow.candidates[0].satisfiesLevelBudget
         && compiled.cost.ciphertextMultiplications == ctCt
         && compiled.cost.ciphertextPlaintextMultiplications == ctPt
         && compiled.cost.relinearizations == relin && compiled.cost.rescales == rescales
         && compiled.cost.additions == additions
+        && compiled.cost.modulusSwitches == modSwitches
+        && compiled.cost.scaleAlignments == scaleAlignments
+        && compiled.cost.plaintextAdditions == plaintextAdditions
         && dagMatchesReference
         && changedCtsCircuit.normalizationGain.numerator
             != compiled.normalizationGain.numerator
@@ -93,6 +103,8 @@ int main() {
         && profileResult.domain.integerBound >= 1 && profileResult.candidates.size() >= 22
         && csv.find("periodic_sine_baseline") != std::string::npos
         && json.find("multi_interval_least_squares_prototype") != std::string::npos
+        && json.find("\"arithmetic_error_rigorous\":false") != std::string::npos
+        && json.find("\"measured_backend_error\":null") != std::string::npos
         && json.find("tail_model_provenance") != std::string::npos && plaintextMatches;
     std::printf("[test_evalmod_synthesis] %s\n", ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;

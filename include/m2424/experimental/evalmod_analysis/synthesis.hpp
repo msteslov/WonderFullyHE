@@ -36,16 +36,19 @@ enum class EvalModApproximationFamily {
 };
 
 enum class EvalModCandidateStage {
-    Generated, GridDiagnosed, IntervalCertified, CircuitCompiled, ScaleScheduled, BackendValidated
+    Generated, GridDiagnosed, IntervalCertified, CircuitCompiled, ScaleScheduled,
+    BackendMeasured, BackendValidated
 };
 
 enum class EvalModRejectionReason {
-    None, ApproximationError, Uncertified, ArithmeticErrorUnknown, InsufficientLevels,
+    None, ApproximationError, ApproximationNotConverged, Uncertified,
+    ArithmeticErrorUnknown, InsufficientLevels,
     ModulusBudget, SecurityBudget, ScaleScheduleFailure
 };
 
 enum class EvalModOperation {
-    Input, EncodeConstant, Add, MultiplyPlain, MultiplyCipher, Relinearize, Rescale
+    Input, EncodeConstant, Add, AddPlain, MultiplyPlain, MultiplyCipher,
+    Relinearize, Rescale, ModSwitch, AlignScale
 };
 
 struct EvalModDagNode {
@@ -85,6 +88,8 @@ struct EvalModCandidate {
     EvalModIntervalCertificate intervalCertificate;
     BootstrapPropagationBounds propagationBounds;
     std::optional<double> polynomialArithmeticError;
+    bool arithmeticErrorRigorous{};
+    bool approximationConverged{};
     double predictedBootstrapError{};
     EvalModCostEstimate cost;
     EvalModCandidateStage stage{EvalModCandidateStage::Generated};
@@ -93,6 +98,7 @@ struct EvalModCandidate {
     bool satisfiesLevelBudget{};
     bool intervalCertified{};
     bool executable{};
+    std::optional<double> measuredBackendError;
 };
 
 struct EvalModSynthesisResult {
@@ -118,6 +124,11 @@ CompiledEvalModCircuit compileEvalModPolynomial(const EvalModPolynomial& polynom
 double evaluateEvalModPolynomial(const EvalModPolynomial& polynomial, double input);
 std::vector<double> executeEvalModDagPlaintext(const CompiledEvalModCircuit& circuit,
                                                const std::vector<double>& input);
+std::vector<double> evaluateEvalModReferenceMpfr(const EvalModPolynomial& polynomial,
+                                                 const ExactScale& normalizationGain,
+                                                 const ExactScale& denormalizationGain,
+                                                 const std::vector<double>& rawInput,
+                                                 std::size_t precisionBits = 384);
 EvalModBackendValidation validateEvalModCandidateBackend(EvalModCandidate& candidate,
                                                         const EvalModProblem& problem,
                                                         const CkksProfile& profile,
