@@ -3,6 +3,7 @@
 #include <mpfr.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -161,7 +162,9 @@ EvalModGridDiagnostic diagnoseEvalModPolynomialOnGrid(const EvalModPolynomial& p
 EvalModIntervalCertificate certifyEvalModPolynomialIntervals(
     const EvalModPolynomial& polynomial, const EvalModDomain& domain,
     const std::string& radiusDecimal, std::size_t subdivisions, std::size_t precisionBits) {
-    if (subdivisions < 2 || precisionBits < 128 || polynomial.basis != PolynomialBasis::Monomial)
+    if (subdivisions < 2 || precisionBits < 128 || polynomial.basis != PolynomialBasis::Monomial
+        || polynomial.decimalCoefficients.empty() || !isEvalModDomainValid(domain)
+        || domain.integerBound > static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()))
         throw std::invalid_argument("invalid interval certificate input");
     const auto precision = static_cast<mpfr_prec_t>(precisionBits);
     Real radius(precision), rho(precision), maximumReal(precision), maximumModulus(precision);
@@ -194,8 +197,80 @@ EvalModIntervalCertificate certifyEvalModPolynomialIntervals(
         mpfr_mul(term.get(), term.get(), power.get(), MPFR_RNDU);
         mpfr_add(derivative.get(), derivative.get(), term.get(), MPFR_RNDU);
     }
+    struct Interval {
+        Real lo, hi;
+        explicit Interval(mpfr_prec_t p) : lo(p), hi(p) {}
+    };
+    std::vector<Interval> coefficientIntervals;
+    coefficientIntervals.reserve(polynomial.decimalCoefficients.size());
+    for (const auto& decimalCoefficient : polynomial.decimalCoefficients) {
+        coefficientIntervals.emplace_back(precision);
+        if (mpfr_set_str(coefficientIntervals.back().lo.get(), decimalCoefficient.c_str(), 10,
+                         MPFR_RNDD) != 0
+            || mpfr_set_str(coefficientIntervals.back().hi.get(), decimalCoefficient.c_str(), 10,
+                            MPFR_RNDU) != 0)
+            throw std::invalid_argument("invalid interval coefficient");
+    }
+    const auto multiplyInterval = [&](const Interval& left, const Interval& right, Interval& out) {
+        std::array<Real, 4> productsLo{Real(precision), Real(precision), Real(precision), Real(precision)};
+        std::array<Real, 4> productsHi{Real(precision), Real(precision), Real(precision), Real(precision)};
+        mpfr_mul(productsLo[0].get(), left.lo.get(), right.lo.get(), MPFR_RNDD);
+        mpfr_mul(productsLo[1].get(), left.lo.get(), right.hi.get(), MPFR_RNDD);
+        mpfr_mul(productsLo[2].get(), left.hi.get(), right.lo.get(), MPFR_RNDD);
+        mpfr_mul(productsLo[3].get(), left.hi.get(), right.hi.get(), MPFR_RNDD);
+        mpfr_mul(productsHi[0].get(), left.lo.get(), right.lo.get(), MPFR_RNDU);
+        mpfr_mul(productsHi[1].get(), left.lo.get(), right.hi.get(), MPFR_RNDU);
+        mpfr_mul(productsHi[2].get(), left.hi.get(), right.lo.get(), MPFR_RNDU);
+        mpfr_mul(productsHi[3].get(), left.hi.get(), right.hi.get(), MPFR_RNDU);
+        mpfr_set(out.lo.get(), productsLo[0].get(), MPFR_RNDD);
+        mpfr_set(out.hi.get(), productsHi[0].get(), MPFR_RNDU);
+        for (int i = 1; i < 4; ++i) {
+            mpfr_min(out.lo.get(), out.lo.get(), productsLo[i].get(), MPFR_RNDD);
+            mpfr_max(out.hi.get(), out.hi.get(), productsHi[i].get(), MPFR_RNDU);
+        }
+    };
     Real approximation(precision), complexError(precision), targetModulus(precision);
-    mpfr_add(approximation.get(), polynomialBound.get(), rho.get(), MPFR_RNDU);
+    mpfr_set_zero(approximation.get(), 0);
+    for (std::int64_t integer = -static_cast<std::int64_t>(domain.integerBound);
+         integer <= static_cast<std::int64_t>(domain.integerBound); ++integer) {
+        for (std::size_t cell = 0; cell < subdivisions; ++cell) {
+            Interval x(precision), valueInterval(precision), productInterval(precision);
+            Real fraction(precision), scaled(precision);
+            mpfr_set_ui(fraction.get(), 2 * cell + 1, MPFR_RNDD);
+            mpfr_div_ui(fraction.get(), fraction.get(), subdivisions, MPFR_RNDD);
+            mpfr_sub_ui(fraction.get(), fraction.get(), 1, MPFR_RNDD);
+            mpfr_mul(scaled.get(), rho.get(), fraction.get(), MPFR_RNDD);
+            mpfr_add_si(x.lo.get(), scaled.get(), integer, MPFR_RNDD);
+            mpfr_set_ui(fraction.get(), 2 * cell + 1, MPFR_RNDU);
+            mpfr_div_ui(fraction.get(), fraction.get(), subdivisions, MPFR_RNDU);
+            mpfr_sub_ui(fraction.get(), fraction.get(), 1, MPFR_RNDU);
+            mpfr_mul(scaled.get(), rho.get(), fraction.get(), MPFR_RNDU);
+            mpfr_add_si(x.hi.get(), scaled.get(), integer, MPFR_RNDU);
+            mpfr_set_zero(valueInterval.lo.get(), 0);
+            mpfr_set_zero(valueInterval.hi.get(), 0);
+            for (std::size_t index = coefficientIntervals.size(); index-- > 0;) {
+                multiplyInterval(valueInterval, x, productInterval);
+                mpfr_add(valueInterval.lo.get(), productInterval.lo.get(),
+                         coefficientIntervals[index].lo.get(), MPFR_RNDD);
+                mpfr_add(valueInterval.hi.get(), productInterval.hi.get(),
+                         coefficientIntervals[index].hi.get(), MPFR_RNDU);
+            }
+            mpfr_sub(valueInterval.lo.get(), valueInterval.lo.get(), x.hi.get(), MPFR_RNDD);
+            mpfr_add_si(valueInterval.lo.get(), valueInterval.lo.get(), integer, MPFR_RNDD);
+            mpfr_sub(valueInterval.hi.get(), valueInterval.hi.get(), x.lo.get(), MPFR_RNDU);
+            mpfr_add_si(valueInterval.hi.get(), valueInterval.hi.get(), integer, MPFR_RNDU);
+            Real endpoint(precision);
+            mpfr_abs(endpoint.get(), valueInterval.lo.get(), MPFR_RNDU);
+            mpfr_max(approximation.get(), approximation.get(), endpoint.get(), MPFR_RNDU);
+            mpfr_abs(endpoint.get(), valueInterval.hi.get(), MPFR_RNDU);
+            mpfr_max(approximation.get(), approximation.get(), endpoint.get(), MPFR_RNDU);
+        }
+    }
+    Real halfCell(precision), lipschitz(precision);
+    mpfr_div_ui(halfCell.get(), rho.get(), subdivisions, MPFR_RNDU);
+    mpfr_add_ui(lipschitz.get(), derivative.get(), 1, MPFR_RNDU);
+    mpfr_mul(halfCell.get(), halfCell.get(), lipschitz.get(), MPFR_RNDU);
+    mpfr_add(approximation.get(), approximation.get(), halfCell.get(), MPFR_RNDU);
     mpfr_hypot(targetModulus.get(), rho.get(), radius.get(), MPFR_RNDU);
     mpfr_add(complexError.get(), polynomialBound.get(), targetModulus.get(), MPFR_RNDU);
     auto decimal = [](mpfr_srcptr value) {

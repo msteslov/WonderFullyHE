@@ -51,10 +51,11 @@ real/complex derivative maxima и ошибку на всей границе ко
 только monomial evaluator; Chebyshev и Composite являются явными, но пока отклоняемыми
 вариантами basis, а не неявно смешанными схемами.
 
-Grid diagnostic остаётся измерением. Отдельный certificate теперь строит полностью
-outward-rounded MPFR majorant: коэффициенты импортируются через `RNDA` (включая
-отрицательные), Horner-majorant покрывает всю real/complex область, derivative bound
-и maximum-modulus bound вычисляются с `RNDU`. Граница намеренно консервативна, но
+Grid diagnostic остаётся измерением. Отдельный certificate разбивает каждый real
+interval на `subdivisions` ячеек, вычисляет center через outward MPFR intervals,
+исполняет interval Horner и добавляет Lipschitz half-cell gap с `RNDU`. Коэффициенты
+импортируются парой `RNDD/RNDU`, поэтому отрицательные значения не занижаются.
+Complex rectangle пока использует более грубый maximum-modulus majorant.
 `proved=true` выставляется только для конечного полного покрытия.
 
 ## Распространение ошибки и стоимость
@@ -96,13 +97,18 @@ Operation counts, depth, level consumption и peak liveness выводятся �
 Нормировка `S_CtS/q_src` и денормировка `q_src/S_out` хранятся exact rational и входят
 в scale propagation. Arithmetic error оценивается по операциям DAG; неизвестное
 значение никогда не трактуется как ноль. Для каждого узла сохраняются value/error,
-relative-scale и noise bounds; пока key-switch/noise constants не доказаны для SEAL,
-итог честно остаётся `analyticalArithmeticBoundRigorous=false`.
+relative-scale и noise bounds. `EvalModArithmeticErrorModel` задаёт разные constants
+для encoding, add, multiply, relinearize, rescale, ModSwitch и metadata correction;
+серия backend measurements может быть сведена в conservative calibrated model через
+`calibrateEvalModArithmeticModel`. Такая калибровка остаётся empirical, поэтому
+`rigorous=false` до отдельного вывода CKKS/SEAL bounds.
 
 Кандидаты отдельно хранят `circuitValid`, `backendRunnable`, `backendMeasured`,
 `approximationCertified`, `arithmeticErrorCertified` и `rigorouslyValidated`.
 `executable` означает возможность экспериментального запуска, а не математическое
-доказательство. JSON/CSV сохраняют эти статусы раздельно.
+доказательство. `estimatedBootstrapError` использует grid diagnostic только для
+эвристического ranking, а `certifiedBootstrapError` появляется лишь при строгих
+approximation и arithmetic bounds. JSON/CSV сохраняют пути раздельно.
 
 ## Backend validation
 
@@ -111,7 +117,9 @@ relative-scale и noise bounds; пока key-switch/noise constants не док�
 rational normalization/denormalization. Production API `executeEvalModCircuit`
 принимает существующие adapter/ciphertext, буквально исполняет DAG и возвращает trace
 chain/scale каждого узла. Metadata alignment ограничен явным малым бюджетом
-`maxMetadataScaleCorrectionLog2`; превышение отклоняется. Обёртка
+`maxMetadataScaleCorrectionLog2`; отдельный `maxPlannedScaleDriftLog2` допускает
+заранее заявленное естественное отклонение после rescale простыми около `2^60`, не
+разрешая подменять его metadata correction. Обёртка
 `executeEvalModAfterCoeffToSlot` применяет тот же circuit к обеим половинам настоящего
 `CoeffToSlotResult`.
 
@@ -123,3 +131,8 @@ Backend-тест использует неединичные normalization/denor
 random точки всех интервалов, scale около `2^59`, несколько encryption trials и
 PeriodicSine/MultiIntervalMinimax 7/9/11 с разными baby-step при `N=32768`.
 Least-squares prototype остаётся запрещённым независимо от его grid error.
+
+На `N=16384` end-to-end test исполняет настоящий линейный `K=0` EvalMod DAG после
+четырёхуровневого CoeffToSlot и сравнивает обе половины с exact MPFR target. При scale
+около `2^59.5` в доступный security budget не помещается одновременно этот CoeffToSlot
+и нелинейный minimax DAG; полный нелинейный профиль остаётся тестом `N=32768`.

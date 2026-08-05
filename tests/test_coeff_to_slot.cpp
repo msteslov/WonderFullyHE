@@ -97,25 +97,51 @@ int main() {
         rejectsWrongContract = true;
     }
     const auto result = transform.apply(adapter, std::move(raised), contract, prepared);
+    double evalModPipelineError = 0.0;
 #ifdef M2424_TEST_EVALMOD_PIPELINE
     namespace em = m2424::experimental;
-    em::CompiledEvalModCircuit identityCircuit;
-    const auto identityScale = em::ExactScale::fromBinaryDouble(std::exp2(59.5));
-    identityCircuit.nodes.push_back({em::EvalModOperation::Input, {}, 0,
-                                     identityScale, identityScale, {}});
-    identityCircuit.outputNode = 0;
-    const auto integrated = em::executeEvalModAfterCoeffToSlot(adapter, identityCircuit, result);
-    const bool evalModPipelineReady = integrated.firstTrace.levelsConsumed == 0
-        && integrated.secondTrace.levelsConsumed == 0
-        && integrated.firstTrace.nodeStates.size() == 1
-        && integrated.secondTrace.nodeStates.size() == 1;
-    const auto& firstCipher = integrated.slotCipherFirst;
-    const auto& secondCipher = integrated.slotCipherSecond;
+    const auto evalModScale = em::ExactScale::fromBinaryDouble(std::exp2(59.5));
+    const em::ExactInteger evalModSource = evalModScale.numerator * 512;
+    const em::EvalModProblem evalModProblem{
+        evalModSource, evalModScale, em::ExactScale::rational(evalModSource, 1),
+        {em::TailModel::Deterministic, degree, 1.0, 0.0, 0.49, 0.0, 0.0, 0.0, 0.0,
+         -128.0, 256, {"CoeffToSlot integration", "measured ciphertext", "|z| < 1/2"}},
+        1, 50, 1e-5, {1.0, 0.2, 0.05, 0.2, 0.1, 4096}, 1.0, 0.0, 0.0
+    };
+    const em::EvalModPolynomial linearEvalMod{
+        em::PolynomialBasis::Monomial, {"0", "1"}
+    };
+    const auto evalModCircuit = em::compileEvalModPolynomial(linearEvalMod, evalModProblem, 2);
+    const auto integrated = em::executeEvalModAfterCoeffToSlot(adapter, evalModCircuit, result);
+    const auto integratedFirst = adapter.decodeComplex(adapter.decrypt(integrated.slotCipherFirst));
+    const auto integratedSecond = adapter.decodeComplex(adapter.decrypt(integrated.slotCipherSecond));
+    const std::vector<double> firstRaw(coefficients.begin(), coefficients.begin() + slots);
+    const std::vector<double> secondRaw(coefficients.begin() + slots, coefficients.end());
+    const auto firstTarget = em::evaluateExactEvalModTargetMpfr(
+        evalModCircuit.normalizationGain, evalModCircuit.denormalizationGain, firstRaw, 512);
+    const auto secondTarget = em::evaluateExactEvalModTargetMpfr(
+        evalModCircuit.normalizationGain, evalModCircuit.denormalizationGain, secondRaw, 512);
+    for (std::size_t index = 0; index < slots; ++index) {
+        evalModPipelineError = std::max(evalModPipelineError,
+            std::abs(integratedFirst[index] - firstTarget[index]));
+        evalModPipelineError = std::max(evalModPipelineError,
+            std::abs(integratedSecond[index] - secondTarget[index]));
+    }
+    const bool evalModPipelineReady = integrated.firstTrace.levelsConsumed
+            == evalModCircuit.cost.levelConsumption
+        && integrated.secondTrace.levelsConsumed == evalModCircuit.cost.levelConsumption
+        && evalModCircuit.cost.ciphertextPlaintextMultiplications >= 1
+        && std::abs(std::log2(integrated.firstTrace.outputScale) - 59.5) > 1e-3
+        && std::abs(std::log2(integrated.firstTrace.outputScale) - 59.5)
+            <= evalModCircuit.maxPlannedScaleDriftLog2
+        && integrated.firstTrace.nodeStates.size() == evalModCircuit.nodes.size()
+        && integrated.secondTrace.nodeStates.size() == evalModCircuit.nodes.size()
+        && evalModPipelineError <= evalModProblem.targetAbsoluteError;
 #else
     const bool evalModPipelineReady = true;
+#endif
     const auto& firstCipher = result.slotCipherFirst;
     const auto& secondCipher = result.slotCipherSecond;
-#endif
     const auto firstInfo = adapter.info(firstCipher);
     const auto secondInfo = adapter.info(secondCipher);
     const auto first = adapter.decodeComplex(adapter.decrypt(firstCipher));
@@ -165,8 +191,8 @@ int main() {
     const bool staleContextRejected =
         !transform.plan().isPreparedFor(prepared, adapter, raised, contract);
     const bool finalOk = ok && staleContextRejected;
-    std::printf("[test_coeff_to_slot] first=%.3e second=%.3e oracle=%.3e actual=%.3e raw=%zu levels=%zu keys=%zu qI=%s %s\n",
-                firstError, secondError, oracleMax, actualMax, transform.plan().rawStageCount(),
+    std::printf("[test_coeff_to_slot] first=%.3e second=%.3e evalmod=%.3e oracle=%.3e actual=%.3e raw=%zu levels=%zu keys=%zu qI=%s %s\n",
+                firstError, secondError, evalModPipelineError, oracleMax, actualMax, transform.plan().rawStageCount(),
                 requirements.minRemainingLevels, requirements.rotationSteps.size() + 1,
                 raisedTermObserved ? "yes" : "no", finalOk ? "PASS" : "FAIL");
     return finalOk ? 0 : 1;

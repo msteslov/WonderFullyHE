@@ -12,6 +12,19 @@
 
 namespace m2424::experimental {
 
+struct EvalModArithmeticErrorModel {
+    double encodingAbsolute{};
+    double additionAbsolute{};
+    double multiplicationRelative{};
+    double relinearizationAbsolute{};
+    double rescaleAbsolute{};
+    double modSwitchAbsolute{};
+    double metadataScaleRelative{};
+    bool calibrated{};
+    bool rigorous{};
+    std::string provenance;
+};
+
 struct EvalModProblem {
     ExactInteger qSource;
     ExactScale coeffToSlotScale;
@@ -27,6 +40,7 @@ struct EvalModProblem {
     std::size_t maxDataModulusBits{std::numeric_limits<std::size_t>::max()};
     double maxLatencyMs{std::numeric_limits<double>::infinity()};
     std::size_t maxWorkingSetBytes{std::numeric_limits<std::size_t>::max()};
+    EvalModArithmeticErrorModel arithmeticErrorModel;
 };
 
 enum class EvalModApproximationFamily {
@@ -71,6 +85,7 @@ struct CompiledEvalModCircuit {
     ExactScale normalizationGain;
     ExactScale denormalizationGain;
     double maxMetadataScaleCorrectionLog2{1e-6};
+    double maxPlannedScaleDriftLog2{0.55};
 };
 
 struct EvalModScaleStage {
@@ -102,6 +117,8 @@ struct EvalModCandidate {
     bool arithmeticErrorRigorous{};
     bool approximationConverged{};
     double predictedBootstrapError{};
+    double estimatedBootstrapError{};
+    std::optional<double> certifiedBootstrapError;
     EvalModCostEstimate cost;
     EvalModCandidateStage stage{EvalModCandidateStage::Generated};
     EvalModRejectionReason rejectionReason{EvalModRejectionReason::None};
@@ -183,6 +200,8 @@ EvalModBackendValidation validateEvalModCandidateBackend(EvalModCandidate& candi
                                                         const EvalModProblem& problem,
                                                         const CkksProfile& profile,
                                                         const std::vector<double>& rawInput);
+EvalModArithmeticErrorModel calibrateEvalModArithmeticModel(
+    const std::vector<EvalModBackendValidation>& measurements, double safetyFactor = 4.0);
 std::string evalModSynthesisJson(const EvalModSynthesisResult& result);
 std::string evalModSynthesisCsv(const EvalModSynthesisResult& result);
 

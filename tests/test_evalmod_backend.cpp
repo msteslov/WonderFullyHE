@@ -61,6 +61,7 @@ int main() {
     const auto prototypeValidation = em::validateEvalModCandidateBackend(
         prototype, problem, profile, rawInput);
     bool minimaxMatrixPassed = true;
+    std::vector<em::EvalModBackendValidation> calibrationMeasurements{validation};
     const std::vector<std::pair<std::size_t, std::size_t>> minimaxCases{{7, 2}, {9, 3}, {11, 4}};
     for (const auto [degree, babyStep] : minimaxCases) {
         auto found = synthesis.candidates.end();
@@ -75,11 +76,13 @@ int main() {
             auto minimax = *found;
             const auto measured = em::validateEvalModCandidateBackend(
                 minimax, problem, profile, rawInput);
+            calibrationMeasurements.push_back(measured);
             minimaxMatrixPassed = minimaxMatrixPassed && measured.executionSucceeded
                 && minimax.backendRunnable && minimax.backendMeasured
                 && measured.executedNodes == minimax.compiledCircuit.nodes.size();
         }
     }
+    const auto calibratedModel = em::calibrateEvalModArithmeticModel(calibrationMeasurements, 4.0);
 
     const bool ok = validation.passed && independentReferenceMatches
         && candidate.stage == em::EvalModCandidateStage::BackendMeasured
@@ -92,9 +95,11 @@ int main() {
         && validation.executionSucceeded && !validation.matchesPolynomialReference
         && !validation.matchesEvalModTarget
         && validation.implementationError == validation.maxAbsoluteError
-        && std::abs(std::log2(validation.outputScale) - 57.0) < 0.2
+        && std::abs(std::log2(validation.outputScale) - 59.0) < 0.2
         && !prototypeValidation.passed && !prototype.executable
         && minimaxMatrixPassed
+        && calibratedModel.calibrated && !calibratedModel.rigorous
+        && calibratedModel.encodingAbsolute >= validation.implementationError
         && !shortValidation.passed && shortValidation.executedNodes == 0
         && shortValidation.failure == "profile_chain_too_short";
     if (!validation.passed) {
