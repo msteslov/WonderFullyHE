@@ -23,6 +23,8 @@ foreach(target IN LISTS M2424_TESTS)
 endforeach()
 
 if(M2424_ENABLE_EVALMOD_ANALYSIS)
+    target_link_libraries(test_coeff_to_slot PRIVATE m2424::evalmod_analysis)
+    target_compile_definitions(test_coeff_to_slot PRIVATE M2424_TEST_EVALMOD_PIPELINE)
     foreach(target IN ITEMS test_evalmod_contract test_evalmod_synthesis test_evalmod_backend)
         add_executable(${target} ${target}.cpp)
         target_compile_features(${target} PRIVATE cxx_std_17)

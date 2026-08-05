@@ -1,4 +1,7 @@
 #include "m2424/coeff_to_slot.hpp"
+#ifdef M2424_TEST_EVALMOD_PIPELINE
+#include "m2424/experimental/evalmod_analysis/synthesis.hpp"
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -94,10 +97,29 @@ int main() {
         rejectsWrongContract = true;
     }
     const auto result = transform.apply(adapter, std::move(raised), contract, prepared);
-    const auto firstInfo = adapter.info(result.slotCipherFirst);
-    const auto secondInfo = adapter.info(result.slotCipherSecond);
-    const auto first = adapter.decodeComplex(adapter.decrypt(result.slotCipherFirst));
-    const auto second = adapter.decodeComplex(adapter.decrypt(result.slotCipherSecond));
+#ifdef M2424_TEST_EVALMOD_PIPELINE
+    namespace em = m2424::experimental;
+    em::CompiledEvalModCircuit identityCircuit;
+    const auto identityScale = em::ExactScale::fromBinaryDouble(std::exp2(59.5));
+    identityCircuit.nodes.push_back({em::EvalModOperation::Input, {}, 0,
+                                     identityScale, identityScale, {}});
+    identityCircuit.outputNode = 0;
+    const auto integrated = em::executeEvalModAfterCoeffToSlot(adapter, identityCircuit, result);
+    const bool evalModPipelineReady = integrated.firstTrace.levelsConsumed == 0
+        && integrated.secondTrace.levelsConsumed == 0
+        && integrated.firstTrace.nodeStates.size() == 1
+        && integrated.secondTrace.nodeStates.size() == 1;
+    const auto& firstCipher = integrated.slotCipherFirst;
+    const auto& secondCipher = integrated.slotCipherSecond;
+#else
+    const bool evalModPipelineReady = true;
+    const auto& firstCipher = result.slotCipherFirst;
+    const auto& secondCipher = result.slotCipherSecond;
+#endif
+    const auto firstInfo = adapter.info(firstCipher);
+    const auto secondInfo = adapter.info(secondCipher);
+    const auto first = adapter.decodeComplex(adapter.decrypt(firstCipher));
+    const auto second = adapter.decodeComplex(adapter.decrypt(secondCipher));
     const double firstError = maxHalfError(coefficients, 0, first);
     const double secondError = maxHalfError(coefficients, slots, second);
     double oracleMax = 0.0;
@@ -107,6 +129,7 @@ int main() {
     for (const auto& value : second) actualMax = std::max(actualMax, std::abs(value));
 
     const bool ok = preflight.ready
+        && evalModPipelineReady
         && requirements.requiresConjugation
         && rejectsWrongContract
         && rejectsWrongPlanDegreePrepare

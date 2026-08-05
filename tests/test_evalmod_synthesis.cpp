@@ -51,6 +51,13 @@ int main() {
         }
     }
     const auto& compiled = result.candidates[0].compiledCircuit;
+    auto invalidTypedCircuit = compiled;
+    for (auto& node : invalidTypedCircuit.nodes) {
+        if (node.operation == em::EvalModOperation::ModSwitch) {
+            node.inputs[0] = 1; // EncodeConstant cannot feed ciphertext alignment.
+            break;
+        }
+    }
     const std::vector<double> dagRawInput{-6.5, -3.0, 0.0, 3.0, 6.5};
     const auto dagOutput = em::executeEvalModDagPlaintext(compiled, dagRawInput);
     bool dagMatchesReference = dagOutput.size() == dagRawInput.size();
@@ -82,8 +89,8 @@ int main() {
         && result.candidates[1].compiledCircuit.cost.degree == 15
         && !result.candidates[0].scaleSchedule.empty()
         && result.candidates[1].diagnostic.evaluations > 0
-        && !result.candidates[0].intervalCertified
-        && !result.candidates[0].intervalCertificate.proved && !result.candidates[0].executable
+        && result.candidates[0].intervalCertified
+        && result.candidates[0].intervalCertificate.proved && result.candidates[0].executable
         && result.candidates[0].polynomialArithmeticError.has_value()
         && !result.candidates[0].arithmeticErrorRigorous
         && !prototypeSelected && !strict.provisionalSelection.has_value()
@@ -95,6 +102,8 @@ int main() {
         && compiled.cost.modulusSwitches == modSwitches
         && compiled.cost.scaleAlignments == scaleAlignments
         && compiled.cost.plaintextAdditions == plaintextAdditions
+        && em::isCompiledEvalModCircuitValid(compiled)
+        && !em::isCompiledEvalModCircuitValid(invalidTypedCircuit)
         && dagMatchesReference
         && changedCtsCircuit.normalizationGain.numerator
             != compiled.normalizationGain.numerator

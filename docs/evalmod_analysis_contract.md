@@ -51,9 +51,11 @@ real/complex derivative maxima и ошибку на всей границе ко
 только monomial evaluator; Chebyshev и Composite являются явными, но пока отклоняемыми
 вариантами basis, а не неявно смешанными схемами.
 
-Текущая реализация является детерминированным MPFR grid/enclosure diagnostic, но не
-формальным interval-arithmetic proof. Поэтому `EvalModIntervalCertificate::proved`
-всегда остаётся `false`; поднять этот флаг сможет только будущая Arb-проверка.
+Grid diagnostic остаётся измерением. Отдельный certificate теперь строит полностью
+outward-rounded MPFR majorant: коэффициенты импортируются через `RNDA` (включая
+отрицательные), Horner-majorant покрывает всю real/complex область, derivative bound
+и maximum-modulus bound вычисляются с `RNDU`. Граница намеренно консервативна, но
+`proved=true` выставляется только для конечного полного покрытия.
 
 ## Распространение ошибки и стоимость
 
@@ -76,14 +78,6 @@ optimizer modulus chain и не security estimator. Исследовательс
 зависит от GMP/MPFR. API находится в `m2424/experimental/evalmod_analysis/` и не входит
 в стабильный umbrella header.
 
-## Следующий эксперимент
-
-1. Снять empirical распределение `I` и residual на реальном выходе ModRaise/CtS.
-2. Построить аналитическую secret/error model и сравнить quantiles, не подменяя bound
-   эмпирическим максимумом.
-3. Добавить generator periodic/minimax candidates и interval-certified derivative.
-4. После этого формировать единый CSV synthesis report и выбирать circuit/chain.
-
 ## Approximation synthesis milestone
 
 `synthesizeEvalMod` связывает problem, rigorous domain estimate, parameter search,
@@ -91,33 +85,41 @@ polynomial DAG, scale schedule, MPFR diagnostic, propagation и backend
 cost. Поиск перебирает degree и Paterson–Stockmeyer baby step для odd multi-interval
 MPFR Remez. Дополнительно строятся periodic-sine baseline, исключённый из выбора
 least-squares diagnostic prototype и inverse-sine composition.
-Remez-кандидат допускается к дальнейшему сравнению только после выполнения критерия
-сходимости; конечные коэффициенты сами по себе больше не считаются успешным fallback.
+Remez-кандидат допускается к сравнению только при упорядоченных extrema, чередовании
+знаков ошибки, сбалансированных амплитудах, устойчивом exchange set и стабилизации
+dense-grid maximum. Исключение одного кандидата превращается в
+`ApproximationNotConverged` и не прерывает synthesis.
 
 Operation counts, depth, level consumption и peak liveness выводятся из узлов DAG.
 `ModSwitch`, `AlignScale` и `AddPlain` представлены отдельными узлами и входят в
 стоимостную модель, а не вставляются backend-исполнителем скрыто.
 Нормировка `S_CtS/q_src` и денормировка `q_src/S_out` хранятся exact rational и входят
 в scale propagation. Arithmetic error оценивается по операциям DAG; неизвестное
-значение никогда не трактуется как ноль.
+значение никогда не трактуется как ноль. Для каждого узла сохраняются value/error,
+relative-scale и noise bounds; пока key-switch/noise constants не доказаны для SEAL,
+итог честно остаётся `analyticalArithmeticBoundRigorous=false`.
 
-Кандидаты имеют отдельные maturity/status flags. Planner возвращает только
-`provisionalSelection`; ни grid diagnostic, ни interval certificate не делают circuit
-`executable` без ciphertext backend validation. JSON/CSV сохраняют stage, rejection
-reason, certification, strategy, baby step, gains и scale schedule.
+Кандидаты отдельно хранят `circuitValid`, `backendRunnable`, `backendMeasured`,
+`approximationCertified`, `arithmeticErrorCertified` и `rigorouslyValidated`.
+`executable` означает возможность экспериментального запуска, а не математическое
+доказательство. JSON/CSV сохраняют эти статусы раздельно.
 
 ## Backend validation
 
 `executeEvalModDagPlaintext` является smoke-проверкой семантики compiled DAG.
 Независимый reference вычисляет polynomial напрямую Horner-схемой в MPFR с exact
-rational normalization/denormalization. `validateEvalModCandidateBackend` буквально
-выполняет запланированные узлы над CKKS ciphertext через SEAL и после каждого узла
-проверяет chain index и scale. Слишком короткая chain отклоняется до создания
-контекста и выполнения первого узла.
+rational normalization/denormalization. Production API `executeEvalModCircuit`
+принимает существующие adapter/ciphertext, буквально исполняет DAG и возвращает trace
+chain/scale каждого узла. Metadata alignment ограничен явным малым бюджетом
+`maxMetadataScaleCorrectionLog2`; превышение отклоняется. Обёртка
+`executeEvalModAfterCoeffToSlot` применяет тот же circuit к обеим половинам настоящего
+`CoeffToSlotResult`.
 
-Успешное ciphertext-сравнение без доказанных interval/arithmetic bounds даёт только
-`BackendMeasured`; такой кандидат остаётся `executable=false`. `BackendValidated` и
-`executable=true` требуют одновременно измерения и обоих строгих доказательств.
+Validator только создаёт тестовый ciphertext, вызывает production executor и отдельно
+сообщает implementation, approximation и total measured errors, совпадение с
+polynomial/точным EvalMod target и покрытие prediction. Успешное выполнение даёт
+`BackendMeasured`; `BackendValidated` требует также строгой arithmetic bound.
 Backend-тест использует неединичные normalization/denormalization gains, boundary и
-внутренние точки, scale около `2^59`, MPFR reference и реальную цепочку при `N=32768`.
+random точки всех интервалов, scale около `2^59`, несколько encryption trials и
+PeriodicSine/MultiIntervalMinimax 7/9/11 с разными baby-step при `N=32768`.
 Least-squares prototype остаётся запрещённым независимо от его grid error.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "m2424/bootstrap_candidates.hpp"
+#include "m2424/coeff_to_slot.hpp"
 #include "m2424/seal_adapter.hpp"
 #include "m2424/experimental/evalmod_analysis/approximation_lab.hpp"
 #include "m2424/experimental/evalmod_analysis/cost_model.hpp"
@@ -58,6 +59,8 @@ struct EvalModDagNode {
     ExactScale inputScale;
     ExactScale outputScale;
     std::string constantDecimal;
+    double plannedScaleCorrectionLog2{};
+    double expectedRelativeScaleError{};
 };
 
 struct CompiledEvalModCircuit {
@@ -67,6 +70,7 @@ struct CompiledEvalModCircuit {
     std::size_t babyStep{};
     ExactScale normalizationGain;
     ExactScale denormalizationGain;
+    double maxMetadataScaleCorrectionLog2{1e-6};
 };
 
 struct EvalModScaleStage {
@@ -76,6 +80,13 @@ struct EvalModScaleStage {
     std::size_t outputScaleBits{};
     std::size_t availableModulusBits{};
     std::size_t requiredHeadroomBits{};
+};
+
+struct EvalModNodeErrorState {
+    double valueAbsBound{};
+    double absoluteErrorBound{};
+    double relativeScaleErrorBound{};
+    double noiseBound{};
 };
 
 struct EvalModCandidate {
@@ -99,6 +110,28 @@ struct EvalModCandidate {
     bool intervalCertified{};
     bool executable{};
     std::optional<double> measuredBackendError;
+    bool circuitValid{};
+    bool backendRunnable{};
+    bool backendMeasured{};
+    bool approximationCertified{};
+    bool arithmeticErrorCertified{};
+    bool rigorouslyValidated{};
+    std::optional<double> analyticalArithmeticBound;
+    bool analyticalArithmeticBoundRigorous{};
+    std::vector<EvalModNodeErrorState> nodeErrorStates;
+};
+
+struct EvalModExecutionTrace {
+    std::size_t levelsConsumed{};
+    double outputScale{};
+    std::vector<CipherInfo> nodeStates;
+};
+
+struct EvalModCoeffToSlotResult {
+    Cipher slotCipherFirst;
+    Cipher slotCipherSecond;
+    EvalModExecutionTrace firstTrace;
+    EvalModExecutionTrace secondTrace;
 };
 
 struct EvalModSynthesisResult {
@@ -110,6 +143,13 @@ struct EvalModSynthesisResult {
 
 struct EvalModBackendValidation {
     bool passed{};
+    bool executionSucceeded{};
+    bool matchesPolynomialReference{};
+    bool matchesEvalModTarget{};
+    bool predictionCoveredMeasurement{};
+    double implementationError{};
+    double approximationError{};
+    double totalMeasuredError{};
     double maxAbsoluteError{};
     std::size_t executedNodes{};
     std::size_t outputChainIndex{};
@@ -129,11 +169,20 @@ std::vector<double> evaluateEvalModReferenceMpfr(const EvalModPolynomial& polyno
                                                  const ExactScale& denormalizationGain,
                                                  const std::vector<double>& rawInput,
                                                  std::size_t precisionBits = 384);
+std::vector<double> evaluateExactEvalModTargetMpfr(
+    const ExactScale& normalizationGain, const ExactScale& denormalizationGain,
+    const std::vector<double>& rawInput, std::size_t precisionBits = 384);
+bool isCompiledEvalModCircuitValid(const CompiledEvalModCircuit& circuit);
+Cipher executeEvalModCircuit(SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
+                             const Cipher& coeffToSlotOutput,
+                             EvalModExecutionTrace* trace = nullptr);
+EvalModCoeffToSlotResult executeEvalModAfterCoeffToSlot(
+    SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
+    CoeffToSlotResult coeffToSlotOutput);
 EvalModBackendValidation validateEvalModCandidateBackend(EvalModCandidate& candidate,
                                                         const EvalModProblem& problem,
                                                         const CkksProfile& profile,
-                                                        const std::vector<double>& rawInput,
-                                                        const std::vector<double>& expectedOutput);
+                                                        const std::vector<double>& rawInput);
 std::string evalModSynthesisJson(const EvalModSynthesisResult& result);
 std::string evalModSynthesisCsv(const EvalModSynthesisResult& result);
 

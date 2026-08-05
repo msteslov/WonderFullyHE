@@ -163,12 +163,10 @@ EvalModIntervalCertificate certifyEvalModPolynomialIntervals(
     const std::string& radiusDecimal, std::size_t subdivisions, std::size_t precisionBits) {
     if (subdivisions < 2 || precisionBits < 128 || polynomial.basis != PolynomialBasis::Monomial)
         throw std::invalid_argument("invalid interval certificate input");
-    const auto diagnostic = diagnoseEvalModPolynomialOnGrid(
-        polynomial, domain, subdivisions + 1, radiusDecimal, 0.0, precisionBits,
-        (domain.integerBound * 2 + 1) * (subdivisions + 1) * 5 + 1);
     const auto precision = static_cast<mpfr_prec_t>(precisionBits);
     Real radius(precision), rho(precision), maximumReal(precision), maximumModulus(precision);
-    Real derivative(precision), power(precision), coefficient(precision), term(precision), one(precision);
+    Real derivative(precision), power(precision), coefficient(precision), term(precision);
+    Real polynomialBound(precision);
     if (mpfr_set_str(radius.get(), radiusDecimal.c_str(), 10, MPFR_RNDU) != 0
         || mpfr_set_str(rho.get(), domain.normalizedResidualBoundDecimal.c_str(), 10, MPFR_RNDU) != 0)
         throw std::invalid_argument("invalid certificate domain decimal");
@@ -176,35 +174,39 @@ EvalModIntervalCertificate certifyEvalModPolynomialIntervals(
     mpfr_add(maximumReal.get(), maximumReal.get(), rho.get(), MPFR_RNDU);
     mpfr_hypot(maximumModulus.get(), maximumReal.get(), radius.get(), MPFR_RNDU);
     mpfr_set_zero(derivative.get(), 0);
+    mpfr_set_zero(polynomialBound.get(), 0);
+    for (std::size_t index = polynomial.decimalCoefficients.size(); index-- > 0;) {
+        mpfr_mul(polynomialBound.get(), polynomialBound.get(), maximumModulus.get(), MPFR_RNDU);
+        if (mpfr_set_str(coefficient.get(), polynomial.decimalCoefficients[index].c_str(), 10,
+                         MPFR_RNDA) != 0)
+            throw std::invalid_argument("invalid certificate coefficient");
+        mpfr_abs(coefficient.get(), coefficient.get(), MPFR_RNDA);
+        mpfr_add(polynomialBound.get(), polynomialBound.get(), coefficient.get(), MPFR_RNDU);
+    }
     mpfr_set_ui(power.get(), 1, MPFR_RNDU);
     for (std::size_t index = 1; index < polynomial.decimalCoefficients.size(); ++index) {
         if (index > 1) mpfr_mul(power.get(), power.get(), maximumModulus.get(), MPFR_RNDU);
-        if (mpfr_set_str(coefficient.get(), polynomial.decimalCoefficients[index].c_str(), 10, MPFR_RNDU) != 0)
+        if (mpfr_set_str(coefficient.get(), polynomial.decimalCoefficients[index].c_str(), 10,
+                         MPFR_RNDA) != 0)
             throw std::invalid_argument("invalid certificate coefficient");
-        mpfr_abs(coefficient.get(), coefficient.get(), MPFR_RNDU);
+        mpfr_abs(coefficient.get(), coefficient.get(), MPFR_RNDA);
         mpfr_mul_ui(term.get(), coefficient.get(), index, MPFR_RNDU);
         mpfr_mul(term.get(), term.get(), power.get(), MPFR_RNDU);
         mpfr_add(derivative.get(), derivative.get(), term.get(), MPFR_RNDU);
     }
-    mpfr_set_ui(one.get(), 1, MPFR_RNDU);
-    mpfr_add(one.get(), one.get(), derivative.get(), MPFR_RNDU);
-    Real realGap(precision), complexGap(precision), approximation(precision), complexError(precision);
-    mpfr_div_ui(realGap.get(), rho.get(), subdivisions, MPFR_RNDU);
-    mpfr_mul(realGap.get(), realGap.get(), one.get(), MPFR_RNDU);
-    mpfr_set_d(approximation.get(), diagnostic.approximationMaxError, MPFR_RNDU);
-    mpfr_add(approximation.get(), approximation.get(), realGap.get(), MPFR_RNDU);
-    mpfr_max(complexGap.get(), rho.get(), radius.get(), MPFR_RNDU);
-    mpfr_div_ui(complexGap.get(), complexGap.get(), subdivisions, MPFR_RNDU);
-    mpfr_mul(complexGap.get(), complexGap.get(), one.get(), MPFR_RNDU);
-    mpfr_set_d(complexError.get(), diagnostic.complexBoundaryErrorMax, MPFR_RNDU);
-    mpfr_add(complexError.get(), complexError.get(), complexGap.get(), MPFR_RNDU);
+    Real approximation(precision), complexError(precision), targetModulus(precision);
+    mpfr_add(approximation.get(), polynomialBound.get(), rho.get(), MPFR_RNDU);
+    mpfr_hypot(targetModulus.get(), rho.get(), radius.get(), MPFR_RNDU);
+    mpfr_add(complexError.get(), polynomialBound.get(), targetModulus.get(), MPFR_RNDU);
     auto decimal = [](mpfr_srcptr value) {
         char* text = nullptr; mpfr_asprintf(&text, "%.RUe", value);
         std::string result = text ? text : ""; mpfr_free_str(text); return result;
     };
     return {decimal(approximation.get()), decimal(derivative.get()), decimal(complexError.get()),
             mpfr_get_d(approximation.get(), MPFR_RNDU), mpfr_get_d(derivative.get(), MPFR_RNDU),
-            mpfr_get_d(complexError.get(), MPFR_RNDU), false};
+            mpfr_get_d(complexError.get(), MPFR_RNDU),
+            mpfr_number_p(approximation.get()) && mpfr_number_p(derivative.get())
+                && mpfr_number_p(complexError.get())};
 }
 
 } // namespace m2424::experimental

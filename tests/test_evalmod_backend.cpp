@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
 
 namespace em = m2424::experimental;
 
@@ -29,6 +30,17 @@ int main() {
                                       1.0 - rho, 1.0 + rho};
     std::vector<double> rawInput;
     for (double z : zValues) rawInput.push_back(2.0 * z); // normalization gain = 1/2.
+    std::uint64_t randomState = 0x9e3779b97f4a7c15ULL;
+    for (std::int64_t integer = -static_cast<std::int64_t>(synthesis.domain.integerBound);
+         integer <= static_cast<std::int64_t>(synthesis.domain.integerBound); ++integer) {
+        rawInput.push_back(2.0 * (integer - rho));
+        rawInput.push_back(2.0 * (integer + rho));
+        for (int sample = 0; sample < 3; ++sample) {
+            randomState = randomState * 6364136223846793005ULL + 1;
+            const double unit = static_cast<double>(randomState >> 11) * 0x1.0p-53;
+            rawInput.push_back(2.0 * (integer - rho + 2.0 * rho * unit));
+        }
+    }
     const auto expected = em::evaluateEvalModReferenceMpfr(
         candidate.polynomial, candidate.compiledCircuit.normalizationGain,
         candidate.compiledCircuit.denormalizationGain, rawInput, 512);
@@ -40,24 +52,49 @@ int main() {
 
     const m2424::CkksProfile profile{32768, {60, 59, 59, 59, 59, 59, 59, 59, 60},
                                       std::exp2(59.0), rawInput.size()};
-    const auto validation = em::validateEvalModCandidateBackend(candidate, problem, profile,
-                                                                 rawInput, expected);
+    const auto validation = em::validateEvalModCandidateBackend(candidate, problem, profile, rawInput);
     const m2424::CkksProfile shortProfile{32768, {60, 59, 60}, std::exp2(59.0), rawInput.size()};
     auto shortCandidate = candidate;
     const auto shortValidation = em::validateEvalModCandidateBackend(
-        shortCandidate, problem, shortProfile, rawInput, expected);
+        shortCandidate, problem, shortProfile, rawInput);
     auto prototype = synthesis.candidates[1];
     const auto prototypeValidation = em::validateEvalModCandidateBackend(
-        prototype, problem, profile, rawInput, expected);
+        prototype, problem, profile, rawInput);
+    bool minimaxMatrixPassed = true;
+    const std::vector<std::pair<std::size_t, std::size_t>> minimaxCases{{7, 2}, {9, 3}, {11, 4}};
+    for (const auto [degree, babyStep] : minimaxCases) {
+        auto found = synthesis.candidates.end();
+        for (auto it = synthesis.candidates.begin(); it != synthesis.candidates.end(); ++it) {
+            if (it->family == em::EvalModApproximationFamily::MultiIntervalMinimax
+                && it->compiledCircuit.cost.degree == degree
+                && it->compiledCircuit.babyStep == babyStep) { found = it; break; }
+        }
+        minimaxMatrixPassed = minimaxMatrixPassed && found != synthesis.candidates.end();
+        if (found == synthesis.candidates.end()) continue;
+        for (int seedTrial = 0; seedTrial < 2; ++seedTrial) {
+            auto minimax = *found;
+            const auto measured = em::validateEvalModCandidateBackend(
+                minimax, problem, profile, rawInput);
+            minimaxMatrixPassed = minimaxMatrixPassed && measured.executionSucceeded
+                && minimax.backendRunnable && minimax.backendMeasured
+                && measured.executedNodes == minimax.compiledCircuit.nodes.size();
+        }
+    }
 
     const bool ok = validation.passed && independentReferenceMatches
         && candidate.stage == em::EvalModCandidateStage::BackendMeasured
-        && candidate.measuredBackendError.has_value() && !candidate.executable
-        && !candidate.intervalCertified && !candidate.arithmeticErrorRigorous
+        && candidate.measuredBackendError.has_value() && candidate.executable
+        && candidate.circuitValid && candidate.backendRunnable && candidate.backendMeasured
+        && !candidate.rigorouslyValidated
+        && candidate.intervalCertified && candidate.approximationCertified
+        && !candidate.arithmeticErrorRigorous && !candidate.arithmeticErrorCertified
         && validation.executedNodes == candidate.compiledCircuit.nodes.size()
-        && validation.maxAbsoluteError <= candidate.predictedBootstrapError * 1.25
+        && validation.executionSucceeded && !validation.matchesPolynomialReference
+        && !validation.matchesEvalModTarget
+        && validation.implementationError == validation.maxAbsoluteError
         && std::abs(std::log2(validation.outputScale) - 57.0) < 0.2
         && !prototypeValidation.passed && !prototype.executable
+        && minimaxMatrixPassed
         && !shortValidation.passed && shortValidation.executedNodes == 0
         && shortValidation.failure == "profile_chain_too_short";
     if (!validation.passed) {
