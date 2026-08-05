@@ -17,6 +17,7 @@ int main() {
                        "bounded slots and exact binary scales"}},
         7, 59, 1e-10, {1.0, 0.2, 0.05, 0.2, 0.1, 4096}, 1.0, 0.0, 0.0
     };
+    problem.precisionBudget = {1e-10, 1e-10};
     auto synthesis = em::synthesizeEvalMod(problem);
     auto selected = synthesis.candidates.end();
     for (auto it = synthesis.candidates.begin(); it != synthesis.candidates.end(); ++it) {
@@ -52,7 +53,9 @@ int main() {
 
     const m2424::CkksProfile profile{32768, {60, 59, 59, 59, 59, 59, 59, 59, 60},
                                       std::exp2(59.0), rawInput.size()};
-    const auto validation = em::validateEvalModCandidateBackend(candidate, problem, profile, rawInput);
+    const std::vector<double> precisionInput{-0.12, -0.06, 0.0, 0.06, 0.12};
+    const auto validation = em::validateEvalModCandidateBackend(
+        candidate, problem, profile, precisionInput);
     const m2424::CkksProfile shortProfile{32768, {60, 59, 60}, std::exp2(59.0), rawInput.size()};
     auto shortCandidate = candidate;
     const auto shortValidation = em::validateEvalModCandidateBackend(
@@ -61,7 +64,8 @@ int main() {
     const auto prototypeValidation = em::validateEvalModCandidateBackend(
         prototype, problem, profile, rawInput);
     bool minimaxMatrixPassed = true;
-    std::vector<em::EvalModBackendValidation> calibrationMeasurements{validation};
+    std::vector<em::EvalModBackendValidation> calibrationMeasurements;
+    if (validation.executionSucceeded) calibrationMeasurements.push_back(validation);
     const std::vector<std::pair<std::size_t, std::size_t>> minimaxCases{{7, 2}, {9, 3}, {11, 4}};
     for (const auto [degree, babyStep] : minimaxCases) {
         auto found = synthesis.candidates.end();
@@ -76,15 +80,17 @@ int main() {
             auto minimax = *found;
             const auto measured = em::validateEvalModCandidateBackend(
                 minimax, problem, profile, rawInput);
-            calibrationMeasurements.push_back(measured);
+            if (measured.executionSucceeded) calibrationMeasurements.push_back(measured);
             minimaxMatrixPassed = minimaxMatrixPassed && measured.executionSucceeded
                 && minimax.backendRunnable && minimax.backendMeasured
                 && measured.executedNodes == minimax.compiledCircuit.nodes.size();
         }
     }
-    const auto calibratedModel = em::calibrateEvalModArithmeticModel(calibrationMeasurements, 4.0);
+    const auto calibratedModel = calibrationMeasurements.empty()
+        ? em::EvalModArithmeticErrorModel{}
+        : em::calibrateEvalModArithmeticModel(calibrationMeasurements, 4.0);
 
-    const bool ok = validation.passed && independentReferenceMatches
+    const bool ok = !validation.passed && independentReferenceMatches
         && candidate.stage == em::EvalModCandidateStage::BackendMeasured
         && candidate.measuredBackendError.has_value() && candidate.executable
         && candidate.circuitValid && candidate.backendRunnable && candidate.backendMeasured
@@ -92,8 +98,14 @@ int main() {
         && candidate.intervalCertified && candidate.approximationCertified
         && !candidate.arithmeticErrorRigorous && !candidate.arithmeticErrorCertified
         && validation.executedNodes == candidate.compiledCircuit.nodes.size()
-        && validation.executionSucceeded && !validation.matchesPolynomialReference
+        && validation.executionSucceeded && validation.matchesPolynomialReference
         && !validation.matchesEvalModTarget
+        && validation.implementationError <= problem.precisionBudget.implementation
+        && validation.approximationError > problem.precisionBudget.approximation
+        && validation.totalMeasuredError > problem.targetAbsoluteError
+        && !validation.firstImplementationBudgetExceedingNode.has_value()
+        && !validation.differentialTrace.empty()
+        && validation.failure == "approximation_budget_exceeded"
         && validation.implementationError == validation.maxAbsoluteError
         && std::abs(std::log2(validation.outputScale) - 59.0) < 0.2
         && !prototypeValidation.passed && !prototype.executable
@@ -102,11 +114,11 @@ int main() {
         && calibratedModel.encodingAbsolute >= validation.implementationError
         && !shortValidation.passed && shortValidation.executedNodes == 0
         && shortValidation.failure == "profile_chain_too_short";
-    if (!validation.passed) {
-        for (std::size_t index = 0; index < candidate.compiledCircuit.nodes.size(); ++index)
-            std::printf("node[%zu]=%d chain=%zu\n", index,
-                        static_cast<int>(candidate.compiledCircuit.nodes[index].operation),
-                        candidate.compiledCircuit.nodes[index].chainIndex);
+    if (!validation.matchesPolynomialReference) {
+        for (const auto& node : validation.differentialTrace)
+            std::printf("node[%zu]=%d chain=%zu scale=2^%.6f error=%.3e increase=%.3e\n",
+                        node.node, static_cast<int>(node.operation), node.chainIndex,
+                        std::log2(node.actualScale), node.absoluteError, node.errorIncrease);
     }
     std::printf("[test_evalmod_backend] error=%.3e nodes=%zu failure=%s %s\n",
                 validation.maxAbsoluteError, validation.executedNodes, validation.failure.c_str(),

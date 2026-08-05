@@ -25,6 +25,11 @@ struct EvalModArithmeticErrorModel {
     std::string provenance;
 };
 
+struct EvalModPrecisionBudget {
+    double implementation{};
+    double approximation{};
+};
+
 struct EvalModProblem {
     ExactInteger qSource;
     ExactScale coeffToSlotScale;
@@ -41,6 +46,7 @@ struct EvalModProblem {
     double maxLatencyMs{std::numeric_limits<double>::infinity()};
     std::size_t maxWorkingSetBytes{std::numeric_limits<std::size_t>::max()};
     EvalModArithmeticErrorModel arithmeticErrorModel;
+    EvalModPrecisionBudget precisionBudget;
 };
 
 enum class EvalModApproximationFamily {
@@ -144,6 +150,17 @@ struct EvalModExecutionTrace {
     std::vector<CipherInfo> nodeStates;
 };
 
+struct EvalModNodeDifferential {
+    std::size_t node{};
+    EvalModOperation operation{};
+    std::size_t chainIndex{};
+    double actualScale{};
+    double mpfrSemanticValue{};
+    double decryptedCkksValue{};
+    double absoluteError{};
+    double errorIncrease{};
+};
+
 struct EvalModCoeffToSlotResult {
     Cipher slotCipherFirst;
     Cipher slotCipherSecond;
@@ -172,6 +189,8 @@ struct EvalModBackendValidation {
     std::size_t outputChainIndex{};
     double outputScale{};
     std::string failure;
+    std::vector<EvalModNodeDifferential> differentialTrace;
+    std::optional<std::size_t> firstImplementationBudgetExceedingNode;
 };
 
 EvalModSynthesisResult synthesizeEvalMod(const EvalModProblem& problem);
@@ -192,7 +211,9 @@ std::vector<double> evaluateExactEvalModTargetMpfr(
 bool isCompiledEvalModCircuitValid(const CompiledEvalModCircuit& circuit);
 Cipher executeEvalModCircuit(SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
                              const Cipher& coeffToSlotOutput,
-                             EvalModExecutionTrace* trace = nullptr);
+                             EvalModExecutionTrace* trace = nullptr,
+                             const std::vector<double>* semanticInput = nullptr,
+                             std::vector<EvalModNodeDifferential>* differentialTrace = nullptr);
 EvalModCoeffToSlotResult executeEvalModAfterCoeffToSlot(
     SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
     CoeffToSlotResult coeffToSlotOutput);

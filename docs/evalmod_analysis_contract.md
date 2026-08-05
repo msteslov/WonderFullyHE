@@ -127,6 +127,16 @@ Validator только создаёт тестовый ciphertext, вызыва�
 сообщает implementation, approximation и total measured errors, совпадение с
 polynomial/точным EvalMod target и покрытие prediction. Успешное выполнение даёт
 `BackendMeasured`; `BackendValidated` требует также строгой arithmetic bound.
+
+`EvalModPrecisionBudget` задаёт независимые implementation и approximation budgets.
+Legacy `passed` теперь истинно только если одновременно выполнены execution,
+implementation, approximation и total gates; оно больше не является синонимом
+`executionSucceeded`. При differential validation executor расшифровывает каждый
+ciphertext node и сравнивает его с MPFR-исполнением того же compiled DAG. Trace хранит
+operation, chain index, actual scale, MPFR/CKKS values, absolute error и её приращение.
+На фиксированном degree-9 periodic circuit implementation error находится около
+`1e-12` или ниже и проходит `1e-10`, тогда как approximation gate ожидаемо падает:
+baseline не выдаётся за точную EvalMod approximation.
 Backend-тест использует неединичные normalization/denormalization gains, boundary и
 random точки всех интервалов, scale около `2^59`, несколько encryption trials и
 PeriodicSine/MultiIntervalMinimax 7/9/11 с разными baby-step при `N=32768`.

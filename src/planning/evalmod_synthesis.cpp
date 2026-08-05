@@ -872,14 +872,71 @@ bool isCompiledEvalModCircuitValid(const CompiledEvalModCircuit& circuit) {
     return inputs == 1 && kinds[circuit.outputNode] == ValueKind::Ciphertext;
 }
 
+struct MpDagValue {
+    explicit MpDagValue(mpfr_prec_t precision) : scalarValue(precision) {}
+    bool scalar{};
+    MpReal scalarValue;
+    std::vector<MpReal> slots;
+};
+
+std::vector<MpDagValue> executeEvalModDagMpfrNodes(
+    const CompiledEvalModCircuit& circuit, const std::vector<double>& input,
+    mpfr_prec_t precision = 512) {
+    std::vector<MpDagValue> values;
+    values.reserve(circuit.nodes.size());
+    for (std::size_t index = 0; index < circuit.nodes.size(); ++index) {
+        values.emplace_back(precision);
+        const auto& node = circuit.nodes[index];
+        auto& output = values.back();
+        if (node.operation == EvalModOperation::Input) {
+            output.slots.reserve(input.size());
+            for (double value : input) {
+                output.slots.emplace_back(precision);
+                mpfr_set_d(output.slots.back().get(), value, MPFR_RNDN);
+            }
+        } else if (node.operation == EvalModOperation::EncodeConstant) {
+            output.scalar = true;
+            if (mpfr_set_str(output.scalarValue.get(), node.constantDecimal.c_str(), 10, MPFR_RNDN) != 0)
+                throw std::invalid_argument("invalid MPFR DAG constant");
+        } else if (node.operation == EvalModOperation::Relinearize
+                   || node.operation == EvalModOperation::Rescale
+                   || node.operation == EvalModOperation::ModSwitch
+                   || node.operation == EvalModOperation::AlignScale) {
+            output.slots = values[node.inputs[0]].slots;
+        } else {
+            const auto& left = values[node.inputs[0]];
+            const auto& right = values[node.inputs[1]];
+            const auto& source = left.scalar ? right.slots : left.slots;
+            output.slots.reserve(source.size());
+            for (std::size_t slot = 0; slot < source.size(); ++slot) {
+                output.slots.emplace_back(precision);
+                mpfr_srcptr lhs = left.scalar ? left.scalarValue.get() : left.slots[slot].get();
+                mpfr_srcptr rhs = right.scalar ? right.scalarValue.get() : right.slots[slot].get();
+                if (node.operation == EvalModOperation::Add
+                    || node.operation == EvalModOperation::AddPlain)
+                    mpfr_add(output.slots.back().get(), lhs, rhs, MPFR_RNDN);
+                else
+                    mpfr_mul(output.slots.back().get(), lhs, rhs, MPFR_RNDN);
+            }
+        }
+    }
+    return values;
+}
+
 Cipher executeEvalModCircuit(SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
-                             const Cipher& coeffToSlotOutput, EvalModExecutionTrace* trace) {
+                             const Cipher& coeffToSlotOutput, EvalModExecutionTrace* trace,
+                             const std::vector<double>* semanticInput,
+                             std::vector<EvalModNodeDifferential>* differentialTrace) {
     if (!isCompiledEvalModCircuitValid(circuit))
         throw std::invalid_argument("invalid compiled EvalMod circuit");
     struct Value { std::optional<Cipher> cipher; std::optional<double> scalar; };
     std::vector<Value> values(circuit.nodes.size());
     const std::size_t inputChainIndex = adapter.chainIndex(coeffToSlotOutput);
     if (trace) { trace->nodeStates.assign(circuit.nodes.size(), {}); trace->levelsConsumed = 0; }
+    std::vector<MpDagValue> references;
+    if (semanticInput) references = executeEvalModDagMpfrNodes(circuit, *semanticInput);
+    if (differentialTrace) differentialTrace->clear();
+    double previousCipherError = 0.0;
     for (std::size_t index = 0; index < circuit.nodes.size(); ++index) {
         const auto& node = circuit.nodes[index];
         if (node.operation == EvalModOperation::Input) values[index].cipher = coeffToSlotOutput;
@@ -897,7 +954,7 @@ Cipher executeEvalModCircuit(SealAdapter& adapter, const CompiledEvalModCircuit&
             const auto target = adapter.scale(*values[node.inputs[1]].cipher);
             const double correction = std::abs(std::log2(actual / target));
             if (correction > circuit.maxMetadataScaleCorrectionLog2)
-                throw std::runtime_error("metadata scale correction exceeds circuit budget");
+                throw std::runtime_error("branch scales require explicit arithmetic correction");
             values[index].cipher = adapter.normalizeScale(*values[node.inputs[0]].cipher, target);
         } else if (node.operation == EvalModOperation::MultiplyPlain) {
             const auto& left = values[node.inputs[0]], &right = values[node.inputs[1]];
@@ -928,6 +985,22 @@ Cipher executeEvalModCircuit(SealAdapter& adapter, const CompiledEvalModCircuit&
                 > circuit.maxPlannedScaleDriftLog2)
                 throw std::runtime_error("planned scale mismatch at node " + std::to_string(index));
             if (trace) trace->nodeStates[index] = info;
+            if (semanticInput && differentialTrace) {
+                const auto decoded = adapter.decode(adapter.decrypt(*values[index].cipher));
+                double maximumError = 0.0, referenceAtMaximum = 0.0, actualAtMaximum = 0.0;
+                for (std::size_t slot = 0; slot < semanticInput->size(); ++slot) {
+                    const double reference = mpfr_get_d(references[index].slots[slot].get(), MPFR_RNDN);
+                    const double error = std::abs(decoded[slot] - reference);
+                    if (error >= maximumError) {
+                        maximumError = error; referenceAtMaximum = reference;
+                        actualAtMaximum = decoded[slot];
+                    }
+                }
+                differentialTrace->push_back({index, node.operation, info.chainIndex, info.scale,
+                    referenceAtMaximum, actualAtMaximum, maximumError,
+                    std::max(0.0, maximumError - previousCipherError)});
+                previousCipherError = maximumError;
+            }
         }
     }
     Cipher output = *values[circuit.outputNode].cipher;
@@ -1009,7 +1082,8 @@ EvalModBackendValidation validateEvalModCandidateBackend(EvalModCandidate& candi
         adapter.generateKeys(std::vector<int>{}, true);
         const Cipher encrypted = adapter.encrypt(adapter.encode(rawInput));
         EvalModExecutionTrace trace;
-        const Cipher output = executeEvalModCircuit(adapter, candidate.compiledCircuit, encrypted, &trace);
+        const Cipher output = executeEvalModCircuit(adapter, candidate.compiledCircuit, encrypted,
+                                                    &trace, &rawInput, &result.differentialTrace);
         const auto decoded = adapter.decode(adapter.decrypt(output));
         const auto polynomialReference = evaluateEvalModReferenceMpfr(
             candidate.polynomial, candidate.compiledCircuit.normalizationGain,
@@ -1030,10 +1104,25 @@ EvalModBackendValidation validateEvalModCandidateBackend(EvalModCandidate& candi
         result.outputChainIndex = adapter.chainIndex(output);
         result.outputScale = adapter.scale(output);
         result.executionSucceeded = true;
-        result.matchesPolynomialReference = result.implementationError <= problem.targetAbsoluteError;
+        const double implementationBudget = problem.precisionBudget.implementation > 0.0
+            ? problem.precisionBudget.implementation : problem.targetAbsoluteError;
+        const double approximationBudget = problem.precisionBudget.approximation > 0.0
+            ? problem.precisionBudget.approximation : problem.targetAbsoluteError;
+        result.matchesPolynomialReference = result.implementationError <= implementationBudget;
+        const bool approximationWithinBudget = result.approximationError <= approximationBudget;
         result.matchesEvalModTarget = result.totalMeasuredError <= problem.targetAbsoluteError;
         result.predictionCoveredMeasurement = result.totalMeasuredError <= candidate.predictedBootstrapError;
-        result.passed = result.executionSucceeded;
+        for (const auto& node : result.differentialTrace) {
+            if (node.absoluteError > implementationBudget) {
+                result.firstImplementationBudgetExceedingNode = node.node;
+                break;
+            }
+        }
+        result.passed = result.executionSucceeded && result.matchesPolynomialReference
+            && approximationWithinBudget && result.matchesEvalModTarget;
+        if (!result.matchesPolynomialReference) result.failure = "implementation_budget_exceeded";
+        else if (!approximationWithinBudget) result.failure = "approximation_budget_exceeded";
+        else if (!result.matchesEvalModTarget) result.failure = "total_budget_exceeded";
         candidate.measuredBackendError = result.implementationError;
         candidate.backendMeasured = result.executionSucceeded;
         candidate.approximationCertified = candidate.intervalCertified;
