@@ -424,6 +424,38 @@ Plain SealAdapter::encodeScalarAtScaleFor(double value, double scale, const Ciph
     return out;
 }
 
+Plain SealAdapter::encodeScalarRnsAtScaleFor(const std::vector<std::uint64_t>& residues,
+                                             double scale, const Cipher& reference,
+                                             std::size_t levelsConsumed) {
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+    if (!std::isfinite(scale) || scale <= 0.0)
+        throw std::invalid_argument("scale must be a positive finite value");
+    auto data = pimpl_->context->get_context_data(reference.pimpl_->ct.parms_id());
+    if (!data) throw std::runtime_error("reference ciphertext parameters are not valid for this context");
+    for (std::size_t level = 0; level < levelsConsumed; ++level) {
+        data = data->next_context_data();
+        if (!data) throw std::invalid_argument("prepared scalar level exceeds modulus chain");
+    }
+    const auto& moduli = data->parms().coeff_modulus();
+    if (residues.size() != moduli.size())
+        throw std::invalid_argument("prepared scalar RNS residue count mismatch");
+    if (static_cast<int>(std::log2(scale)) >= data->total_coeff_modulus_bit_count())
+        throw std::invalid_argument("prepared scalar scale out of bounds");
+    const std::size_t coefficientCount = data->parms().poly_modulus_degree();
+    Plain out;
+    out.pimpl_->pt.parms_id() = seal::parms_id_zero;
+    out.pimpl_->pt.resize(coefficientCount * moduli.size());
+    for (std::size_t limb = 0; limb < moduli.size(); ++limb) {
+        if (residues[limb] >= moduli[limb].value())
+            throw std::invalid_argument("prepared scalar RNS residue is not reduced");
+        std::fill_n(out.pimpl_->pt.data() + limb * coefficientCount,
+                    coefficientCount, residues[limb]);
+    }
+    out.pimpl_->pt.parms_id() = data->parms_id();
+    out.pimpl_->pt.scale() = scale;
+    return out;
+}
+
 Cipher SealAdapter::encrypt(const Plain& plain) {
     if (!pimpl_->has_public || !pimpl_->encryptor) throw std::runtime_error("public key not loaded");
     Cipher out;
@@ -766,6 +798,42 @@ double SealAdapter::coeffModulusLog2(const Cipher& cipher) const {
 
 std::vector<int> SealAdapter::coeffModulusBits() const {
     return pimpl_->profile.coeffModulusBits;
+}
+
+std::vector<std::uint64_t> SealAdapter::dataModulusValues() const {
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+    const auto data = pimpl_->context->first_context_data();
+    if (!data) throw std::runtime_error("CKKS data modulus chain is not initialized");
+    std::vector<std::uint64_t> values;
+    values.reserve(data->parms().coeff_modulus().size());
+    for (const auto& modulus : data->parms().coeff_modulus()) values.push_back(modulus.value());
+    return values;
+}
+
+std::uint64_t SealAdapter::specialKeyModulusValue() const {
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+    const auto key = pimpl_->context->key_context_data();
+    const auto data = pimpl_->context->first_context_data();
+    if (!key || !data) throw std::runtime_error("CKKS modulus chain is not initialized");
+    const auto& keyModuli = key->parms().coeff_modulus();
+    const auto& dataModuli = data->parms().coeff_modulus();
+    if (keyModuli.size() != dataModuli.size() + 1)
+        throw std::runtime_error("CKKS key modulus does not contain one special prime");
+    for (std::size_t index = 0; index < dataModuli.size(); ++index) {
+        if (keyModuli[index].value() != dataModuli[index].value())
+            throw std::runtime_error("CKKS data modulus is not a prefix of key modulus");
+    }
+    return keyModuli.back().value();
+}
+
+std::vector<std::uint64_t> SealAdapter::coeffModulusValues(const Cipher& cipher) const {
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+    const auto data = pimpl_->context->get_context_data(cipher.pimpl_->ct.parms_id());
+    if (!data) throw std::runtime_error("ciphertext parameters are not valid for this context");
+    std::vector<std::uint64_t> values;
+    values.reserve(data->parms().coeff_modulus().size());
+    for (const auto& modulus : data->parms().coeff_modulus()) values.push_back(modulus.value());
+    return values;
 }
 
 std::size_t SealAdapter::chainIndex(const Cipher& cipher) const {

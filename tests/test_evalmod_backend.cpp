@@ -53,6 +53,56 @@ int main() {
 
     const m2424::CkksProfile profile{32768, {60, 59, 59, 59, 59, 59, 59, 59, 60},
                                       std::exp2(59.0), rawInput.size()};
+    m2424::SealAdapter contextAdapter = m2424::SealAdapter::create(profile);
+    const std::vector<std::uint64_t> expectedDataPrimes{
+        1152921504598720513ULL,
+        576460752291954689ULL,
+        576460752293134337ULL,
+        576460752298180609ULL,
+        576460752298835969ULL,
+        576460752300015617ULL,
+        576460752301391873ULL,
+        576460752301785089ULL
+    };
+    const std::uint64_t expectedSpecialPrime = 1152921504606584833ULL;
+    const em::EvalModExactModulusContext exactContext{
+        contextAdapter.dataModulusValues(), contextAdapter.specialKeyModulusValue()};
+
+    em::CompiledEvalModCircuit oneMultiply;
+    const auto scale59 = em::ExactScale::rational(em::ExactInteger(1) << 59, 1);
+    const auto scale118 = em::ExactScale::rational(em::ExactInteger(1) << 118, 1);
+    oneMultiply.nodes = {
+        {em::EvalModOperation::Input, {}, 0, scale59, scale59},
+        {em::EvalModOperation::MultiplyCipher, {0, 0}, 0, scale59, scale118},
+        {em::EvalModOperation::Relinearize, {1}, 0, scale118, scale118},
+        {em::EvalModOperation::Rescale, {2}, 1, scale118, scale59}
+    };
+    oneMultiply.outputNode = 3;
+    const auto exactSchedule = em::buildExactEvalModScaleSchedule(
+        oneMultiply, exactContext, true);
+    auto metadataAligned = oneMultiply;
+    metadataAligned.nodes.push_back({em::EvalModOperation::AlignScale, {3, 3}, 1,
+                                     scale59, scale59});
+    metadataAligned.outputNode = 4;
+    const auto prohibitedSchedule = em::buildExactEvalModScaleSchedule(
+        metadataAligned, exactContext, true);
+    em::CompiledEvalModCircuit oneModSwitch;
+    oneModSwitch.nodes = {
+        {em::EvalModOperation::Input, {}, 0, scale59, scale59},
+        {em::EvalModOperation::Input, {}, 1, scale59, scale59},
+        {em::EvalModOperation::ModSwitch, {0, 1}, 1, scale59, scale59}
+    };
+    oneModSwitch.outputNode = 2;
+    const auto modSwitchSchedule = em::buildExactEvalModScaleSchedule(
+        oneModSwitch, exactContext, true);
+    std::vector<em::EvalModNodeErrorState> boundedStates(3);
+    for (auto& state : boundedStates) state = {1.0, 1e-12, 0.0, 1e-12};
+    const auto headroom = em::certifyEvalModModSwitchHeadroom(
+        oneModSwitch, modSwitchSchedule, boundedStates, true);
+    auto overflowingStates = boundedStates;
+    overflowingStates[2].valueAbsBound = 1e150;
+    const auto noHeadroom = em::certifyEvalModModSwitchHeadroom(
+        oneModSwitch, modSwitchSchedule, overflowingStates, true);
     const std::vector<double> precisionInput{-0.12, -0.06, 0.0, 0.06, 0.12};
     const auto validation = em::validateEvalModCandidateBackend(
         candidate, problem, profile, precisionInput);
@@ -80,6 +130,9 @@ int main() {
             auto minimax = *found;
             const auto measured = em::validateEvalModCandidateBackend(
                 minimax, problem, profile, rawInput);
+            if (!measured.executionSucceeded)
+                std::printf("minimax degree=%zu baby=%zu trial=%d failure=%s\n",
+                            degree, babyStep, seedTrial, measured.failure.c_str());
             if (measured.executionSucceeded) calibrationMeasurements.push_back(measured);
             minimaxMatrixPassed = minimaxMatrixPassed && measured.executionSucceeded
                 && minimax.backendRunnable && minimax.backendMeasured
@@ -91,6 +144,24 @@ int main() {
         : em::calibrateEvalModArithmeticModel(calibrationMeasurements, 4.0);
 
     const bool ok = !validation.passed && independentReferenceMatches
+        && exactContext.dataPrimes == expectedDataPrimes
+        && exactContext.specialPrime == expectedSpecialPrime
+        && exactSchedule.available && exactSchedule.valid && exactSchedule.rigorous
+        && exactSchedule.rescalePrimes[3] == expectedDataPrimes.back()
+        && exactSchedule.nodeScales[3].numerator == (em::ExactInteger(1) << 118)
+        && exactSchedule.nodeScales[3].denominator
+            == em::ExactInteger(std::to_string(expectedDataPrimes.back()))
+        && !prohibitedSchedule.valid && !prohibitedSchedule.rigorous
+        && prohibitedSchedule.failingNode == 4
+        && prohibitedSchedule.failure == "metadata_scale_alignment_prohibited"
+        && modSwitchSchedule.valid && modSwitchSchedule.rigorous
+        && headroom.available && headroom.valid && headroom.rigorous
+        && headroom.modSwitchGates.size() == 1
+        && headroom.modSwitchGates[0].proved && headroom.modSwitchGates[0].rigorous
+        && headroom.modSwitchGates[0].encodedMagnitudeUpperBound > 0
+        && !noHeadroom.valid && !noHeadroom.rigorous
+        && noHeadroom.failingNode == 2
+        && noHeadroom.failure == "modswitch_headroom_violation"
         && candidate.stage == em::EvalModCandidateStage::BackendMeasured
         && candidate.measuredBackendError.has_value() && candidate.executable
         && candidate.circuitValid && candidate.backendRunnable && candidate.backendMeasured
@@ -98,6 +169,9 @@ int main() {
         && candidate.intervalCertified && candidate.approximationCertified
         && !candidate.arithmeticErrorRigorous && !candidate.arithmeticErrorCertified
         && validation.executedNodes == candidate.compiledCircuit.nodes.size()
+        && validation.preparedConstantsUsed
+        && validation.maxPreparedConstantEncodingError > 0.0
+        && validation.maxPreparedConstantEncodingError < 1e-15
         && validation.executionSucceeded && validation.matchesPolynomialReference
         && !validation.matchesEvalModTarget
         && validation.implementationError <= problem.precisionBudget.implementation
@@ -120,8 +194,19 @@ int main() {
                         node.node, static_cast<int>(node.operation), node.chainIndex,
                         std::log2(node.actualScale), node.absoluteError, node.errorIncrease);
     }
-    std::printf("[test_evalmod_backend] error=%.3e nodes=%zu failure=%s %s\n",
-                validation.maxAbsoluteError, validation.executedNodes, validation.failure.c_str(),
+    if (!ok) {
+        std::printf("diagnostic prepared=%d minimax=%d calibration=%d execution=%d polynomial=%d "
+                    "target=%d implementation_budget=%d approximation_over=%d short_failure=%s\n",
+                    validation.preparedConstantsUsed, minimaxMatrixPassed,
+                    calibratedModel.calibrated, validation.executionSucceeded,
+                    validation.matchesPolynomialReference, validation.matchesEvalModTarget,
+                    validation.implementationError <= problem.precisionBudget.implementation,
+                    validation.approximationError > problem.precisionBudget.approximation,
+                    shortValidation.failure.c_str());
+    }
+    std::printf("[test_evalmod_backend] error=%.3e prepared_constant_error=%.3e nodes=%zu failure=%s %s\n",
+                validation.maxAbsoluteError, validation.maxPreparedConstantEncodingError,
+                validation.executedNodes, validation.failure.c_str(),
                 ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

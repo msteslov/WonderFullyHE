@@ -31,6 +31,10 @@ int main() {
 
     const auto multiplied = adapter.rescaleToNext(adapter.relinearize(adapter.multiply(encrypted, encrypted)));
     squared = head(adapter.decode(adapter.decrypt(multiplied)), input.size());
+    const auto dataPrimes = adapter.dataModulusValues();
+    const auto inputPrimes = adapter.coeffModulusValues(encrypted);
+    const auto multipliedPrimes = adapter.coeffModulusValues(multiplied);
+    const auto specialPrime = adapter.specialKeyModulusValue();
 
     const auto rotation = adapter.rotate(encrypted, 1);
     rotated = head(adapter.decode(adapter.decrypt(rotation)), input.size());
@@ -55,7 +59,13 @@ int main() {
             adapter.info(hoisted[index]).chainIndex == adapter.info(encrypted).chainIndex &&
             adapter.scale(hoisted[index]) == adapter.scale(encrypted);
     }
-    const bool ok = addAccuracy.ok && multiplyAccuracy.ok && rotateAccuracy.ok && hoistedOk;
+    const bool exactModuliOk = inputPrimes == dataPrimes && dataPrimes.size() >= 2
+        && multipliedPrimes.size() + 1 == inputPrimes.size()
+        && std::equal(multipliedPrimes.begin(), multipliedPrimes.end(), inputPrimes.begin())
+        && specialPrime != 0
+        && std::find(dataPrimes.begin(), dataPrimes.end(), specialPrime) == dataPrimes.end();
+    const bool ok = addAccuracy.ok && multiplyAccuracy.ok && rotateAccuracy.ok && hoistedOk
+        && exactModuliOk;
 
     std::printf("[test_ckks_primitives] target=%.1e add=%.3e multiply=%.3e rotate=%.3e hoisted=%.3e %s\n",
                 m2424::kTargetAbsoluteError,

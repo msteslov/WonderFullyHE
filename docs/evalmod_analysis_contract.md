@@ -71,13 +71,54 @@ Complex rectangle пока использует более грубый maximum-
 
 `estimateEvalModCost` отдельно оценивает latency, working set и нижнюю оценку data
 modulus bits по maximum из multiplicative depth и level consumption; это учитывает
-минимальный scale headroom lazy evaluation. Полный scale/prime schedule всё ещё должен
-заменить эту временную нижнюю оценку. Cost строится по
+минимальный scale headroom lazy evaluation. Cost строится по
 скомпилированному circuit description и измеренной backend cost model. Это ещё не
 optimizer modulus chain и не security estimator. Исследовательские компоненты собраны
 в optional target `m2424::evalmod_analysis`; стабильная библиотека `m2424::m2424` не
 зависит от GMP/MPFR. API находится в `m2424/experimental/evalmod_analysis/` и не входит
 в стабильный umbrella header.
+
+### Exact prime/scale schedule
+
+`SealAdapter` публикует фактические `dataModulusValues`,
+`specialKeyModulusValue` и активные `coeffModulusValues(cipher)`. Certified planner
+получает primes активной базы на входе EvalMod, а не только запрошенные
+битовые размеры из профиля.
+
+`buildExactEvalModScaleSchedule` хранит для каждого DAG-узла exact rational
+scale и exact integer data modulus. Для `Rescale` используется конкретный
+сбрасываемый prime:
+
+```text
+Delta_out = Delta_in / p_dropped.
+```
+
+Metadata-only `AlignScale` недопустим в rigorous schedule. Legacy circuit сохраняет
+такие узлы только для empirical backend diagnostics и не может быть выдан как
+certified. `ModSwitch` сохраняет scale и не добавляет CKKS arithmetic error,
+но `certifyEvalModModSwitchHeadroom` доказывает до его исполнения:
+
+```text
+2 * ceil((M + E) * Delta) < Q_next.
+```
+
+Нестрогий value/error bound может дать diagnostic headroom, но не может
+перевести `headroomCertificate.rigorous` в `true`.
+
+### Prepared exact constants
+
+`prepareEvalModConstants` разбирает decimal coefficient как exact rational, умножает
+его на exact binary64 scale, который будет записан в SEAL plaintext metadata, и
+округляет scaled value в integer без `std::stod`. Integer раскладывается по
+активным RNS primes и заранее записывается в NTT scalar plaintext нужного
+уровня. Для каждой константы хранятся rounded integer и exact encoding-error
+certificate.
+
+`executeEvalModCircuit` при переданном `PreparedEvalModConstants` проверяет
+входную modulus base, полноту и привязку constants к DAG-узлам. Эта ветка
+исполнения не вызывает `std::stod` или CKKS encode. Backend validation использует
+именно prepared path и отчитывает maximum сертифицированную ошибку
+кодирования constants.
 
 ## Approximation synthesis milestone
 

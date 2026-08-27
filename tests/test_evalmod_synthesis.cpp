@@ -113,6 +113,8 @@ int main() {
         && csv.find("periodic_sine_baseline") != std::string::npos
         && json.find("multi_interval_least_squares_prototype") != std::string::npos
         && json.find("\"arithmetic_error_rigorous\":false") != std::string::npos
+        && json.find("\"exact_scale_schedule\"") != std::string::npos
+        && json.find("\"headroom_certificate\"") != std::string::npos
         && json.find("\"measured_backend_error\":null") != std::string::npos
         && json.find("tail_model_provenance") != std::string::npos && plaintextMatches;
     std::printf("[test_evalmod_synthesis] %s\n", ok ? "PASS" : "FAIL");

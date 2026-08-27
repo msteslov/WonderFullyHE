@@ -30,6 +30,13 @@ struct EvalModPrecisionBudget {
     double approximation{};
 };
 
+/// Точные активные data-primes на входе EvalMod и special prime зафиксированного SEALContext.
+/// Для входного ciphertext `dataPrimes` получают через `SealAdapter::coeffModulusValues`.
+struct EvalModExactModulusContext {
+    std::vector<std::uint64_t> dataPrimes;
+    std::uint64_t specialPrime{};
+};
+
 struct EvalModProblem {
     ExactInteger qSource;
     ExactScale coeffToSlotScale;
@@ -47,6 +54,8 @@ struct EvalModProblem {
     std::size_t maxWorkingSetBytes{std::numeric_limits<std::size_t>::max()};
     EvalModArithmeticErrorModel arithmeticErrorModel;
     EvalModPrecisionBudget precisionBudget;
+    std::optional<EvalModExactModulusContext> exactModulusContext;
+    bool requireCertifiedScaleSchedule{};
 };
 
 enum class EvalModApproximationFamily {
@@ -64,7 +73,7 @@ enum class EvalModCandidateStage {
 enum class EvalModRejectionReason {
     None, ApproximationError, ApproximationNotConverged, Uncertified,
     ArithmeticErrorUnknown, InsufficientLevels,
-    ModulusBudget, SecurityBudget, ScaleScheduleFailure
+    ModulusBudget, SecurityBudget, ScaleScheduleFailure, HeadroomViolation
 };
 
 enum class EvalModOperation {
@@ -101,6 +110,53 @@ struct EvalModScaleStage {
     std::size_t outputScaleBits{};
     std::size_t availableModulusBits{};
     std::size_t requiredHeadroomBits{};
+};
+
+/// Точное prime-aware состояние scale и modulus для каждого DAG-узла.
+struct EvalModExactScaleSchedule {
+    bool available{};
+    bool valid{};
+    bool rigorous{};
+    std::vector<ExactScale> nodeScales;
+    std::vector<ExactInteger> nodeModuli;
+    std::vector<std::uint64_t> rescalePrimes;
+    std::optional<std::size_t> failingNode;
+    std::string failure;
+};
+
+struct EvalModModSwitchHeadroomGate {
+    std::size_t node{};
+    ExactInteger targetModulus;
+    ExactInteger encodedMagnitudeUpperBound;
+    double headroomBits{};
+    bool proved{};
+    bool rigorous{};
+};
+
+struct EvalModHeadroomCertificate {
+    bool available{};
+    bool valid{};
+    bool rigorous{};
+    std::vector<EvalModModSwitchHeadroomGate> modSwitchGates;
+    std::optional<std::size_t> failingNode;
+    std::string failure;
+};
+
+struct PreparedEvalModConstant {
+    std::size_t node{};
+    std::string decimal;
+    ExactScale encodingScale;
+    ExactInteger roundedScaledInteger;
+    std::string encodingErrorUpperBoundDecimal;
+    double encodingErrorUpperBound{};
+    Plain plaintext;
+    bool rigorous{};
+};
+
+struct PreparedEvalModConstants {
+    std::vector<std::uint64_t> inputDataPrimes;
+    std::vector<PreparedEvalModConstant> constants;
+    bool rigorous{};
 };
 
 struct EvalModNodeErrorState {
@@ -142,6 +198,8 @@ struct EvalModCandidate {
     std::optional<double> analyticalArithmeticBound;
     bool analyticalArithmeticBoundRigorous{};
     std::vector<EvalModNodeErrorState> nodeErrorStates;
+    EvalModExactScaleSchedule exactScaleSchedule;
+    EvalModHeadroomCertificate headroomCertificate;
 };
 
 struct EvalModExecutionTrace {
@@ -191,12 +249,27 @@ struct EvalModBackendValidation {
     std::string failure;
     std::vector<EvalModNodeDifferential> differentialTrace;
     std::optional<std::size_t> firstImplementationBudgetExceedingNode;
+    bool preparedConstantsUsed{};
+    double maxPreparedConstantEncodingError{};
 };
 
 EvalModSynthesisResult synthesizeEvalMod(const EvalModProblem& problem);
 CompiledEvalModCircuit compileEvalModPolynomial(const EvalModPolynomial& polynomial,
                                                const EvalModProblem& problem,
                                                std::size_t babyStep);
+EvalModExactScaleSchedule buildExactEvalModScaleSchedule(
+    const CompiledEvalModCircuit& circuit,
+    const EvalModExactModulusContext& context,
+    bool rigorous);
+EvalModHeadroomCertificate certifyEvalModModSwitchHeadroom(
+    const CompiledEvalModCircuit& circuit,
+    const EvalModExactScaleSchedule& schedule,
+    const std::vector<EvalModNodeErrorState>& nodeErrors,
+    bool errorBoundsRigorous);
+PreparedEvalModConstants prepareEvalModConstants(
+    SealAdapter& adapter,
+    const CompiledEvalModCircuit& circuit,
+    const Cipher& evalModInput);
 double evaluateEvalModPolynomial(const EvalModPolynomial& polynomial, double input);
 std::vector<double> executeEvalModDagPlaintext(const CompiledEvalModCircuit& circuit,
                                                const std::vector<double>& input);
@@ -213,7 +286,8 @@ Cipher executeEvalModCircuit(SealAdapter& adapter, const CompiledEvalModCircuit&
                              const Cipher& coeffToSlotOutput,
                              EvalModExecutionTrace* trace = nullptr,
                              const std::vector<double>* semanticInput = nullptr,
-                             std::vector<EvalModNodeDifferential>* differentialTrace = nullptr);
+                             std::vector<EvalModNodeDifferential>* differentialTrace = nullptr,
+                             const PreparedEvalModConstants* preparedConstants = nullptr);
 EvalModCoeffToSlotResult executeEvalModAfterCoeffToSlot(
     SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
     CoeffToSlotResult coeffToSlotOutput);

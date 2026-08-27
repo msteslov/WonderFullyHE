@@ -132,6 +132,11 @@ public:
     Plain encodeScalarFor(double, const Cipher&);
     /// Кодирует скаляр на уровне target с явно заданным scale.
     Plain encodeScalarAtScaleFor(double, double scale, const Cipher&);
+    /// Создаёт подготовленный scalar plaintext из exact RNS residues без конверсии через double.
+    /// `levelsConsumed` отсчитывается от уровня reference ciphertext.
+    Plain encodeScalarRnsAtScaleFor(const std::vector<std::uint64_t>& residues,
+                                    double scale, const Cipher& reference,
+                                    std::size_t levelsConsumed);
     /// Шифрует plaintext public key; ключ должен быть сгенерирован или загружен заранее.
     Cipher encrypt(const Plain&);
     /// Расшифровывает ciphertext secret key; ключ должен быть сгенерирован или загружен заранее.
@@ -196,6 +201,12 @@ public:
     double coeffModulusLog2(const Cipher&) const;
     /// Возвращает битовые размеры modulus chain из исходного профиля.
     std::vector<int> coeffModulusBits() const;
+    /// Возвращает точные data-primes в первом уровне CKKS modulus chain.
+    std::vector<std::uint64_t> dataModulusValues() const;
+    /// Возвращает точное значение special prime из key modulus.
+    std::uint64_t specialKeyModulusValue() const;
+    /// Возвращает точные активные modulus-primes для ciphertext.
+    std::vector<std::uint64_t> coeffModulusValues(const Cipher&) const;
     /// Возвращает индекс ciphertext в modulus chain.
     std::size_t chainIndex(const Cipher&) const;
     /// Возвращает число активных модулей ciphertext.
