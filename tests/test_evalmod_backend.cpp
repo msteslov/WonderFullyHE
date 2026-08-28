@@ -277,10 +277,13 @@ int main() {
                     certifiedCircuit.nodes.size(), certifiedCircuit.cost.levelConsumption);
     }
     std::printf("[test_evalmod_backend] error=%.3e certified_bound=%.3e plan_status=%d "
+                "search_best=(%.3e,%.3e) "
                 "prepared_constant_error=%.3e nodes=%zu failure=%s %s\n",
                 validation.maxAbsoluteError,
                 certifiedCandidate.arithmeticCertificate.outputError.upperBound,
                 static_cast<int>(nonlinearPlan.status),
+                planSearch.bestApproximationBound,
+                planSearch.bestArithmeticBound,
                 validation.maxPreparedConstantEncodingError,
                 validation.executedNodes, validation.failure.c_str(),
                 ok ? "PASS" : "FAIL");
