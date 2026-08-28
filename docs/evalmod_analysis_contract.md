@@ -147,6 +147,13 @@ norm использует явную canonical-embedding triangle inequality.
 делает inverse NTT и строит residual bound. Differential measurements используются
 только для проверки `observed <= certified`, не для построения certificate.
 
+`prepareEvalModSearch` перекомпилирует каждый реализованный candidate под exact
+runtime context и возвращает либо prepared plan, либо ограниченный отрицательный
+результат. `NoCertifiedPlanInSearchSpace` содержит families, degree/depth range,
+лучшие approximation/arithmetic bounds, первый failing gate и всегда явно сообщает
+`globalImpossibilityProved=false`. Resource infeasibility и отсутствие rigorous
+operation bound имеют отдельные статусы.
+
 ## Approximation synthesis milestone
 
 `synthesizeEvalMod` связывает problem, rigorous domain estimate, parameter search,

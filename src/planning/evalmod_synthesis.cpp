@@ -2304,6 +2304,109 @@ PreparedEvalModPlan prepareEvalMod(
     return plan;
 }
 
+EvalModPlanSearchResult prepareEvalModSearch(
+    SealAdapter& adapter,
+    const EvalModSynthesisResult& synthesis,
+    const Cipher& evalModInput) {
+    EvalModPlanSearchResult result;
+    result.minimumDegree = std::numeric_limits<std::size_t>::max();
+    auto certifiedProblem = synthesis.problem;
+    certifiedProblem.exactModulusContext = EvalModExactModulusContext{
+        adapter.coeffModulusValues(evalModInput), adapter.specialKeyModulusValue()};
+    certifiedProblem.requireCertifiedScaleSchedule = true;
+    bool sawCandidate = false;
+    bool firstFailureRecorded = false;
+    bool everyFailureWasResource = true;
+    bool everyFailureWasUnavailableBound = true;
+    double selectedLatency = std::numeric_limits<double>::infinity();
+    for (const auto& sourceCandidate : synthesis.candidates) {
+        if (sourceCandidate.family
+                == EvalModApproximationFamily::MultiIntervalLeastSquaresPrototype
+            || !sourceCandidate.approximationConverged)
+            continue;
+        sawCandidate = true;
+        if (std::find(result.familiesSearched.begin(), result.familiesSearched.end(),
+                      sourceCandidate.family) == result.familiesSearched.end())
+            result.familiesSearched.push_back(sourceCandidate.family);
+        result.minimumDegree = std::min(
+            result.minimumDegree, sourceCandidate.compiledCircuit.cost.degree);
+        result.maximumDegree = std::max(
+            result.maximumDegree, sourceCandidate.compiledCircuit.cost.degree);
+        result.maximumDepth = std::max(
+            result.maximumDepth, sourceCandidate.compiledCircuit.cost.multiplicativeDepth);
+        if (sourceCandidate.intervalCertificate.proved)
+            result.bestApproximationBound = std::min(
+                result.bestApproximationBound,
+                sourceCandidate.intervalCertificate.approximationErrorUpperBoundDouble);
+
+        auto candidate = sourceCandidate;
+        PreparedEvalModPlan plan;
+        try {
+            candidate.compiledCircuit = compileEvalModPolynomial(
+                candidate.polynomial, certifiedProblem,
+                sourceCandidate.compiledCircuit.babyStep);
+            candidate.satisfiesLevelBudget =
+                candidate.compiledCircuit.cost.levelConsumption
+                <= certifiedProblem.availableLevels;
+            plan = prepareEvalMod(
+                adapter, candidate, certifiedProblem, evalModInput);
+        } catch (const std::exception& error) {
+            plan.status = EvalModCertificationStatus::ScaleScheduleInfeasible;
+            plan.detail = error.what();
+        }
+        if (plan.arithmeticError.rigorous)
+            result.bestArithmeticBound = std::min(
+                result.bestArithmeticBound, plan.arithmeticError.upperBound);
+        if (!firstFailureRecorded && !plan.rigorous) {
+            result.firstFailingGate = plan.status;
+            firstFailureRecorded = true;
+        }
+        everyFailureWasResource = everyFailureWasResource
+            && (plan.status == EvalModCertificationStatus::InsufficientLevels
+                || plan.status == EvalModCertificationStatus::SecurityBudgetExceeded);
+        everyFailureWasUnavailableBound = everyFailureWasUnavailableBound
+            && (plan.status == EvalModCertificationStatus::RigorousRescaleBoundUnavailable
+                || plan.status
+                    == EvalModCertificationStatus::RigorousKeySwitchBoundUnavailable
+                || plan.status == EvalModCertificationStatus::UnknownOperationBound);
+        if (plan.rigorous && sourceCandidate.cost.latencyMs < selectedLatency) {
+            selectedLatency = sourceCandidate.cost.latencyMs;
+            result.plan = std::move(plan);
+        }
+    }
+    if (!sawCandidate) result.minimumDegree = 0;
+    if (result.plan) {
+        result.status = EvalModPlanSearchStatus::Certified;
+        result.firstFailingGate = EvalModCertificationStatus::Certified;
+        result.detail = "selected the lowest predicted-latency certified plan";
+        result.proofScope = "certificate applies to the selected prepared plan and exact SEAL context";
+        return result;
+    }
+    result.globalImpossibilityProved = false;
+    std::ostringstream scope;
+    scope << "implemented families=" << result.familiesSearched.size()
+          << ", degree_range=" << result.minimumDegree << ':' << result.maximumDegree
+          << ", maximum_depth=" << result.maximumDepth;
+    result.proofScope = scope.str();
+    if (sawCandidate && everyFailureWasResource) {
+        result.status = EvalModPlanSearchStatus::ProfileResourceInfeasible;
+        result.detail = "all searched candidates exceed the exact level/security profile";
+        result.recommendedRigorousNextPath =
+            "reduce multiplicative depth or select a larger security-valid polynomial modulus degree";
+    } else if (sawCandidate && everyFailureWasUnavailableBound) {
+        result.status = EvalModPlanSearchStatus::RigorousBoundUnavailable;
+        result.detail = "all searched candidates require an operation bound not implemented rigorously";
+        result.recommendedRigorousNextPath =
+            "derive a sampler-specific deterministic or proven probabilistic operation bound";
+    } else {
+        result.status = EvalModPlanSearchStatus::NoCertifiedPlanInSearchSpace;
+        result.detail = "no certified candidate was found in the explicitly reported search space";
+        result.recommendedRigorousNextPath =
+            "expand target-driven Chebyshev/composite structures and tighten proven operation norms";
+    }
+    return result;
+}
+
 EvalModPreflightResult preflightEvalMod(
     const SealAdapter& adapter,
     const PreparedEvalModPlan& plan,

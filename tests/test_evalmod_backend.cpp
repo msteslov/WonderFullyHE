@@ -129,6 +129,8 @@ int main() {
     const auto planInputCipher = planAdapter.encrypt(planAdapter.encode(precisionInput));
     const auto nonlinearPlan = em::prepareEvalMod(
         planAdapter, certifiedCandidate, certifiedProblem, planInputCipher);
+    const auto planSearch = em::prepareEvalModSearch(
+        planAdapter, synthesis, planInputCipher);
     bool operationCertificatesCover = true;
     bool sawCertifiedRescale = false;
     bool sawCertifiedRelinearize = false;
@@ -201,6 +203,15 @@ int main() {
         && !nonlinearPlan.rigorous
         && nonlinearPlan.status == em::EvalModCertificationStatus::ApproximationInsufficient
         && nonlinearPlan.securityBits >= 128
+        && !planSearch.plan.has_value()
+        && planSearch.status
+            == em::EvalModPlanSearchStatus::NoCertifiedPlanInSearchSpace
+        && !planSearch.globalImpossibilityProved
+        && !planSearch.familiesSearched.empty()
+        && planSearch.minimumDegree <= 7
+        && planSearch.maximumDegree >= 15
+        && std::isfinite(planSearch.bestApproximationBound)
+        && std::isfinite(planSearch.bestArithmeticBound)
         && exactSchedule.available && exactSchedule.valid && exactSchedule.rigorous
         && exactSchedule.rescalePrimes[3] == expectedDataPrimes.back()
         && exactSchedule.nodeScales[3].numerator == (em::ExactInteger(1) << 118)

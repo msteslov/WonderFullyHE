@@ -362,6 +362,29 @@ struct EvalModPreflightResult {
     std::string detail;
 };
 
+enum class EvalModPlanSearchStatus {
+    Certified,
+    NoCertifiedPlanInSearchSpace,
+    ProfileResourceInfeasible,
+    RigorousBoundUnavailable
+};
+
+struct EvalModPlanSearchResult {
+    EvalModPlanSearchStatus status{EvalModPlanSearchStatus::NoCertifiedPlanInSearchSpace};
+    std::optional<PreparedEvalModPlan> plan;
+    std::vector<EvalModApproximationFamily> familiesSearched;
+    std::size_t minimumDegree{};
+    std::size_t maximumDegree{};
+    std::size_t maximumDepth{};
+    double bestApproximationBound{std::numeric_limits<double>::infinity()};
+    double bestArithmeticBound{std::numeric_limits<double>::infinity()};
+    EvalModCertificationStatus firstFailingGate{EvalModCertificationStatus::InvalidInput};
+    bool globalImpossibilityProved{};
+    std::string proofScope;
+    std::string recommendedRigorousNextPath;
+    std::string detail;
+};
+
 struct EvalModSynthesisResult {
     EvalModProblem problem;
     EvalModDomain domain;
@@ -447,6 +470,10 @@ PreparedEvalModPlan prepareEvalMod(
     SealAdapter& adapter,
     const EvalModCandidate& candidate,
     const EvalModProblem& problem,
+    const Cipher& evalModInput);
+EvalModPlanSearchResult prepareEvalModSearch(
+    SealAdapter& adapter,
+    const EvalModSynthesisResult& synthesis,
     const Cipher& evalModInput);
 EvalModPreflightResult preflightEvalMod(
     const SealAdapter& adapter,
