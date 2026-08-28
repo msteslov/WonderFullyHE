@@ -35,6 +35,10 @@ struct EvalModIntervalCertificate {
     bool proved{};
 };
 
+/// Converts standard Chebyshev coefficients (sum c_k T_k(x)) to an exact
+/// executable monomial polynomial. Decimal inputs are transformed as rationals.
+EvalModPolynomial convertChebyshevToMonomial(const EvalModPolynomial& polynomial);
+
 /// MPFR grid diagnostic; это не interval certificate.
 EvalModGridDiagnostic diagnoseEvalModPolynomialOnGrid(const EvalModPolynomial& polynomial,
                                                       const EvalModDomain& domain,

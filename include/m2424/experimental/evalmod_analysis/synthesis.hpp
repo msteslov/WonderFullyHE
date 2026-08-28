@@ -25,6 +25,51 @@ struct EvalModArithmeticErrorModel {
     std::string provenance;
 };
 
+/// Empirical model retained exclusively for diagnostics and benchmark prediction.
+using EvalModEmpiricalArithmeticModel = EvalModArithmeticErrorModel;
+
+enum class BoundKind {
+    Deterministic,
+    Probabilistic,
+    Unknown
+};
+
+/// A semantic upper bound used by the certified path. `Unknown` is never
+/// interpreted as zero and makes the enclosing certificate non-rigorous.
+struct CertifiedBound {
+    double upperBound{std::numeric_limits<double>::infinity()};
+    std::string upperBoundDecimal{"inf"};
+    BoundKind kind{BoundKind::Unknown};
+    double log2FailureProbability{0.0};
+    bool rigorous{};
+    std::string provenance;
+};
+
+enum class EvalModCertificationStatus {
+    Certified,
+    InvalidInput,
+    MissingExactModulusContext,
+    InvalidScaleSchedule,
+    PreparedConstantMismatch,
+    DiscontinuityMarginViolation,
+    NoEvalModErrorBudgetRemaining,
+    InsufficientLevels,
+    SecurityBudgetExceeded,
+    ScaleScheduleInfeasible,
+    ModSwitchHeadroomViolation,
+    RigorousRescaleBoundUnavailable,
+    RigorousKeySwitchBoundUnavailable,
+    UnknownOperationBound,
+    ApproximationInsufficient,
+    ArithmeticNoiseTooLarge,
+    FailureProbabilityExceeded,
+    MissingEvaluationKeys,
+    ContextMismatch,
+    InputLevelMismatch,
+    InputScaleMismatch,
+    CiphertextRepresentationMismatch
+};
+
 struct EvalModPrecisionBudget {
     double implementation{};
     double approximation{};
@@ -62,6 +107,7 @@ enum class EvalModApproximationFamily {
     PeriodicSineBaseline,
     MultiIntervalLeastSquaresPrototype,
     MultiIntervalMinimax,
+    MultiIntervalChebyshev,
     MinimaxInverseSine
 };
 
@@ -112,11 +158,20 @@ struct EvalModScaleStage {
     std::size_t requiredHeadroomBits{};
 };
 
+/// Ideal semantic scale and the exact binary64 metadata value produced by SEAL arithmetic.
+struct EvalModScaleValue {
+    ExactScale ideal;
+    std::uint64_t runtimeBinary64Bits{};
+    ExactScale runtimeExact;
+};
+
 /// Точное prime-aware состояние scale и modulus для каждого DAG-узла.
 struct EvalModExactScaleSchedule {
     bool available{};
     bool valid{};
     bool rigorous{};
+    std::vector<EvalModScaleValue> scaleValues;
+    /// Legacy alias for ideal scales. Certified code uses `scaleValues` explicitly.
     std::vector<ExactScale> nodeScales;
     std::vector<ExactInteger> nodeModuli;
     std::vector<std::uint64_t> rescalePrimes;
@@ -155,8 +210,32 @@ struct PreparedEvalModConstant {
 
 struct PreparedEvalModConstants {
     std::vector<std::uint64_t> inputDataPrimes;
+    std::uint64_t specialPrime{};
+    std::size_t polyModulusDegree{};
+    std::size_t secretCoefficientAbsSupport{1};
+    std::size_t evaluationKeyNoiseCoefficientAbsSupport{};
+    bool deterministicEvaluationKeyNoiseSupport{};
     std::vector<PreparedEvalModConstant> constants;
     bool rigorous{};
+};
+
+enum class EvaluationKeySamplerKind {
+    CenteredBinomial,
+    ClippedRoundedGaussian,
+    Unknown
+};
+
+struct EvaluationKeyNoiseCertificateMetadata {
+    EvaluationKeySamplerKind sampler{EvaluationKeySamplerKind::Unknown};
+    double standardDeviation{3.2};
+    std::size_t noiseCoefficientAbsSupport{};
+    std::size_t secretCoefficientAbsSupport{};
+    std::size_t polyModulusDegree{};
+    std::uint64_t specialPrime{};
+    std::vector<std::uint64_t> dataPrimes;
+    std::size_t relevantEvaluationKeyComponents{};
+    bool rigorous{};
+    std::string provenance;
 };
 
 struct EvalModNodeErrorState {
@@ -164,6 +243,26 @@ struct EvalModNodeErrorState {
     double absoluteErrorBound{};
     double relativeScaleErrorBound{};
     double noiseBound{};
+};
+
+struct EvalModNodeCertificate {
+    CertifiedBound valueAbs;
+    CertifiedBound semanticError;
+    CertifiedBound localAddedError;
+    EvalModScaleValue scale;
+    ExactInteger modulus;
+    double headroomBits{-std::numeric_limits<double>::infinity()};
+};
+
+struct EvalModArithmeticCertificate {
+    EvalModCertificationStatus status{EvalModCertificationStatus::InvalidInput};
+    std::vector<EvalModNodeCertificate> nodes;
+    CertifiedBound outputError;
+    EvaluationKeyNoiseCertificateMetadata keyNoiseMetadata;
+    double log2FailureProbability{};
+    std::optional<std::size_t> failingNode;
+    bool rigorous{};
+    std::string detail;
 };
 
 struct EvalModCandidate {
@@ -198,6 +297,7 @@ struct EvalModCandidate {
     std::optional<double> analyticalArithmeticBound;
     bool analyticalArithmeticBoundRigorous{};
     std::vector<EvalModNodeErrorState> nodeErrorStates;
+    EvalModArithmeticCertificate arithmeticCertificate;
     EvalModExactScaleSchedule exactScaleSchedule;
     EvalModHeadroomCertificate headroomCertificate;
 };
@@ -226,6 +326,42 @@ struct EvalModCoeffToSlotResult {
     EvalModExecutionTrace secondTrace;
 };
 
+struct PreparedEvalModPlan {
+    std::array<std::uint64_t, 4> contextFingerprint{};
+    std::size_t inputChainIndex{};
+    std::uint64_t inputScaleBinary64Bits{};
+    EvalModDomain domain;
+    CertifiedBound inputError;
+    CertifiedBound discontinuityMargin;
+    ExactScale normalizationGain;
+    ExactScale denormalizationGain;
+    EvalModPolynomial approximation;
+    CompiledEvalModCircuit circuit;
+    std::vector<std::uint64_t> dataPrimes;
+    std::uint64_t specialPrime{};
+    PreparedEvalModConstants constants;
+    EvalModExactScaleSchedule scaleSchedule;
+    EvalModArithmeticCertificate arithmeticCertificate;
+    CertifiedBound approximationError;
+    CertifiedBound arithmeticError;
+    CertifiedBound normalizedEvalModError;
+    CertifiedBound denormalizedEvalModError;
+    CertifiedBound bootstrapContribution;
+    double normalizedEvalModBudget{};
+    std::size_t levelsConsumed{};
+    int securityBits{};
+    double log2FailureProbability{};
+    EvalModCertificationStatus status{EvalModCertificationStatus::InvalidInput};
+    bool rigorous{};
+    std::string detail;
+};
+
+struct EvalModPreflightResult {
+    EvalModCertificationStatus status{EvalModCertificationStatus::InvalidInput};
+    bool compatible{};
+    std::string detail;
+};
+
 struct EvalModSynthesisResult {
     EvalModProblem problem;
     EvalModDomain domain;
@@ -251,6 +387,8 @@ struct EvalModBackendValidation {
     std::optional<std::size_t> firstImplementationBudgetExceedingNode;
     bool preparedConstantsUsed{};
     double maxPreparedConstantEncodingError{};
+    bool runtimeScaleBitsMatch{};
+    std::optional<std::size_t> firstRuntimeScaleMismatchNode;
 };
 
 EvalModSynthesisResult synthesizeEvalMod(const EvalModProblem& problem);
@@ -266,6 +404,12 @@ EvalModHeadroomCertificate certifyEvalModModSwitchHeadroom(
     const EvalModExactScaleSchedule& schedule,
     const std::vector<EvalModNodeErrorState>& nodeErrors,
     bool errorBoundsRigorous);
+EvalModArithmeticCertificate certifyEvalModDagArithmetic(
+    const CompiledEvalModCircuit& circuit,
+    const EvalModExactScaleSchedule& schedule,
+    const PreparedEvalModConstants& preparedConstants,
+    double inputValueAbsUpperBound,
+    double inputSemanticErrorUpperBound);
 PreparedEvalModConstants prepareEvalModConstants(
     SealAdapter& adapter,
     const CompiledEvalModCircuit& circuit,
@@ -282,15 +426,37 @@ std::vector<double> evaluateExactEvalModTargetMpfr(
     const ExactScale& normalizationGain, const ExactScale& denormalizationGain,
     const std::vector<double>& rawInput, std::size_t precisionBits = 384);
 bool isCompiledEvalModCircuitValid(const CompiledEvalModCircuit& circuit);
-Cipher executeEvalModCircuit(SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
-                             const Cipher& coeffToSlotOutput,
-                             EvalModExecutionTrace* trace = nullptr,
-                             const std::vector<double>* semanticInput = nullptr,
-                             std::vector<EvalModNodeDifferential>* differentialTrace = nullptr,
-                             const PreparedEvalModConstants* preparedConstants = nullptr);
+Cipher executeEvalModCircuitDiagnostic(
+    SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
+    const Cipher& coeffToSlotOutput,
+    EvalModExecutionTrace* trace = nullptr,
+    const std::vector<double>* semanticInput = nullptr,
+    std::vector<EvalModNodeDifferential>* differentialTrace = nullptr);
+Cipher executePreparedEvalMod(
+    SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
+    const PreparedEvalModConstants& preparedConstants,
+    const Cipher& coeffToSlotOutput,
+    EvalModExecutionTrace* trace = nullptr,
+    const std::vector<double>* semanticInput = nullptr,
+    std::vector<EvalModNodeDifferential>* differentialTrace = nullptr);
 EvalModCoeffToSlotResult executeEvalModAfterCoeffToSlot(
     SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
+    const PreparedEvalModConstants& preparedConstants,
     CoeffToSlotResult coeffToSlotOutput);
+PreparedEvalModPlan prepareEvalMod(
+    SealAdapter& adapter,
+    const EvalModCandidate& candidate,
+    const EvalModProblem& problem,
+    const Cipher& evalModInput);
+EvalModPreflightResult preflightEvalMod(
+    const SealAdapter& adapter,
+    const PreparedEvalModPlan& plan,
+    const Cipher& evalModInput);
+Cipher applyEvalMod(
+    SealAdapter& adapter,
+    const PreparedEvalModPlan& plan,
+    const Cipher& evalModInput,
+    EvalModExecutionTrace* trace = nullptr);
 EvalModBackendValidation validateEvalModCandidateBackend(EvalModCandidate& candidate,
                                                         const EvalModProblem& problem,
                                                         const CkksProfile& profile,

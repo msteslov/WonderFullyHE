@@ -5,6 +5,7 @@
 #include <complex>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace m2424 {
@@ -31,6 +32,23 @@ struct CipherInfo {
     std::size_t coeffModulusSize{};
     std::size_t ciphertextSize{};
     double coeffModulusLog2{};
+};
+
+struct SealRescaleComponentAnalysis {
+    double coefficientResidualAbsUpper{};
+    double canonicalEmbeddingResidualAbsUpper{};
+};
+
+/// Read-only analysis of the exact last-prime residues used by SEAL's CKKS
+/// divide-and-round operation. Bounds are expressed after division by the
+/// dropped prime and before division by the new CKKS scale.
+struct SealRescaleAnalysis {
+    std::size_t polyModulusDegree{};
+    std::size_t ciphertextComponents{};
+    std::uint64_t droppedPrime{};
+    std::vector<SealRescaleComponentAnalysis> components;
+    bool rigorous{};
+    std::string provenance;
 };
 
 using SerializedBuffer = std::vector<std::uint8_t>;
@@ -114,6 +132,10 @@ public:
     void generateKeys(const std::vector<int>& rotationSteps, bool needRelin = true);
     /// Возвращает физическую ёмкость слотов CKKS-контекста.
     std::size_t slotCount() const;
+    /// Stable fingerprint of the full key-level encryption parameters.
+    std::array<std::uint64_t, 4> contextFingerprint() const;
+    /// Security level accepted by SEAL parameter validation (0 if unchecked/none).
+    int securityLevelBits() const;
 
     /// Кодирует вещественные значения на исходном уровне и scale профиля.
     /// @throws std::invalid_argument Если значения не конечны или превышают число слотов.
@@ -166,6 +188,8 @@ public:
     Cipher relinearize(const Cipher&);
     /// Снижает уровень modulus chain и нормализует scale после умножения.
     Cipher rescaleToNext(const Cipher&);
+    /// Анализирует coefficientwise divide-and-round residual без изменения ciphertext.
+    SealRescaleAnalysis analyzeCkksRescale(const Cipher&) const;
     /// Снижает ciphertext до уровня target; повышение уровня невозможно.
     Cipher modSwitchTo(const Cipher&, const Cipher&);
     /// Поднимает ciphertext с нижнего уровня текущей modulus chain на верхний уровень через centered RNS lift.
@@ -255,7 +279,6 @@ public:
 
 private:
     std::vector<double> decryptRaisedCoefficients(const RaisedCipher&, std::size_t modulusCount);
-    std::array<std::uint64_t, 4> contextFingerprint() const;
     std::array<std::uint64_t, 4> parmsFingerprint(const RaisedCipher&) const;
     double rescalePlaintextScaleAtChainIndex(std::size_t chainIndex) const;
 

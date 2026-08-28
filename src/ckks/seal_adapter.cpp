@@ -160,6 +160,18 @@ std::array<std::uint64_t, 4> SealAdapter::contextFingerprint() const {
     return pimpl_->context->key_context_data()->parms_id();
 }
 
+int SealAdapter::securityLevelBits() const {
+    if (!pimpl_->context || !pimpl_->context->key_context_data())
+        throw std::runtime_error("SEALContext not initialized");
+    switch (pimpl_->context->key_context_data()->qualifiers().sec_level) {
+    case seal::sec_level_type::tc128: return 128;
+    case seal::sec_level_type::tc192: return 192;
+    case seal::sec_level_type::tc256: return 256;
+    case seal::sec_level_type::none: return 0;
+    }
+    return 0;
+}
+
 std::array<std::uint64_t, 4>
 SealAdapter::parmsFingerprint(const RaisedCipher& cipher) const {
     if (!cipher.cipher_.pimpl_ || !pimpl_->context
@@ -607,6 +619,63 @@ Cipher SealAdapter::rescaleToNext(const Cipher& cipher) {
     Cipher out = cipher;
     pimpl_->evaluator->rescale_to_next_inplace(out.pimpl_->ct);
     return out;
+}
+
+SealRescaleAnalysis SealAdapter::analyzeCkksRescale(const Cipher& cipher) const {
+    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
+    const auto contextData = pimpl_->context->get_context_data(cipher.pimpl_->ct.parms_id());
+    if (!contextData || !contextData->next_context_data())
+        throw std::invalid_argument("ciphertext has no next CKKS modulus level");
+    if (!cipher.pimpl_->ct.is_ntt_form())
+        throw std::invalid_argument("CKKS rescale analysis requires NTT ciphertext");
+    const auto& moduli = contextData->parms().coeff_modulus();
+    if (moduli.size() < 2)
+        throw std::invalid_argument("CKKS rescale analysis requires a droppable data prime");
+    const std::size_t degree = contextData->parms().poly_modulus_degree();
+    const std::size_t last = moduli.size() - 1;
+    const std::uint64_t prime = moduli[last].value();
+    const auto tables = contextData->small_ntt_tables();
+
+    SealRescaleAnalysis result;
+    result.polyModulusDegree = degree;
+    result.ciphertextComponents = cipher.pimpl_->ct.size();
+    result.droppedPrime = prime;
+    result.components.reserve(result.ciphertextComponents);
+    std::vector<std::uint64_t> coefficients(degree);
+    const auto upwardRatio = [](std::uint64_t numerator, std::uint64_t denominator) {
+        if (!numerator) return 0.0;
+        double numeratorUpper = static_cast<double>(numerator);
+        if (numeratorUpper < static_cast<long double>(numerator))
+            numeratorUpper = std::nextafter(
+                numeratorUpper, std::numeric_limits<double>::infinity());
+        double denominatorLower = static_cast<double>(denominator);
+        if (denominatorLower > static_cast<long double>(denominator))
+            denominatorLower = std::nextafter(denominatorLower, 0.0);
+        const double ratio = numeratorUpper / denominatorLower;
+        return std::nextafter(ratio, std::numeric_limits<double>::infinity());
+    };
+    const auto upwardAdd = [](double left, double right) {
+        return std::nextafter(left + right, std::numeric_limits<double>::infinity());
+    };
+    for (std::size_t component = 0; component < result.ciphertextComponents; ++component) {
+        const auto* source = cipher.pimpl_->ct.data(component) + last * degree;
+        std::copy_n(source, degree, coefficients.begin());
+        seal::util::inverse_ntt_negacyclic_harvey(coefficients.data(), tables[last]);
+        double maximum = 0.0;
+        double l1 = 0.0;
+        for (const auto residue : coefficients) {
+            const std::uint64_t centeredMagnitude = std::min(residue, prime - residue);
+            const double normalized = upwardRatio(centeredMagnitude, prime);
+            maximum = std::max(maximum, normalized);
+            l1 = upwardAdd(l1, normalized);
+        }
+        result.components.push_back({maximum, l1});
+    }
+    result.rigorous = true;
+    result.provenance =
+        "inverse NTT of actual dropped-prime limb; centered residue r gives exact "
+        "divide-and-round residual r/p; triangle inequality bounds every canonical root";
+    return result;
 }
 
 

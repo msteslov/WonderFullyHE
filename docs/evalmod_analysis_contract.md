@@ -1,7 +1,17 @@
 # EvalMod: математический контракт анализа
 
-Этот milestone намеренно не содержит homomorphic `EvalMod::apply()`. Он отделяет
-семантику, вероятностную параметризацию, численную аппроксимацию и backend cost.
+Компонент разделяет experimental synthesis/measurement и prepared execution.
+`prepareEvalMod`, `preflightEvalMod` и `applyEvalMod` образуют production-shaped API:
+последняя функция не синтезирует polynomial, не кодирует coefficients, не decrypt-ит
+и не выбирает fallback. План получает `rigorous=true` только после всех реализованных
+certificate gates; отрицательный план сохраняет структурированный status.
+
+Текущий nonlinear `N=32768, K=1, rho=0.08` regression ещё не является полным
+production certificate: degree-9 periodic approximation не проходит approximation
+budget, а deterministic-support arithmetic bound порядка `2.2e-6` превышает
+normalized target `1.25e-11`. Это отрицательный результат для конкретного candidate,
+не утверждение глобальной невозможности. Нужны proven probabilistic norm bounds и
+target-driven поиск более сильной approximation/composition.
 
 ## Нормировка
 
@@ -47,9 +57,10 @@ exact numerator/scale, rounded decimal и MPFR rounding-error bound.
 `[k-rho,k+rho]`, а не на сплошном интервале с разрывами. Он сообщает maximum error,
 real/complex derivative maxima и ошибку на всей границе комплексной окрестности.
 Коэффициенты, radius и координаты grid передаются/строятся в MPFR без промежуточного
-`double`; NaN и infinity отклоняются. Сейчас реализован
-только monomial evaluator; Chebyshev и Composite являются явными, но пока отклоняемыми
-вариантами basis, а не неявно смешанными схемами.
+`double`; NaN и infinity отклоняются. Исполняемый evaluator остаётся monomial.
+Chebyshev synthesis функционален: MPFR Remez строит coefficients в базисе `T_k`,
+после чего exact-rational recurrence конвертирует их в monomial coefficients без
+ошибки basis conversion. Composite basis пока не является certified family.
 
 Grid diagnostic остаётся измерением. Отдельный certificate разбивает каждый real
 interval на `subdivisions` ячеек, вычисляет center через outward MPFR intervals,
@@ -85,17 +96,18 @@ optimizer modulus chain и не security estimator. Исследовательс
 получает primes активной базы на входе EvalMod, а не только запрошенные
 битовые размеры из профиля.
 
-`buildExactEvalModScaleSchedule` хранит для каждого DAG-узла exact rational
-scale и exact integer data modulus. Для `Rescale` используется конкретный
-сбрасываемый prime:
+`buildExactEvalModScaleSchedule` хранит ideal rational scale, битовый образ actual
+binary64 scale и exact rational representation этого binary64 для каждого DAG-узла.
+Для `Rescale` используется конкретный сбрасываемый prime:
 
 ```text
-Delta_out = Delta_in / p_dropped.
+Delta_runtime,out = fl64(Delta_runtime,in / double(p_dropped)).
 ```
 
-Metadata-only `AlignScale` недопустим в rigorous schedule. Legacy circuit сохраняет
-такие узлы только для empirical backend diagnostics и не может быть выдан как
-certified. `ModSwitch` сохраняет scale и не добавляет CKKS arithmetic error,
+Certified compiler выравнивает ветви настоящим prepared `MultiplyPlain(1)` и при
+необходимости `Rescale`; nonlinear certified DAG не содержит `AlignScale`. Legacy
+circuit сохраняет metadata-only узлы только для diagnostics. `ModSwitch` сохраняет
+scale и не добавляет CKKS arithmetic error,
 но `certifyEvalModModSwitchHeadroom` доказывает до его исполнения:
 
 ```text
@@ -114,18 +126,33 @@ certified. `ModSwitch` сохраняет scale и не добавляет CKKS 
 уровня. Для каждой константы хранятся rounded integer и exact encoding-error
 certificate.
 
-`executeEvalModCircuit` при переданном `PreparedEvalModConstants` проверяет
-входную modulus base, полноту и привязку constants к DAG-узлам. Эта ветка
-исполнения не вызывает `std::stod` или CKKS encode. Backend validation использует
-именно prepared path и отчитывает maximum сертифицированную ошибку
-кодирования constants.
+`executeEvalModCircuitDiagnostic` оставляет parsing/encoding только для исследований.
+`executePreparedEvalMod` требует `PreparedEvalModConstants`, проверяет modulus base,
+полноту и привязку constants к DAG-узлам и не вызывает `std::stod` или CKKS encoder.
+`executeEvalModAfterCoeffToSlot` также принимает только prepared constants.
+
+### Certified arithmetic bounds
+
+`certifyEvalModDagArithmetic` не использует empirical constants. Для Add применяется
+`M_a+M_b`, `E_a+E_b`; для multiplication —
+`M_a E_b + M_b E_a + E_a E_b`; coefficient quantization приходит из prepared
+constant certificate. `BoundKind::Unknown` никогда не заменяется нулём.
+
+Текущая vendored SEAL сборка использует ternary secret support `[-1,1]` и
+centered-binomial evaluation-key noise support `[-21,21]`. Из конечных support,
+RNS decomposition и special-prime ModDown выводится deterministic key-switch bound.
+Для rescale coefficientwise rounding residual имеет `|r_i|<=1/2`; переход к slot
+norm использует явную canonical-embedding triangle inequality.
+`SealAdapter::analyzeCkksRescale` read-only извлекает actual dropped-prime limb,
+делает inverse NTT и строит residual bound. Differential measurements используются
+только для проверки `observed <= certified`, не для построения certificate.
 
 ## Approximation synthesis milestone
 
 `synthesizeEvalMod` связывает problem, rigorous domain estimate, parameter search,
 polynomial DAG, scale schedule, MPFR diagnostic, propagation и backend
 cost. Поиск перебирает degree и Paterson–Stockmeyer baby step для odd multi-interval
-MPFR Remez. Дополнительно строятся periodic-sine baseline, исключённый из выбора
+MPFR Remez в monomial и Chebyshev bases. Дополнительно строятся periodic-sine baseline, исключённый из выбора
 least-squares diagnostic prototype и inverse-sine composition.
 Remez-кандидат допускается к сравнению только при упорядоченных extrema, чередовании
 знаков ошибки, сбалансированных амплитудах, устойчивом exchange set и стабилизации
@@ -136,13 +163,14 @@ Operation counts, depth, level consumption и peak liveness выводятся �
 `ModSwitch`, `AlignScale` и `AddPlain` представлены отдельными узлами и входят в
 стоимостную модель, а не вставляются backend-исполнителем скрыто.
 Нормировка `S_CtS/q_src` и денормировка `q_src/S_out` хранятся exact rational и входят
-в scale propagation. Arithmetic error оценивается по операциям DAG; неизвестное
-значение никогда не трактуется как ноль. Для каждого узла сохраняются value/error,
-relative-scale и noise bounds. `EvalModArithmeticErrorModel` задаёт разные constants
+в scale propagation. Legacy arithmetic estimate остаётся только diagnostic. Для
+каждого узла сохраняются value/error, relative-scale и noise estimates.
+`EvalModArithmeticErrorModel` задаёт разные empirical constants
 для encoding, add, multiply, relinearize, rescale, ModSwitch и metadata correction;
 серия backend measurements может быть сведена в conservative calibrated model через
-`calibrateEvalModArithmeticModel`. Такая калибровка остаётся empirical, поэтому
-`rigorous=false` до отдельного вывода CKKS/SEAL bounds.
+`calibrateEvalModArithmeticModel`. Такая калибровка всегда остаётся
+`rigorous=false`; даже исторически выставленный caller-ом flag не способен создать
+certificate. Строгий результат приходит только из `EvalModArithmeticCertificate`.
 
 Кандидаты отдельно хранят `circuitValid`, `backendRunnable`, `backendMeasured`,
 `approximationCertified`, `arithmeticErrorCertified` и `rigorouslyValidated`.
@@ -155,14 +183,18 @@ approximation и arithmetic bounds. JSON/CSV сохраняют пути раз�
 
 `executeEvalModDagPlaintext` является smoke-проверкой семантики compiled DAG.
 Независимый reference вычисляет polynomial напрямую Horner-схемой в MPFR с exact
-rational normalization/denormalization. Production API `executeEvalModCircuit`
-принимает существующие adapter/ciphertext, буквально исполняет DAG и возвращает trace
-chain/scale каждого узла. Metadata alignment ограничен явным малым бюджетом
+rational normalization/denormalization. Diagnostic executor принимает существующие
+adapter/ciphertext, буквально исполняет DAG и возвращает trace chain/scale каждого
+узла. Legacy metadata alignment ограничен явным малым бюджетом
 `maxMetadataScaleCorrectionLog2`; отдельный `maxPlannedScaleDriftLog2` допускает
 заранее заявленное естественное отклонение после rescale простыми около `2^60`, не
 разрешая подменять его metadata correction. Обёртка
 `executeEvalModAfterCoeffToSlot` применяет тот же circuit к обеим половинам настоящего
 `CoeffToSlotResult`.
+
+Prepared-plan regression проверяет context fingerprint, exact active primes,
+chain level, exact binary64 input scale, ciphertext size и наличие evaluation keys.
+`applyEvalMod` также исполняется на public evaluator, в котором secret key отсутствует.
 
 Validator только создаёт тестовый ciphertext, вызывает production executor и отдельно
 сообщает implementation, approximation и total measured errors, совпадение с

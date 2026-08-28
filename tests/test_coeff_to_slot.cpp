@@ -112,7 +112,10 @@ int main() {
         em::PolynomialBasis::Monomial, {"0", "1"}
     };
     const auto evalModCircuit = em::compileEvalModPolynomial(linearEvalMod, evalModProblem, 2);
-    const auto integrated = em::executeEvalModAfterCoeffToSlot(adapter, evalModCircuit, result);
+    const auto evalModConstants = em::prepareEvalModConstants(
+        adapter, evalModCircuit, result.slotCipherFirst);
+    const auto integrated = em::executeEvalModAfterCoeffToSlot(
+        adapter, evalModCircuit, evalModConstants, result);
     const auto integratedFirst = adapter.decodeComplex(adapter.decrypt(integrated.slotCipherFirst));
     const auto integratedSecond = adapter.decodeComplex(adapter.decrypt(integrated.slotCipherSecond));
     const std::vector<double> firstRaw(coefficients.begin(), coefficients.begin() + slots);

@@ -29,7 +29,10 @@ int main() {
     const auto added = adapter.add(encrypted, encrypted);
     doubled = head(adapter.decode(adapter.decrypt(added)), input.size());
 
-    const auto multiplied = adapter.rescaleToNext(adapter.relinearize(adapter.multiply(encrypted, encrypted)));
+    const auto product = adapter.relinearize(adapter.multiply(encrypted, encrypted));
+    const auto preRescale = head(adapter.decode(adapter.decrypt(product)), input.size());
+    const auto rescaleAnalysis = adapter.analyzeCkksRescale(product);
+    const auto multiplied = adapter.rescaleToNext(product);
     squared = head(adapter.decode(adapter.decrypt(multiplied)), input.size());
     const auto dataPrimes = adapter.dataModulusValues();
     const auto inputPrimes = adapter.coeffModulusValues(encrypted);
@@ -48,6 +51,17 @@ int main() {
     const auto addAccuracy = m2424::compare(doubledExpected, doubled, m2424::kTargetAbsoluteError);
     const auto multiplyAccuracy = m2424::compare(squaredExpected, squared, m2424::kTargetAbsoluteError);
     const auto rotateAccuracy = m2424::compare(rotatedExpected, rotated, m2424::kTargetAbsoluteError);
+    double observedRescaleDifference = 0.0;
+    for (std::size_t index = 0; index < input.size(); ++index)
+        observedRescaleDifference = std::max(
+            observedRescaleDifference, std::abs(preRescale[index] - squared[index]));
+    double rescaleSlotBound = 0.0;
+    double secretPower = 1.0;
+    for (const auto& component : rescaleAnalysis.components) {
+        rescaleSlotBound += component.canonicalEmbeddingResidualAbsUpper * secretPower;
+        secretPower *= static_cast<double>(rescaleAnalysis.polyModulusDegree);
+    }
+    rescaleSlotBound /= adapter.scale(multiplied);
     double hoistedError = 0.0;
     bool hoistedOk = hoisted.size() == hoistedSteps.size();
     for (std::size_t index = 0; index < hoisted.size(); ++index) {
@@ -64,15 +78,29 @@ int main() {
         && std::equal(multipliedPrimes.begin(), multipliedPrimes.end(), inputPrimes.begin())
         && specialPrime != 0
         && std::find(dataPrimes.begin(), dataPrimes.end(), specialPrime) == dataPrimes.end();
+    const bool rescaleCertificateOk = rescaleAnalysis.rigorous
+        && rescaleAnalysis.droppedPrime == inputPrimes.back()
+        && rescaleAnalysis.ciphertextComponents == 2
+        && rescaleAnalysis.components.size() == 2
+        && std::all_of(rescaleAnalysis.components.begin(), rescaleAnalysis.components.end(),
+            [&](const auto& component) {
+                return component.coefficientResidualAbsUpper <= 0.5
+                    && component.canonicalEmbeddingResidualAbsUpper
+                        <= 0.5 * rescaleAnalysis.polyModulusDegree;
+            })
+        && observedRescaleDifference <= rescaleSlotBound;
     const bool ok = addAccuracy.ok && multiplyAccuracy.ok && rotateAccuracy.ok && hoistedOk
-        && exactModuliOk;
+        && exactModuliOk && rescaleCertificateOk;
 
-    std::printf("[test_ckks_primitives] target=%.1e add=%.3e multiply=%.3e rotate=%.3e hoisted=%.3e %s\n",
+    std::printf("[test_ckks_primitives] target=%.1e add=%.3e multiply=%.3e rotate=%.3e "
+                "hoisted=%.3e rescale=%.3e<=%.3e %s\n",
                 m2424::kTargetAbsoluteError,
                 addAccuracy.max_abs_error,
                 multiplyAccuracy.max_abs_error,
                 rotateAccuracy.max_abs_error,
                 hoistedError,
+                observedRescaleDifference,
+                rescaleSlotBound,
                 ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

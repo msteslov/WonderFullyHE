@@ -1,9 +1,11 @@
 #include "m2424/experimental/evalmod_analysis/synthesis.hpp"
 
 #include <mpfr.h>
+#include <seal/util/config.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -22,6 +24,23 @@ public:
     mpfr_ptr get() { return value_; } mpfr_srcptr get() const { return value_; }
 private: mpfr_t value_;
 };
+
+void chebyshevValue(mpfr_ptr output, mpfr_srcptr input, std::size_t degree) {
+    if (degree == 0) { mpfr_set_ui(output, 1, MPFR_RNDN); return; }
+    if (degree == 1) { mpfr_set(output, input, MPFR_RNDN); return; }
+    MpReal previous(mpfr_get_prec(input)), current(mpfr_get_prec(input));
+    MpReal next(mpfr_get_prec(input)), product(mpfr_get_prec(input));
+    mpfr_set_ui(previous.get(), 1, MPFR_RNDN);
+    mpfr_set(current.get(), input, MPFR_RNDN);
+    for (std::size_t index = 2; index <= degree; ++index) {
+        mpfr_mul(product.get(), input, current.get(), MPFR_RNDN);
+        mpfr_mul_ui(product.get(), product.get(), 2, MPFR_RNDN);
+        mpfr_sub(next.get(), product.get(), previous.get(), MPFR_RNDN);
+        mpfr_set(previous.get(), current.get(), MPFR_RNDN);
+        mpfr_set(current.get(), next.get(), MPFR_RNDN);
+    }
+    mpfr_set(output, current.get(), MPFR_RNDN);
+}
 
 std::vector<long double> fit(const EvalModDomain& domain, std::size_t degree, bool sineTarget) {
     const std::size_t count = std::max<std::size_t>(256, (degree + 1) * 16);
@@ -63,7 +82,8 @@ std::vector<long double> fit(const EvalModDomain& domain, std::size_t degree, bo
 
 struct RemezResult { EvalModPolynomial polynomial; bool converged{}; };
 
-RemezResult remezOdd(const EvalModDomain& domain, std::size_t degree) {
+RemezResult remezOdd(const EvalModDomain& domain, std::size_t degree,
+                     bool chebyshevBasis = false) {
     const std::size_t terms = (degree + 1) / 2;
     const std::size_t unknowns = terms + 1;
     std::vector<MpReal> grid;
@@ -98,7 +118,10 @@ RemezResult remezOdd(const EvalModDomain& domain, std::size_t degree) {
             mpfr_floor(nearest.get(), nearest.get());
             mpfr_sub(residual.get(), base.get(), nearest.get(), MPFR_RNDN);
             for (std::size_t col = 0; col < terms; ++col) {
-                mpfr_pow_ui(a[row][col].get(), base.get(), 2 * col + 1, MPFR_RNDN);
+                if (chebyshevBasis)
+                    chebyshevValue(a[row][col].get(), base.get(), 2 * col + 1);
+                else
+                    mpfr_pow_ui(a[row][col].get(), base.get(), 2 * col + 1, MPFR_RNDN);
             }
             mpfr_set_si(a[row][terms].get(), row % 2 ? -1 : 1, MPFR_RNDN);
             mpfr_set(a[row][unknowns].get(), residual.get(), MPFR_RNDN);
@@ -139,13 +162,23 @@ RemezResult remezOdd(const EvalModDomain& domain, std::size_t degree) {
             int fallbackSign = 0;
             for (std::size_t point = begin; point < end; ++point) {
                 MpReal value, square, target, nearest, error;
-                mpfr_mul(square.get(), grid[point].get(), grid[point].get(), MPFR_RNDN);
                 mpfr_set_zero(value.get(), 0);
-                for (std::size_t col = terms; col-- > 0;) {
-                    mpfr_mul(value.get(), value.get(), square.get(), MPFR_RNDN);
-                    mpfr_add(value.get(), value.get(), solution[col].get(), MPFR_RNDN);
+                if (chebyshevBasis) {
+                    for (std::size_t col = 0; col < terms; ++col) {
+                        MpReal basisValue, contribution;
+                        chebyshevValue(basisValue.get(), grid[point].get(), 2 * col + 1);
+                        mpfr_mul(contribution.get(), solution[col].get(),
+                                 basisValue.get(), MPFR_RNDN);
+                        mpfr_add(value.get(), value.get(), contribution.get(), MPFR_RNDN);
+                    }
+                } else {
+                    mpfr_mul(square.get(), grid[point].get(), grid[point].get(), MPFR_RNDN);
+                    for (std::size_t col = terms; col-- > 0;) {
+                        mpfr_mul(value.get(), value.get(), square.get(), MPFR_RNDN);
+                        mpfr_add(value.get(), value.get(), solution[col].get(), MPFR_RNDN);
+                    }
+                    mpfr_mul(value.get(), value.get(), grid[point].get(), MPFR_RNDN);
                 }
-                mpfr_mul(value.get(), value.get(), grid[point].get(), MPFR_RNDN);
                 mpfr_add_d(nearest.get(), grid[point].get(), 0.5, MPFR_RNDN);
                 mpfr_floor(nearest.get(), nearest.get());
                 mpfr_sub(target.get(), grid[point].get(), nearest.get(), MPFR_RNDN);
@@ -200,7 +233,8 @@ RemezResult remezOdd(const EvalModDomain& domain, std::size_t degree) {
         mpfr_set(previousMaximum.get(), globalMaximum.get(), MPFR_RNDN);
     }
     EvalModPolynomial result;
-    result.basis = PolynomialBasis::Monomial;
+    result.basis = chebyshevBasis ? PolynomialBasis::Chebyshev
+                                  : PolynomialBasis::Monomial;
     result.decimalCoefficients.assign(degree + 1, "0");
     for (std::size_t index = 0; index < terms; ++index) {
         char* text = nullptr;
@@ -265,6 +299,87 @@ bool equalScale(const ExactScale& left, const ExactScale& right) {
     return left.numerator == right.numerator && left.denominator == right.denominator;
 }
 
+double exactScaleUp(const ExactScale& scale);
+
+std::uint64_t binary64Bits(double value) {
+    std::uint64_t bits{};
+    static_assert(sizeof(bits) == sizeof(value), "unexpected binary64 size");
+    std::memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+
+double binary64Value(std::uint64_t bits) {
+    double value{};
+    std::memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+EvalModScaleValue scaleValue(const ExactScale& ideal, double runtime) {
+    if (!std::isfinite(runtime) || runtime <= 0.0)
+        throw std::overflow_error("non-finite EvalMod runtime scale");
+    return {ideal, binary64Bits(runtime), ExactScale::fromBinaryDouble(runtime)};
+}
+
+EvalModScaleValue initialScaleValue(const ExactScale& scale) {
+    return scaleValue(scale, exactScaleUp(scale));
+}
+
+EvalModScaleValue multiplyScaleValue(const EvalModScaleValue& left,
+                                     const EvalModScaleValue& right) {
+    volatile double runtime = binary64Value(left.runtimeBinary64Bits)
+        * binary64Value(right.runtimeBinary64Bits);
+    return scaleValue(multiplyScale(left.ideal, right.ideal), runtime);
+}
+
+EvalModScaleValue divideScaleValue(const EvalModScaleValue& input, std::uint64_t prime) {
+    volatile double runtime = binary64Value(input.runtimeBinary64Bits)
+        / static_cast<double>(prime);
+    return scaleValue(divideScale(input.ideal, prime), runtime);
+}
+
+std::optional<double> identityCorrectionScale(double branchScale, double targetScale,
+                                              std::uint64_t rescalePrime) {
+    if (!std::isfinite(branchScale) || branchScale <= 0.0
+        || !std::isfinite(targetScale) || targetScale <= 0.0 || rescalePrime < 2)
+        return std::nullopt;
+    volatile double estimate = targetScale * static_cast<double>(rescalePrime) / branchScale;
+    if (!std::isfinite(estimate) || estimate <= 0.0) return std::nullopt;
+    const auto matches = [&](double correction) {
+        volatile double multiplied = branchScale * correction;
+        volatile double rescaled = multiplied / static_cast<double>(rescalePrime);
+        return binary64Bits(rescaled) == binary64Bits(targetScale);
+    };
+    if (matches(estimate)) return estimate;
+    double lower = estimate, upper = estimate;
+    for (std::size_t step = 0; step < 4096; ++step) {
+        lower = std::nextafter(lower, 0.0);
+        if (matches(lower)) return lower;
+        upper = std::nextafter(upper, std::numeric_limits<double>::infinity());
+        if (matches(upper)) return upper;
+    }
+    return std::nullopt;
+}
+
+std::optional<double> identityMultiplyScale(double branchScale, double targetScale) {
+    if (!std::isfinite(branchScale) || branchScale <= 0.0
+        || !std::isfinite(targetScale) || targetScale <= 0.0)
+        return std::nullopt;
+    volatile double estimate = targetScale / branchScale;
+    const auto matches = [&](double correction) {
+        volatile double multiplied = branchScale * correction;
+        return binary64Bits(multiplied) == binary64Bits(targetScale);
+    };
+    if (std::isfinite(estimate) && estimate > 0.0 && matches(estimate)) return estimate;
+    double lower = estimate, upper = estimate;
+    for (std::size_t step = 0; step < 4096; ++step) {
+        lower = std::nextafter(lower, 0.0);
+        if (matches(lower)) return lower;
+        upper = std::nextafter(upper, std::numeric_limits<double>::infinity());
+        if (matches(upper)) return upper;
+    }
+    return std::nullopt;
+}
+
 mpq_class parseExactDecimal(const std::string& text) {
     if (text.empty()) throw std::invalid_argument("empty exact decimal");
     std::size_t position = 0;
@@ -320,6 +435,42 @@ mpq_class parseExactDecimal(const std::string& text) {
     mpq_class result(numerator, denominator);
     result.canonicalize();
     return result;
+}
+
+std::string exactTerminatingDecimal(const mpq_class& input) {
+    mpq_class value = input;
+    value.canonicalize();
+    ExactInteger denominator = value.get_den();
+    std::size_t twos = 0, fives = 0;
+    while (mpz_divisible_ui_p(denominator.get_mpz_t(), 2)) {
+        denominator /= 2; ++twos;
+    }
+    while (mpz_divisible_ui_p(denominator.get_mpz_t(), 5)) {
+        denominator /= 5; ++fives;
+    }
+    if (denominator != 1)
+        throw std::invalid_argument("Chebyshev decimal conversion is not terminating");
+    const std::size_t digits = std::max(twos, fives);
+    ExactInteger scaled = value.get_num();
+    if (digits > twos) {
+        ExactInteger power;
+        mpz_ui_pow_ui(power.get_mpz_t(), 2, static_cast<unsigned long>(digits - twos));
+        scaled *= power;
+    }
+    if (digits > fives) {
+        ExactInteger power;
+        mpz_ui_pow_ui(power.get_mpz_t(), 5, static_cast<unsigned long>(digits - fives));
+        scaled *= power;
+    }
+    const bool negative = scaled < 0;
+    std::string text = (negative ? -scaled : scaled).get_str();
+    if (digits == 0) return negative ? "-" + text : text;
+    if (text.size() <= digits)
+        text.insert(0, digits + 1 - text.size(), '0');
+    text.insert(text.size() - digits, 1, '.');
+    while (text.size() > 1 && text.back() == '0') text.pop_back();
+    if (!text.empty() && text.back() == '.') text.pop_back();
+    return negative ? "-" + text : text;
 }
 
 ExactInteger roundRationalAwayFromZero(const ExactInteger& numerator,
@@ -382,6 +533,7 @@ const char* familyName(EvalModApproximationFamily family) {
     case EvalModApproximationFamily::MultiIntervalLeastSquaresPrototype:
         return "multi_interval_least_squares_prototype";
     case EvalModApproximationFamily::MultiIntervalMinimax: return "multi_interval_minimax";
+    case EvalModApproximationFamily::MultiIntervalChebyshev: return "multi_interval_chebyshev";
     case EvalModApproximationFamily::MinimaxInverseSine: return "minimax_inverse_sine";
     }
     return "unknown";
@@ -484,6 +636,144 @@ std::vector<EvalModNodeErrorState> propagateNodeErrors(
     return states;
 }
 
+double upperAdd(double left, double right) {
+    if (!std::isfinite(left) || !std::isfinite(right))
+        return std::numeric_limits<double>::infinity();
+    const double value = left + right;
+    return std::isfinite(value)
+        ? std::nextafter(value, std::numeric_limits<double>::infinity())
+        : std::numeric_limits<double>::infinity();
+}
+
+double upperMultiply(double left, double right) {
+    if ((!std::isfinite(left) && right != 0.0) || (!std::isfinite(right) && left != 0.0))
+        return std::numeric_limits<double>::infinity();
+    const double value = left * right;
+    if (value == 0.0) return 0.0;
+    return std::isfinite(value)
+        ? std::nextafter(value, std::numeric_limits<double>::infinity())
+        : std::numeric_limits<double>::infinity();
+}
+
+double upperDivide(double numerator, double denominator) {
+    if (!std::isfinite(numerator) || !std::isfinite(denominator)
+        || numerator < 0.0 || denominator <= 0.0)
+        return std::numeric_limits<double>::infinity();
+    if (numerator == 0.0) return 0.0;
+    const double value = numerator / denominator;
+    return std::isfinite(value)
+        ? std::nextafter(value, std::numeric_limits<double>::infinity())
+        : std::numeric_limits<double>::infinity();
+}
+
+double deterministicDivideRoundSlotBound(std::size_t polyModulusDegree,
+                                         std::size_t secretCoefficientAbsSupport,
+                                         std::size_t ciphertextComponents,
+                                         double outputScale) {
+    if (!polyModulusDegree || !secretCoefficientAbsSupport || !ciphertextComponents
+        || !std::isfinite(outputScale) || outputScale <= 0.0)
+        return std::numeric_limits<double>::infinity();
+    // For each component, coefficientwise divide-and-round leaves a residual
+    // polynomial with |r_i| <= 1/2. At every canonical root,
+    // |r(zeta)| <= N/2 and |s(zeta)| <= N * support(s_i).
+    const double residualEmbedding = 0.5 * static_cast<double>(polyModulusDegree);
+    const double secretEmbedding = upperMultiply(
+        static_cast<double>(polyModulusDegree),
+        static_cast<double>(secretCoefficientAbsSupport));
+    double power = 1.0;
+    double total = 0.0;
+    for (std::size_t component = 0; component < ciphertextComponents; ++component) {
+        total = upperAdd(total, upperMultiply(residualEmbedding, power));
+        power = upperMultiply(power, secretEmbedding);
+    }
+    return upperDivide(total, outputScale);
+}
+
+double deterministicKeySwitchSlotBound(
+    const PreparedEvalModConstants& preparedConstants,
+    std::size_t chainIndex,
+    std::size_t relinearizationSteps,
+    double scale) {
+    if (!relinearizationSteps) return 0.0;
+    if (!preparedConstants.deterministicEvaluationKeyNoiseSupport
+        || !preparedConstants.polyModulusDegree || !preparedConstants.specialPrime
+        || chainIndex >= preparedConstants.inputDataPrimes.size()
+        || !std::isfinite(scale) || scale <= 0.0)
+        return std::numeric_limits<double>::infinity();
+    const std::size_t activePrimes = preparedConstants.inputDataPrimes.size() - chainIndex;
+    double primeSum = 0.0;
+    for (std::size_t index = 0; index < activePrimes; ++index)
+        primeSum = upperAdd(primeSum,
+                            static_cast<double>(preparedConstants.inputDataPrimes[index] - 1));
+    const double degree = static_cast<double>(preparedConstants.polyModulusDegree);
+    // Each decomposition limb t_i has coefficient magnitude <= q_i-1. Each
+    // evaluation-key error polynomial has coefficient magnitude <= B_e.
+    // The canonical embedding of t_i*e_i is at most
+    // N(q_i-1) * N B_e. Key switching divides this sum by special prime p.
+    double keyNoiseEmbedding = upperMultiply(
+        upperMultiply(upperMultiply(degree, degree),
+                      static_cast<double>(
+                          preparedConstants.evaluationKeyNoiseCoefficientAbsSupport)),
+        primeSum);
+    keyNoiseEmbedding = upperDivide(
+        keyNoiseEmbedding, static_cast<double>(preparedConstants.specialPrime));
+    // SEAL's final special-prime ModDown divide-and-round affects both output
+    // components; apply the same coefficient-support/canonical-embedding proof.
+    const double modDownSlotError = deterministicDivideRoundSlotBound(
+        preparedConstants.polyModulusDegree,
+        preparedConstants.secretCoefficientAbsSupport, 2, scale);
+    const double keyNoiseSlotError = upperDivide(keyNoiseEmbedding, scale);
+    return upperMultiply(
+        upperAdd(keyNoiseSlotError, modDownSlotError),
+        static_cast<double>(relinearizationSteps));
+}
+
+std::string upperDecimal(double value) {
+    if (!std::isfinite(value)) return "inf";
+    std::ostringstream output;
+    output << std::setprecision(std::numeric_limits<double>::max_digits10)
+           << std::scientific << value;
+    return output.str();
+}
+
+CertifiedBound deterministicBound(double value, std::string provenance) {
+    if (!std::isfinite(value) || value < 0.0)
+        throw std::invalid_argument("invalid deterministic EvalMod bound");
+    return {value, upperDecimal(value), BoundKind::Deterministic,
+            -std::numeric_limits<double>::infinity(), true, std::move(provenance)};
+}
+
+CertifiedBound unknownBound(std::string provenance) {
+    return {std::numeric_limits<double>::infinity(), "inf", BoundKind::Unknown,
+            0.0, false, std::move(provenance)};
+}
+
+double exactRationalAbsUpper(const mpq_class& value) {
+    MpReal converted;
+    mpfr_set_q(converted.get(), value.get_mpq_t(), MPFR_RNDU);
+    mpfr_abs(converted.get(), converted.get(), MPFR_RNDU);
+    return mpfr_get_d(converted.get(), MPFR_RNDU);
+}
+
+double modulusLog2Lower(const ExactInteger& modulus) {
+    MpReal converted;
+    mpfr_set_z(converted.get(), modulus.get_mpz_t(), MPFR_RNDD);
+    mpfr_log2(converted.get(), converted.get(), MPFR_RNDD);
+    return mpfr_get_d(converted.get(), MPFR_RNDD);
+}
+
+double certifiedHeadroomBits(const EvalModNodeCertificate& certificate) {
+    if (!certificate.semanticError.rigorous) return -std::numeric_limits<double>::infinity();
+    const double semanticMagnitude = upperAdd(certificate.valueAbs.upperBound,
+                                              certificate.semanticError.upperBound);
+    if (semanticMagnitude == 0.0) return std::numeric_limits<double>::infinity();
+    const double scale = binary64Value(certificate.scale.runtimeBinary64Bits);
+    const double encodedMagnitude = upperMultiply(semanticMagnitude, scale);
+    if (!std::isfinite(encodedMagnitude) || encodedMagnitude <= 0.0)
+        return -std::numeric_limits<double>::infinity();
+    return modulusLog2Lower(certificate.modulus) - 1.0 - std::log2(encodedMagnitude);
+}
+
 std::string jsonEscape(const std::string& value) {
     std::string result;
     for (char character : value) {
@@ -496,9 +786,50 @@ std::string jsonEscape(const std::string& value) {
 
 } // namespace
 
+EvalModPolynomial convertChebyshevToMonomial(const EvalModPolynomial& polynomial) {
+    if (polynomial.basis != PolynomialBasis::Chebyshev
+        || polynomial.decimalCoefficients.empty())
+        throw std::invalid_argument("expected non-empty Chebyshev polynomial");
+    using RationalPolynomial = std::vector<mpq_class>;
+    RationalPolynomial result(polynomial.decimalCoefficients.size(), mpq_class(0));
+    RationalPolynomial previous{mpq_class(1)};
+    RationalPolynomial current{mpq_class(0), mpq_class(1)};
+    for (std::size_t degree = 0; degree < polynomial.decimalCoefficients.size(); ++degree) {
+        const auto coefficient = parseExactDecimal(polynomial.decimalCoefficients[degree]);
+        const auto& basis = degree == 0 ? previous : current;
+        for (std::size_t power = 0; power < basis.size(); ++power)
+            result[power] += coefficient * basis[power];
+        if (degree + 1 == polynomial.decimalCoefficients.size()) break;
+        if (degree == 0) continue;
+        RationalPolynomial next(current.size() + 1, mpq_class(0));
+        for (std::size_t power = 0; power < current.size(); ++power)
+            next[power + 1] += 2 * current[power];
+        for (std::size_t power = 0; power < previous.size(); ++power)
+            next[power] -= previous[power];
+        previous = std::move(current);
+        current = std::move(next);
+    }
+    EvalModPolynomial converted;
+    converted.basis = PolynomialBasis::Monomial;
+    converted.decimalCoefficients.reserve(result.size());
+    for (auto& coefficient : result) {
+        coefficient.canonicalize();
+        converted.decimalCoefficients.push_back(exactTerminatingDecimal(coefficient));
+    }
+    while (converted.decimalCoefficients.size() > 1
+           && converted.decimalCoefficients.back() == "0")
+        converted.decimalCoefficients.pop_back();
+    return converted;
+}
+
 CompiledEvalModCircuit compileEvalModPolynomial(const EvalModPolynomial& polynomial,
                                                const EvalModProblem& problem,
                                                std::size_t babyStep) {
+    if (polynomial.basis == PolynomialBasis::Chebyshev)
+        return compileEvalModPolynomial(
+            convertChebyshevToMonomial(polynomial), problem, babyStep);
+    if (problem.requireCertifiedScaleSchedule && !problem.exactModulusContext)
+        throw std::invalid_argument("MissingExactModulusContext");
     if (polynomial.basis != PolynomialBasis::Monomial || polynomial.decimalCoefficients.empty()
         || babyStep < 2) throw std::invalid_argument("invalid polynomial compiler input");
     CompiledEvalModCircuit compiled;
@@ -545,6 +876,76 @@ CompiledEvalModCircuit compileEvalModPolynomial(const EvalModPolynomial& polynom
             right = addNode(EvalModOperation::ModSwitch, {right, left}, targetChain,
                             compiled.nodes[right].outputScale, compiled.nodes[right].outputScale);
             depths.resize(compiled.nodes.size()); depths[right] = depths[compiled.nodes[right].inputs[0]];
+        }
+        if (problem.requireCertifiedScaleSchedule) {
+            if (!problem.exactModulusContext)
+                throw std::invalid_argument("MissingExactModulusContext");
+            const auto schedule = buildExactEvalModScaleSchedule(
+                compiled, *problem.exactModulusContext, false);
+            if (!schedule.valid)
+                throw std::runtime_error("certified scale prefix is invalid: " + schedule.failure);
+            if (schedule.scaleValues[left].runtimeBinary64Bits
+                == schedule.scaleValues[right].runtimeBinary64Bits)
+                return std::pair<std::size_t, std::size_t>{left, right};
+            const std::size_t correctedChain = targetChain + 1;
+            auto correctWithRescale = [&](std::size_t branch, std::size_t target)
+                -> std::optional<std::pair<std::size_t, std::size_t>> {
+                if (correctedChain >= problem.exactModulusContext->dataPrimes.size())
+                    return std::nullopt;
+                const auto prime = problem.exactModulusContext->dataPrimes[
+                    problem.exactModulusContext->dataPrimes.size() - correctedChain];
+                const double branchScale = binary64Value(
+                    schedule.scaleValues[branch].runtimeBinary64Bits);
+                const double targetScale = binary64Value(
+                    schedule.scaleValues[target].runtimeBinary64Bits);
+                const auto correction = identityCorrectionScale(branchScale, targetScale, prime);
+                if (!correction) return std::nullopt;
+                const auto correctionScale = ExactScale::fromBinaryDouble(*correction);
+                const auto constant = addNode(EvalModOperation::EncodeConstant, {}, targetChain,
+                                              correctionScale, correctionScale, "1");
+                depths.resize(compiled.nodes.size()); depths[constant] = depths[branch];
+                const auto multipliedScale = multiplyScale(
+                    schedule.scaleValues[branch].ideal, correctionScale);
+                auto multiplied = addNode(EvalModOperation::MultiplyPlain, {branch, constant},
+                                          targetChain, schedule.scaleValues[branch].ideal,
+                                          multipliedScale);
+                depths.resize(compiled.nodes.size()); depths[multiplied] = depths[branch];
+                auto corrected = addNode(EvalModOperation::Rescale, {multiplied}, correctedChain,
+                                         multipliedScale, divideScale(multipliedScale, prime));
+                depths.resize(compiled.nodes.size()); depths[corrected] = depths[branch];
+                auto loweredTarget = addNode(EvalModOperation::ModSwitch, {target, corrected},
+                                             correctedChain, schedule.scaleValues[target].ideal,
+                                             schedule.scaleValues[target].ideal);
+                depths.resize(compiled.nodes.size()); depths[loweredTarget] = depths[target];
+                return std::pair<std::size_t, std::size_t>{loweredTarget, corrected};
+            };
+            auto correctWithoutRescale = [&](std::size_t branch, std::size_t target)
+                -> std::optional<std::pair<std::size_t, std::size_t>> {
+                const double branchScale = binary64Value(
+                    schedule.scaleValues[branch].runtimeBinary64Bits);
+                const double targetScale = binary64Value(
+                    schedule.scaleValues[target].runtimeBinary64Bits);
+                const auto correction = identityMultiplyScale(branchScale, targetScale);
+                if (!correction) return std::nullopt;
+                const auto correctionScale = ExactScale::fromBinaryDouble(*correction);
+                const auto constant = addNode(EvalModOperation::EncodeConstant, {}, targetChain,
+                                              correctionScale, correctionScale, "1");
+                depths.resize(compiled.nodes.size()); depths[constant] = depths[branch];
+                const auto multipliedScale = multiplyScale(
+                    schedule.scaleValues[branch].ideal, correctionScale);
+                auto corrected = addNode(EvalModOperation::MultiplyPlain, {branch, constant},
+                                         targetChain, schedule.scaleValues[branch].ideal,
+                                         multipliedScale);
+                depths.resize(compiled.nodes.size()); depths[corrected] = depths[branch];
+                return std::pair<std::size_t, std::size_t>{target, corrected};
+            };
+            if (auto corrected = correctWithoutRescale(right, left)) return *corrected;
+            if (auto corrected = correctWithoutRescale(left, right))
+                return std::pair<std::size_t, std::size_t>{corrected->second, corrected->first};
+            if (auto corrected = correctWithRescale(right, left)) return *corrected;
+            if (auto corrected = correctWithRescale(left, right))
+                return std::pair<std::size_t, std::size_t>{corrected->second, corrected->first};
+            throw std::runtime_error("ScaleScheduleInfeasible: exact binary64 identity correction not found");
         }
         const double correction = std::log2(
             exactScaleUp(compiled.nodes[left].outputScale)
@@ -594,13 +995,15 @@ CompiledEvalModCircuit compileEvalModPolynomial(const EvalModPolynomial& polynom
             if (coefficient > degree) break;
             const long double coefficientValue = std::stold(polynomial.decimalCoefficients[coefficient]);
             if (coefficientValue == 0.0L) continue;
-            auto constant = addNode(EvalModOperation::EncodeConstant, {}, block, workingScale, workingScale,
-                                    polynomial.decimalCoefficients[coefficient]);
-            std::size_t term = constant;
-            if (offset > 0) {
-                if (coefficientValue == 1.0L) {
-                    term = powers[offset];
-                } else {
+            std::size_t term{};
+            if (offset > 0 && coefficientValue == 1.0L) {
+                term = powers[offset];
+            } else {
+                const auto constant = addNode(
+                    EvalModOperation::EncodeConstant, {}, block, workingScale, workingScale,
+                    polynomial.decimalCoefficients[coefficient]);
+                term = constant;
+                if (offset > 0) {
                     const auto termChain = compiled.nodes[powers[offset]].chainIndex;
                     term = addNode(EvalModOperation::MultiplyPlain, {powers[offset], constant}, termChain,
                                    workingScale, multiplyScale(workingScale, workingScale));
@@ -618,6 +1021,20 @@ CompiledEvalModCircuit compileEvalModPolynomial(const EvalModPolynomial& polynom
                 if (previousPlain != currentPlain) {
                     const auto cipher = previousPlain ? current : previous;
                     const auto plain = previousPlain ? previous : current;
+                    if (problem.requireCertifiedScaleSchedule) {
+                        if (!problem.exactModulusContext)
+                            throw std::invalid_argument("MissingExactModulusContext");
+                        const auto schedule = buildExactEvalModScaleSchedule(
+                            compiled, *problem.exactModulusContext, false);
+                        if (!schedule.valid)
+                            throw std::runtime_error(
+                                "certified AddPlain scale prefix is invalid: " + schedule.failure);
+                        compiled.nodes[plain].chainIndex = compiled.nodes[cipher].chainIndex;
+                        compiled.nodes[plain].inputScale =
+                            schedule.scaleValues[cipher].runtimeExact;
+                        compiled.nodes[plain].outputScale =
+                            schedule.scaleValues[cipher].runtimeExact;
+                    }
                     term = addNode(EvalModOperation::AddPlain, {cipher, plain},
                                    compiled.nodes[cipher].chainIndex, workingScale, workingScale);
                 } else {
@@ -735,6 +1152,7 @@ EvalModExactScaleSchedule buildExactEvalModScaleSchedule(
     bool rigorous) {
     EvalModExactScaleSchedule result;
     result.available = true;
+    result.scaleValues.resize(circuit.nodes.size());
     result.nodeScales.resize(circuit.nodes.size());
     result.nodeModuli.resize(circuit.nodes.size());
     result.rescalePrimes.assign(circuit.nodes.size(), 0);
@@ -772,19 +1190,20 @@ EvalModExactScaleSchedule buildExactEvalModScaleSchedule(
 
         if (node.operation == EvalModOperation::Input
             || node.operation == EvalModOperation::EncodeConstant) {
-            result.nodeScales[index] = node.outputScale;
+            result.scaleValues[index] = initialScaleValue(node.outputScale);
+            result.nodeScales[index] = result.scaleValues[index].ideal;
             continue;
         }
         if (node.inputs.empty()) return reject(index, "operation_has_no_input");
-        const auto& left = result.nodeScales[node.inputs[0]];
+        const auto& left = result.scaleValues[node.inputs[0]];
         if (node.operation == EvalModOperation::Relinearize) {
-            result.nodeScales[index] = left;
+            result.scaleValues[index] = left;
         } else if (node.operation == EvalModOperation::ModSwitch) {
             if (node.inputs.size() != 2
                 || circuit.nodes[node.inputs[0]].chainIndex >= node.chainIndex
                 || circuit.nodes[node.inputs[1]].chainIndex != node.chainIndex)
                 return reject(index, "invalid_modswitch_target_level");
-            result.nodeScales[index] = left;
+            result.scaleValues[index] = left;
         } else if (node.operation == EvalModOperation::Rescale) {
             if (node.chainIndex == 0)
                 return reject(index, "rescale_does_not_advance_chain");
@@ -794,28 +1213,29 @@ EvalModExactScaleSchedule buildExactEvalModScaleSchedule(
             const std::size_t droppedIndex = context.dataPrimes.size() - node.chainIndex;
             const auto droppedPrime = context.dataPrimes[droppedIndex];
             result.rescalePrimes[index] = droppedPrime;
-            result.nodeScales[index] = divideScale(left, droppedPrime);
+            result.scaleValues[index] = divideScaleValue(left, droppedPrime);
         } else if (node.operation == EvalModOperation::AlignScale) {
             if (rigorous) return reject(index, "metadata_scale_alignment_prohibited");
             if (node.inputs.size() != 2)
                 return reject(index, "metadata_scale_alignment_target_missing");
-            result.nodeScales[index] = result.nodeScales[node.inputs[1]];
+            result.scaleValues[index] = result.scaleValues[node.inputs[1]];
         } else {
             if (node.inputs.size() != 2)
                 return reject(index, "binary_operation_input_count_mismatch");
-            const auto& right = result.nodeScales[node.inputs[1]];
+            const auto& right = result.scaleValues[node.inputs[1]];
             if (node.operation == EvalModOperation::Add
                 || node.operation == EvalModOperation::AddPlain) {
-                if (!equalScale(left, right) && rigorous)
+                if (rigorous && left.runtimeBinary64Bits != right.runtimeBinary64Bits)
                     return reject(index, "addition_scale_mismatch");
-                result.nodeScales[index] = left;
+                result.scaleValues[index] = left;
             } else if (node.operation == EvalModOperation::MultiplyPlain
                        || node.operation == EvalModOperation::MultiplyCipher) {
-                result.nodeScales[index] = multiplyScale(left, right);
+                result.scaleValues[index] = multiplyScaleValue(left, right);
             } else {
                 return reject(index, "unsupported_evalmod_operation");
             }
         }
+        result.nodeScales[index] = result.scaleValues[index].ideal;
     }
     result.valid = true;
     result.rigorous = rigorous;
@@ -829,7 +1249,7 @@ EvalModHeadroomCertificate certifyEvalModModSwitchHeadroom(
     bool errorBoundsRigorous) {
     EvalModHeadroomCertificate result;
     result.available = schedule.available;
-    if (!schedule.valid || schedule.nodeScales.size() != circuit.nodes.size()
+    if (!schedule.valid || schedule.scaleValues.size() != circuit.nodes.size()
         || schedule.nodeModuli.size() != circuit.nodes.size()
         || nodeErrors.size() != circuit.nodes.size()) {
         result.failure = "exact_scale_schedule_or_node_bounds_unavailable";
@@ -847,7 +1267,7 @@ EvalModHeadroomCertificate certifyEvalModModSwitchHeadroom(
         ExactInteger encodedMagnitude = 0;
         if (semanticMagnitude > 0.0) {
             const auto semantic = ExactScale::fromBinaryDouble(semanticMagnitude);
-            const auto& scale = schedule.nodeScales[index];
+            const auto& scale = schedule.scaleValues[index].runtimeExact;
             const ExactInteger numerator = semantic.numerator * scale.numerator;
             const ExactInteger denominator = semantic.denominator * scale.denominator;
             encodedMagnitude = (numerator + denominator - 1) / denominator;
@@ -882,6 +1302,18 @@ PreparedEvalModConstants prepareEvalModConstants(
         throw std::invalid_argument("invalid compiled EvalMod circuit");
     PreparedEvalModConstants result;
     result.inputDataPrimes = adapter.coeffModulusValues(evalModInput);
+    result.specialPrime = adapter.specialKeyModulusValue();
+    result.polyModulusDegree = 2 * adapter.slotCount();
+    result.secretCoefficientAbsSupport = 1;
+#ifdef SEAL_USE_GAUSSIAN_NOISE
+    result.evaluationKeyNoiseCoefficientAbsSupport = 0;
+    result.deterministicEvaluationKeyNoiseSupport = false;
+#else
+    // Vendored SEAL's centered-binomial sampler is the difference of two
+    // 21-bit Hamming weights, hence its exact coefficient support is [-21, 21].
+    result.evaluationKeyNoiseCoefficientAbsSupport = 21;
+    result.deterministicEvaluationKeyNoiseSupport = true;
+#endif
     if (result.inputDataPrimes.empty())
         throw std::invalid_argument("EvalMod input has no active data primes");
     const EvalModExactModulusContext exactContext{
@@ -899,7 +1331,7 @@ PreparedEvalModConstants prepareEvalModConstants(
                 throw std::invalid_argument("EvalMod constant is consumed at multiple levels");
             constantLevels[input] = consumer.chainIndex;
             const ExactScale encodingScale = consumer.operation == EvalModOperation::AddPlain
-                ? runtimeSchedule.nodeScales[consumer.inputs[0]]
+                ? runtimeSchedule.scaleValues[consumer.inputs[0]].runtimeExact
                 : circuit.nodes[input].outputScale;
             if (constantScales[input] && !equalScale(*constantScales[input], encodingScale))
                 throw std::invalid_argument("EvalMod constant requires multiple encoding scales");
@@ -909,8 +1341,11 @@ PreparedEvalModConstants prepareEvalModConstants(
     for (std::size_t index = 0; index < circuit.nodes.size(); ++index) {
         const auto& node = circuit.nodes[index];
         if (node.operation != EvalModOperation::EncodeConstant) continue;
-        if (!constantLevels[index])
-            throw std::invalid_argument("unused EvalMod constant cannot be prepared");
+        // The compiler may retain a coefficient node that was optimized out of
+        // the ciphertext path (for example, coefficient 1 for the x term).
+        // Such a node has no runtime plaintext and therefore needs no prepared
+        // representation.
+        if (!constantLevels[index]) continue;
         if (!constantScales[index])
             throw std::invalid_argument("EvalMod constant encoding scale is unavailable");
         const std::size_t targetLevel = *constantLevels[index];
@@ -954,6 +1389,264 @@ PreparedEvalModConstants prepareEvalModConstants(
     return result;
 }
 
+EvalModArithmeticCertificate certifyEvalModDagArithmetic(
+    const CompiledEvalModCircuit& circuit,
+    const EvalModExactScaleSchedule& schedule,
+    const PreparedEvalModConstants& preparedConstants,
+    double inputValueAbsUpperBound,
+    double inputSemanticErrorUpperBound) {
+    EvalModArithmeticCertificate result;
+    result.outputError = unknownBound("arithmetic certificate not constructed");
+    if (!isCompiledEvalModCircuitValid(circuit)
+        || !schedule.available || !schedule.valid || !schedule.rigorous
+        || schedule.scaleValues.size() != circuit.nodes.size()
+        || schedule.nodeModuli.size() != circuit.nodes.size()
+        || !preparedConstants.rigorous
+        || !preparedConstants.polyModulusDegree
+        || !preparedConstants.secretCoefficientAbsSupport
+        || preparedConstants.specialPrime < 2
+        || !std::isfinite(inputValueAbsUpperBound) || inputValueAbsUpperBound < 0.0
+        || !std::isfinite(inputSemanticErrorUpperBound) || inputSemanticErrorUpperBound < 0.0) {
+        result.status = !schedule.available || !schedule.valid || !schedule.rigorous
+            ? EvalModCertificationStatus::InvalidScaleSchedule
+            : EvalModCertificationStatus::InvalidInput;
+        result.detail = "invalid rigorous arithmetic certificate input";
+        return result;
+    }
+
+    ExactInteger expectedInputModulus = 1;
+    for (const auto prime : preparedConstants.inputDataPrimes)
+        expectedInputModulus *= exactIntegerFromUint64(prime);
+    if (preparedConstants.inputDataPrimes.empty()
+        || expectedInputModulus != schedule.nodeModuli.front()) {
+        result.status = EvalModCertificationStatus::PreparedConstantMismatch;
+        result.detail = "prepared constants and exact modulus schedule use different contexts";
+        return result;
+    }
+    result.keyNoiseMetadata = {
+#ifdef SEAL_USE_GAUSSIAN_NOISE
+        EvaluationKeySamplerKind::ClippedRoundedGaussian,
+#else
+        EvaluationKeySamplerKind::CenteredBinomial,
+#endif
+        3.2,
+        preparedConstants.evaluationKeyNoiseCoefficientAbsSupport,
+        preparedConstants.secretCoefficientAbsSupport,
+        preparedConstants.polyModulusDegree,
+        preparedConstants.specialPrime,
+        preparedConstants.inputDataPrimes,
+        0,
+        preparedConstants.deterministicEvaluationKeyNoiseSupport,
+        preparedConstants.deterministicEvaluationKeyNoiseSupport
+            ? "vendored SEAL centered-binomial support [-21,21] and ternary secret support [-1,1]"
+            : "finite deterministic support for configured SEAL sampler unavailable"
+    };
+
+    std::vector<const PreparedEvalModConstant*> preparedByNode(circuit.nodes.size(), nullptr);
+    for (const auto& prepared : preparedConstants.constants) {
+        if (!prepared.rigorous || prepared.node >= circuit.nodes.size()
+            || circuit.nodes[prepared.node].operation != EvalModOperation::EncodeConstant
+            || prepared.decimal != circuit.nodes[prepared.node].constantDecimal
+            || !std::isfinite(prepared.encodingErrorUpperBound)
+            || prepared.encodingErrorUpperBound < 0.0 || preparedByNode[prepared.node]) {
+            result.status = EvalModCertificationStatus::PreparedConstantMismatch;
+            result.detail = "invalid prepared constant certificate";
+            return result;
+        }
+        preparedByNode[prepared.node] = &prepared;
+    }
+
+    std::vector<bool> reachable(circuit.nodes.size(), false);
+    reachable[circuit.outputNode] = true;
+    for (std::size_t index = circuit.nodes.size(); index-- > 0;)
+        if (reachable[index])
+            for (const auto input : circuit.nodes[index].inputs) reachable[input] = true;
+    for (std::size_t index = 0; index < circuit.nodes.size(); ++index)
+        if (reachable[index] && circuit.nodes[index].operation == EvalModOperation::EncodeConstant
+            && !preparedByNode[index]) {
+            result.status = EvalModCertificationStatus::PreparedConstantMismatch;
+            result.failingNode = index;
+            result.detail = "reachable EvalMod constant has no prepared encoding certificate";
+            return result;
+        }
+
+    result.nodes.resize(circuit.nodes.size());
+    std::vector<std::size_t> ciphertextComponents(circuit.nodes.size(), 0);
+    bool operationBoundUnavailable = false;
+    for (std::size_t index = 0; index < circuit.nodes.size(); ++index) {
+        const auto& node = circuit.nodes[index];
+        auto& certificate = result.nodes[index];
+        certificate.scale = schedule.scaleValues[index];
+        certificate.modulus = schedule.nodeModuli[index];
+        if (!reachable[index]) {
+            certificate.valueAbs = deterministicBound(0.0, "unreachable DAG node");
+            certificate.semanticError = deterministicBound(0.0, "unreachable DAG node");
+            certificate.localAddedError = deterministicBound(0.0, "unreachable DAG node");
+            certificate.headroomBits = std::numeric_limits<double>::infinity();
+            continue;
+        }
+
+        if (node.operation == EvalModOperation::Input) {
+            ciphertextComponents[index] = 2;
+            certificate.valueAbs = deterministicBound(
+                inputValueAbsUpperBound, "certified EvalMod input value bound");
+            certificate.semanticError = deterministicBound(
+                inputSemanticErrorUpperBound, "upstream CoeffToSlot input error certificate");
+            certificate.localAddedError = deterministicBound(0.0, "input adds no local error");
+        } else if (node.operation == EvalModOperation::EncodeConstant) {
+            const auto intended = parseExactDecimal(node.constantDecimal);
+            certificate.valueAbs = deterministicBound(
+                exactRationalAbsUpper(intended), "exact decimal coefficient magnitude");
+            certificate.semanticError = deterministicBound(
+                preparedByNode[index]->encodingErrorUpperBound,
+                "prepared RNS plaintext coefficient quantization certificate");
+            certificate.localAddedError = certificate.semanticError;
+        } else if (node.operation == EvalModOperation::Add
+                   || node.operation == EvalModOperation::AddPlain) {
+            const auto& left = result.nodes[node.inputs[0]];
+            const auto& right = result.nodes[node.inputs[1]];
+            ciphertextComponents[index] = std::max(
+                ciphertextComponents[node.inputs[0]],
+                ciphertextComponents[node.inputs[1]]);
+            certificate.valueAbs = deterministicBound(
+                upperAdd(left.valueAbs.upperBound, right.valueAbs.upperBound),
+                "M_out = M_a + M_b");
+            certificate.localAddedError = deterministicBound(
+                0.0, "RNS addition adds no numerical error");
+            if (left.semanticError.rigorous && right.semanticError.rigorous)
+                certificate.semanticError = deterministicBound(
+                    upperAdd(left.semanticError.upperBound, right.semanticError.upperBound),
+                    "E_out = E_a + E_b");
+            else
+                certificate.semanticError = unknownBound(
+                    "addition depends on an unknown operand error");
+        } else if (node.operation == EvalModOperation::MultiplyPlain
+                   || node.operation == EvalModOperation::MultiplyCipher) {
+            const auto& left = result.nodes[node.inputs[0]];
+            const auto& right = result.nodes[node.inputs[1]];
+            ciphertextComponents[index] = node.operation == EvalModOperation::MultiplyCipher
+                ? ciphertextComponents[node.inputs[0]]
+                    + ciphertextComponents[node.inputs[1]] - 1
+                : std::max(ciphertextComponents[node.inputs[0]],
+                           ciphertextComponents[node.inputs[1]]);
+            certificate.valueAbs = deterministicBound(
+                upperMultiply(left.valueAbs.upperBound, right.valueAbs.upperBound),
+                "M_out = M_a M_b");
+            certificate.localAddedError = deterministicBound(
+                0.0, "ring multiplication adds no separate semantic error");
+            if (left.semanticError.rigorous && right.semanticError.rigorous) {
+                const double cross = upperAdd(
+                    upperMultiply(left.valueAbs.upperBound, right.semanticError.upperBound),
+                    upperMultiply(right.valueAbs.upperBound, left.semanticError.upperBound));
+                certificate.semanticError = deterministicBound(
+                    upperAdd(cross, upperMultiply(left.semanticError.upperBound,
+                                                  right.semanticError.upperBound)),
+                    node.operation == EvalModOperation::MultiplyPlain
+                        ? "|c|E_x + M_x|delta_c| + E_x|delta_c|"
+                        : "M_aE_b + M_bE_a + E_aE_b");
+            } else {
+                certificate.semanticError = unknownBound(
+                    "multiplication depends on an unknown operand error");
+            }
+        } else {
+            const auto& input = result.nodes[node.inputs[0]];
+            certificate.valueAbs = input.valueAbs;
+            if (node.operation == EvalModOperation::Relinearize) {
+                const auto inputComponents = ciphertextComponents[node.inputs[0]];
+                ciphertextComponents[index] = 2;
+                const auto steps = inputComponents > 2 ? inputComponents - 2 : 0;
+                result.keyNoiseMetadata.relevantEvaluationKeyComponents += steps;
+                const double local = deterministicKeySwitchSlotBound(
+                    preparedConstants, node.chainIndex, steps,
+                    binary64Value(certificate.scale.runtimeBinary64Bits));
+                if (std::isfinite(local) && input.semanticError.rigorous) {
+                    certificate.localAddedError = deterministicBound(
+                        local,
+                        "SEAL CBD/ternary-support key-switch and special-prime ModDown bound");
+                    certificate.semanticError = deterministicBound(
+                        upperAdd(input.semanticError.upperBound, local),
+                        "E_out = E_in + deterministic key-switch bound");
+                } else {
+                    certificate.localAddedError = unknownBound(
+                        "finite-support SEAL key-switch bound unavailable");
+                    certificate.semanticError = unknownBound(
+                        "relinearization depends on an unknown key-switch bound");
+                    if (!operationBoundUnavailable) {
+                        result.status = EvalModCertificationStatus::RigorousKeySwitchBoundUnavailable;
+                        result.failingNode = index;
+                        result.detail = "deterministic/probabilistic SEAL key-switch certificate unavailable";
+                    }
+                    operationBoundUnavailable = true;
+                }
+            } else if (node.operation == EvalModOperation::Rescale) {
+                ciphertextComponents[index] = ciphertextComponents[node.inputs[0]];
+                const double local = deterministicDivideRoundSlotBound(
+                    preparedConstants.polyModulusDegree,
+                    preparedConstants.secretCoefficientAbsSupport,
+                    ciphertextComponents[index],
+                    binary64Value(certificate.scale.runtimeBinary64Bits));
+                if (std::isfinite(local) && input.semanticError.rigorous) {
+                    certificate.localAddedError = deterministicBound(
+                        local,
+                        "SEAL divide_and_round_q_last_ntt coefficient support and canonical-embedding bound");
+                    certificate.semanticError = deterministicBound(
+                        upperAdd(input.semanticError.upperBound, local),
+                        "E_out = E_in + deterministic rescale residual bound");
+                } else {
+                    certificate.localAddedError = unknownBound(
+                        "finite SEAL divide-and-round residual bound unavailable");
+                    certificate.semanticError = unknownBound("rescale semantic error is unknown");
+                    if (!operationBoundUnavailable) {
+                        result.status = EvalModCertificationStatus::RigorousRescaleBoundUnavailable;
+                        result.failingNode = index;
+                        result.detail = "SEAL CKKS rescale certificate unavailable";
+                    }
+                    operationBoundUnavailable = true;
+                }
+            } else if (node.operation == EvalModOperation::AlignScale) {
+                ciphertextComponents[index] = ciphertextComponents[node.inputs[0]];
+                certificate.localAddedError = unknownBound(
+                    "metadata-only scale alignment is prohibited");
+                certificate.semanticError = unknownBound(
+                    "metadata-only scale alignment invalidates semantics");
+                if (!operationBoundUnavailable) {
+                    result.status = EvalModCertificationStatus::ScaleScheduleInfeasible;
+                    result.failingNode = index;
+                    result.detail = "certified DAG contains AlignScale";
+                }
+                operationBoundUnavailable = true;
+            } else {
+                ciphertextComponents[index] = ciphertextComponents[node.inputs[0]];
+                certificate.localAddedError = deterministicBound(
+                    0.0, "ModSwitch preserves represented integer when no-wrap is proved");
+                certificate.semanticError = input.semanticError;
+            }
+        }
+        certificate.headroomBits = certifiedHeadroomBits(certificate);
+        if (node.operation == EvalModOperation::ModSwitch
+            && certificate.semanticError.rigorous && certificate.headroomBits <= 0.0
+            && !operationBoundUnavailable) {
+            result.status = EvalModCertificationStatus::ModSwitchHeadroomViolation;
+            result.failingNode = index;
+            result.detail = "ModSwitch represented value is not proved inside centered target modulus";
+            operationBoundUnavailable = true;
+        }
+    }
+
+    result.outputError = result.nodes[circuit.outputNode].semanticError;
+    result.rigorous = !operationBoundUnavailable && result.outputError.rigorous;
+    result.log2FailureProbability = result.rigorous
+        ? -std::numeric_limits<double>::infinity() : 0.0;
+    if (result.rigorous) {
+        result.status = EvalModCertificationStatus::Certified;
+        result.detail = "all DAG arithmetic bounds are deterministic";
+    } else if (!operationBoundUnavailable) {
+        result.status = EvalModCertificationStatus::UnknownOperationBound;
+        result.detail = "output depends on an unknown arithmetic bound";
+    }
+    return result;
+}
+
 EvalModSynthesisResult synthesizeEvalMod(const EvalModProblem& problem) {
     if (problem.qSource <= 1 || problem.coeffToSlotScale.numerator <= 0
         || problem.coeffToSlotScale.denominator <= 0 || problem.outputScale.numerator <= 0
@@ -969,15 +1662,23 @@ EvalModSynthesisResult synthesizeEvalMod(const EvalModProblem& problem) {
     for (std::size_t degree : std::vector<std::size_t>{7, 9, 11, 13, 15})
         for (std::size_t babyStep : std::vector<std::size_t>{2, 3, 4, 5})
             specs.push_back({EvalModApproximationFamily::MultiIntervalMinimax, degree, babyStep});
+    for (std::size_t degree : std::vector<std::size_t>{7, 9, 11, 13, 15})
+        for (std::size_t babyStep : std::vector<std::size_t>{2, 3, 4, 5})
+            specs.push_back({EvalModApproximationFamily::MultiIntervalChebyshev, degree, babyStep});
     specs.push_back({EvalModApproximationFamily::MinimaxInverseSine, 35, 5});
     for (const auto& spec : specs) {
         EvalModCandidate candidate;
         candidate.family = spec.family;
         candidate.domain = result.domain;
-        if (spec.family == EvalModApproximationFamily::MultiIntervalMinimax) {
+        if (spec.family == EvalModApproximationFamily::MultiIntervalMinimax
+            || spec.family == EvalModApproximationFamily::MultiIntervalChebyshev) {
             try {
-                auto remez = remezOdd(result.domain, spec.degree);
-                candidate.polynomial = std::move(remez.polynomial);
+                const bool chebyshev = spec.family
+                    == EvalModApproximationFamily::MultiIntervalChebyshev;
+                auto remez = remezOdd(result.domain, spec.degree, chebyshev);
+                candidate.polynomial = chebyshev
+                    ? convertChebyshevToMonomial(remez.polynomial)
+                    : std::move(remez.polynomial);
                 candidate.approximationConverged = remez.converged;
             } catch (const std::exception&) {
                 candidate.polynomial.basis = PolynomialBasis::Monomial;
@@ -1004,8 +1705,10 @@ EvalModSynthesisResult synthesizeEvalMod(const EvalModProblem& problem) {
                         continue;
                     const auto source = candidate.compiledCircuit.nodes[index].inputs[0];
                     const auto prime = candidate.exactScaleSchedule.rescalePrimes[index];
-                    const auto inputBits = exactScaleBitsUp(candidate.exactScaleSchedule.nodeScales[source]);
-                    const auto outputBits = exactScaleBitsUp(candidate.exactScaleSchedule.nodeScales[index]);
+                    const auto inputBits = exactScaleBitsUp(
+                        candidate.exactScaleSchedule.scaleValues[source].runtimeExact);
+                    const auto outputBits = exactScaleBitsUp(
+                        candidate.exactScaleSchedule.scaleValues[index].runtimeExact);
                     const auto primeBits = static_cast<std::size_t>(
                         std::ceil(std::log2(static_cast<double>(prime))));
                     const auto modulusBits = static_cast<std::size_t>(mpz_sizeinbase(
@@ -1041,7 +1744,7 @@ EvalModSynthesisResult synthesizeEvalMod(const EvalModProblem& problem) {
         candidate.propagationBounds = {problem.ciphertextModel.normalizedCoeffToSlotErrorAbsBound,
             candidate.intervalCertificate.approximationErrorUpperBoundDouble, 0.0, 0.0,
             result.domain.errors.periodMismatch,
-            candidate.intervalCertificate.derivativeUpperBoundDouble, gain, problem.slotToCoeffOperatorNorm,
+            1.0, gain, problem.slotToCoeffOperatorNorm,
             problem.slotToCoeffAdditive, problem.finalAdditive};
         const double normalization = exactScaleUp(candidate.compiledCircuit.normalizationGain);
         const double normalizedBound = static_cast<double>(result.domain.integerBound)
@@ -1053,11 +1756,14 @@ EvalModSynthesisResult synthesizeEvalMod(const EvalModProblem& problem) {
         if (candidate.exactScaleSchedule.valid) {
             candidate.headroomCertificate = certifyEvalModModSwitchHeadroom(
                 candidate.compiledCircuit, candidate.exactScaleSchedule,
-                candidate.nodeErrorStates, problem.arithmeticErrorModel.rigorous);
+                candidate.nodeErrorStates, false);
         }
         candidate.polynomialArithmeticError =
             candidate.nodeErrorStates[candidate.compiledCircuit.outputNode].absoluteErrorBound;
-        candidate.arithmeticErrorRigorous = problem.arithmeticErrorModel.rigorous;
+        // This model is empirical/diagnostic even if legacy callers set its
+        // historical `rigorous` bit. Certified status can only come from
+        // `certifyEvalModDagArithmetic` and its per-operation certificates.
+        candidate.arithmeticErrorRigorous = false;
         auto estimatedBounds = candidate.propagationBounds;
         estimatedBounds.approximation = candidate.diagnostic.approximationMaxError;
         estimatedBounds.polynomialArithmetic = *candidate.polynomialArithmeticError;
@@ -1072,9 +1778,9 @@ EvalModSynthesisResult synthesizeEvalMod(const EvalModProblem& problem) {
         candidate.backendRunnable = candidate.circuitValid && candidate.satisfiesLevelBudget;
         candidate.executable = candidate.backendRunnable;
         candidate.approximationCertified = candidate.intervalCertified;
-        candidate.arithmeticErrorCertified = candidate.arithmeticErrorRigorous;
+        candidate.arithmeticErrorCertified = false;
         candidate.analyticalArithmeticBound = candidate.polynomialArithmeticError;
-        candidate.analyticalArithmeticBoundRigorous = candidate.arithmeticErrorRigorous;
+        candidate.analyticalArithmeticBoundRigorous = false;
         if (candidate.intervalCertified && candidate.arithmeticErrorRigorous)
             candidate.certifiedBootstrapError = candidate.predictedBootstrapError;
         candidate.satisfiesNumericalTarget = candidate.intervalCertified
@@ -1291,11 +1997,12 @@ std::vector<MpDagValue> executeEvalModDagMpfrNodes(
     return values;
 }
 
-Cipher executeEvalModCircuit(SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
-                             const Cipher& coeffToSlotOutput, EvalModExecutionTrace* trace,
-                             const std::vector<double>* semanticInput,
-                             std::vector<EvalModNodeDifferential>* differentialTrace,
-                             const PreparedEvalModConstants* preparedConstants) {
+static Cipher executeEvalModCircuitImpl(
+    SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
+    const Cipher& coeffToSlotOutput, EvalModExecutionTrace* trace,
+    const std::vector<double>* semanticInput,
+    std::vector<EvalModNodeDifferential>* differentialTrace,
+    const PreparedEvalModConstants* preparedConstants) {
     if (!isCompiledEvalModCircuitValid(circuit))
         throw std::invalid_argument("invalid compiled EvalMod circuit");
     std::vector<const PreparedEvalModConstant*> preparedByNode(circuit.nodes.size(), nullptr);
@@ -1311,9 +2018,13 @@ Cipher executeEvalModCircuit(SealAdapter& adapter, const CompiledEvalModCircuit&
                 throw std::invalid_argument("invalid prepared EvalMod constant");
             preparedByNode[prepared.node] = &prepared;
         }
+        std::vector<bool> requiredByCipherOperation(circuit.nodes.size(), false);
+        for (const auto& consumer : circuit.nodes)
+            for (const auto input : consumer.inputs)
+                if (circuit.nodes[input].operation == EvalModOperation::EncodeConstant)
+                    requiredByCipherOperation[input] = true;
         for (std::size_t index = 0; index < circuit.nodes.size(); ++index)
-            if (circuit.nodes[index].operation == EvalModOperation::EncodeConstant
-                && !preparedByNode[index])
+            if (requiredByCipherOperation[index] && !preparedByNode[index])
                 throw std::invalid_argument("prepared EvalMod constant is missing");
     }
     struct Value { std::optional<Cipher> cipher; std::optional<double> scalar; };
@@ -1412,15 +2123,224 @@ Cipher executeEvalModCircuit(SealAdapter& adapter, const CompiledEvalModCircuit&
     return output;
 }
 
+Cipher executeEvalModCircuitDiagnostic(
+    SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
+    const Cipher& coeffToSlotOutput, EvalModExecutionTrace* trace,
+    const std::vector<double>* semanticInput,
+    std::vector<EvalModNodeDifferential>* differentialTrace) {
+    return executeEvalModCircuitImpl(adapter, circuit, coeffToSlotOutput, trace,
+                                     semanticInput, differentialTrace, nullptr);
+}
+
+Cipher executePreparedEvalMod(
+    SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
+    const PreparedEvalModConstants& preparedConstants,
+    const Cipher& coeffToSlotOutput, EvalModExecutionTrace* trace,
+    const std::vector<double>* semanticInput,
+    std::vector<EvalModNodeDifferential>* differentialTrace) {
+    return executeEvalModCircuitImpl(adapter, circuit, coeffToSlotOutput, trace,
+                                     semanticInput, differentialTrace, &preparedConstants);
+}
+
 EvalModCoeffToSlotResult executeEvalModAfterCoeffToSlot(
     SealAdapter& adapter, const CompiledEvalModCircuit& circuit,
+    const PreparedEvalModConstants& preparedConstants,
     CoeffToSlotResult coeffToSlotOutput) {
     EvalModCoeffToSlotResult result;
-    result.slotCipherFirst = executeEvalModCircuit(
-        adapter, circuit, coeffToSlotOutput.slotCipherFirst, &result.firstTrace);
-    result.slotCipherSecond = executeEvalModCircuit(
-        adapter, circuit, coeffToSlotOutput.slotCipherSecond, &result.secondTrace);
+    result.slotCipherFirst = executePreparedEvalMod(
+        adapter, circuit, preparedConstants, coeffToSlotOutput.slotCipherFirst,
+        &result.firstTrace);
+    result.slotCipherSecond = executePreparedEvalMod(
+        adapter, circuit, preparedConstants, coeffToSlotOutput.slotCipherSecond,
+        &result.secondTrace);
     return result;
+}
+
+PreparedEvalModPlan prepareEvalMod(
+    SealAdapter& adapter,
+    const EvalModCandidate& candidate,
+    const EvalModProblem& problem,
+    const Cipher& evalModInput) {
+    PreparedEvalModPlan plan;
+    plan.contextFingerprint = adapter.contextFingerprint();
+    plan.inputChainIndex = adapter.chainIndex(evalModInput);
+    plan.inputScaleBinary64Bits = binary64Bits(adapter.scale(evalModInput));
+    plan.domain = candidate.domain;
+    plan.normalizationGain = candidate.compiledCircuit.normalizationGain;
+    plan.denormalizationGain = candidate.compiledCircuit.denormalizationGain;
+    plan.approximation = candidate.polynomial;
+    plan.circuit = candidate.compiledCircuit;
+    plan.dataPrimes = adapter.coeffModulusValues(evalModInput);
+    plan.specialPrime = adapter.specialKeyModulusValue();
+    plan.levelsConsumed = candidate.compiledCircuit.cost.levelConsumption;
+    plan.securityBits = adapter.securityLevelBits();
+    if (!isEvalModDomainValid(candidate.domain)) {
+        plan.status = EvalModCertificationStatus::DiscontinuityMarginViolation;
+        plan.detail = "expanded EvalMod domain reaches or crosses a rounding discontinuity";
+        return plan;
+    }
+    plan.inputError = deterministicBound(
+        problem.ciphertextModel.normalizedCoeffToSlotErrorAbsBound,
+        "upstream normalized CoeffToSlot error certificate");
+    plan.discontinuityMargin = deterministicBound(
+        candidate.domain.discontinuityMargin(),
+        "0.5 minus the MPFR outward-rounded expanded residual domain");
+
+    const EvalModExactModulusContext context{plan.dataPrimes, plan.specialPrime};
+    plan.scaleSchedule = buildExactEvalModScaleSchedule(
+        plan.circuit, context, true);
+    if (!plan.scaleSchedule.valid || !plan.scaleSchedule.rigorous) {
+        plan.status = EvalModCertificationStatus::ScaleScheduleInfeasible;
+        plan.detail = plan.scaleSchedule.failure;
+        return plan;
+    }
+    if (plan.levelsConsumed >= plan.dataPrimes.size()
+        || plan.levelsConsumed > problem.availableLevels) {
+        plan.status = EvalModCertificationStatus::InsufficientLevels;
+        plan.detail = "compiled EvalMod DAG exceeds available data-prime levels";
+        return plan;
+    }
+    try {
+        plan.constants = prepareEvalModConstants(adapter, plan.circuit, evalModInput);
+    } catch (const std::exception& error) {
+        plan.status = EvalModCertificationStatus::PreparedConstantMismatch;
+        plan.detail = error.what();
+        return plan;
+    }
+    const double normalization = exactScaleUp(plan.normalizationGain);
+    const double normalizedInputBound = static_cast<double>(candidate.domain.integerBound)
+        + candidate.domain.normalizedResidualBound;
+    plan.arithmeticCertificate = certifyEvalModDagArithmetic(
+        plan.circuit, plan.scaleSchedule, plan.constants,
+        normalizedInputBound / normalization,
+        problem.ciphertextModel.normalizedCoeffToSlotErrorAbsBound / normalization);
+    plan.arithmeticError = plan.arithmeticCertificate.outputError;
+    if (!plan.arithmeticCertificate.rigorous) {
+        plan.status = plan.arithmeticCertificate.status;
+        plan.detail = plan.arithmeticCertificate.detail;
+        return plan;
+    }
+    if (!candidate.approximationConverged || !candidate.intervalCertificate.proved) {
+        plan.status = EvalModCertificationStatus::ApproximationInsufficient;
+        plan.detail = "expanded-domain executable polynomial approximation is not certified";
+        return plan;
+    }
+    plan.approximationError = deterministicBound(
+        candidate.intervalCertificate.approximationErrorUpperBoundDouble,
+        "MPFR interval certificate on the expanded multi-interval domain");
+    plan.normalizedEvalModError = deterministicBound(
+        upperAdd(plan.approximationError.upperBound, plan.arithmeticError.upperBound),
+        "certified approximation plus DAG arithmetic error");
+    const double outputGain = exactScaleUp(plan.denormalizationGain);
+    plan.denormalizedEvalModError = deterministicBound(
+        upperMultiply(plan.normalizedEvalModError.upperBound, outputGain),
+        "normalized EvalMod error multiplied by exact output gain");
+
+    const auto subtractDown = [](double left, double right) {
+        return std::nextafter(left - right, -std::numeric_limits<double>::infinity());
+    };
+    const auto divideDown = [](double numerator, double denominator) {
+        return std::nextafter(numerator / denominator, 0.0);
+    };
+    double remaining = subtractDown(problem.targetAbsoluteError,
+                                    problem.slotToCoeffAdditive);
+    remaining = subtractDown(remaining, problem.finalAdditive);
+    if (!(remaining > 0.0) || !(problem.slotToCoeffOperatorNorm > 0.0)
+        || !(outputGain > 0.0)) {
+        plan.status = EvalModCertificationStatus::NoEvalModErrorBudgetRemaining;
+        plan.detail = "SlotToCoeff/final additive errors consume the bootstrap target";
+        return plan;
+    }
+    remaining = divideDown(
+        remaining, upperMultiply(problem.slotToCoeffOperatorNorm, outputGain));
+    remaining = subtractDown(
+        remaining, problem.ciphertextModel.normalizedCoeffToSlotErrorAbsBound);
+    remaining = subtractDown(remaining, candidate.domain.errors.periodMismatch);
+    plan.normalizedEvalModBudget = remaining;
+    if (!(remaining > 0.0)) {
+        plan.status = EvalModCertificationStatus::NoEvalModErrorBudgetRemaining;
+        plan.detail = "no normalized EvalMod budget remains after input and period errors";
+        return plan;
+    }
+
+    const double normalizedContribution = upperAdd(
+        upperAdd(problem.ciphertextModel.normalizedCoeffToSlotErrorAbsBound,
+                 candidate.domain.errors.periodMismatch),
+        plan.normalizedEvalModError.upperBound);
+    plan.bootstrapContribution = deterministicBound(
+        upperAdd(
+            upperMultiply(
+                upperMultiply(problem.slotToCoeffOperatorNorm, outputGain),
+                normalizedContribution),
+            upperAdd(problem.slotToCoeffAdditive, problem.finalAdditive)),
+        "full real-domain bootstrap propagation bound");
+
+    plan.log2FailureProbability = problem.ciphertextModel.tailModel == TailModel::Deterministic
+        ? -std::numeric_limits<double>::infinity()
+        : candidate.domain.failureProbabilityLog2;
+    if (plan.log2FailureProbability > -128.0) {
+        plan.status = EvalModCertificationStatus::FailureProbabilityExceeded;
+        plan.detail = "combined domain/operation failure probability exceeds 2^-128";
+        return plan;
+    }
+    if (plan.securityBits < 128) {
+        plan.status = EvalModCertificationStatus::SecurityBudgetExceeded;
+        plan.detail = "SEAL context was not validated at 128-bit security";
+        return plan;
+    }
+    if (plan.approximationError.upperBound > remaining) {
+        plan.status = EvalModCertificationStatus::ApproximationInsufficient;
+        plan.detail = "expanded-domain approximation alone exceeds normalized EvalMod budget";
+        return plan;
+    }
+    if (plan.normalizedEvalModError.upperBound > remaining) {
+        plan.status = EvalModCertificationStatus::ArithmeticNoiseTooLarge;
+        plan.detail = "deterministic arithmetic certificate exceeds remaining normalized budget";
+        return plan;
+    }
+    plan.status = EvalModCertificationStatus::Certified;
+    plan.rigorous = true;
+    plan.detail = "all prepared EvalMod certificate gates passed";
+    return plan;
+}
+
+EvalModPreflightResult preflightEvalMod(
+    const SealAdapter& adapter,
+    const PreparedEvalModPlan& plan,
+    const Cipher& evalModInput) {
+    if (!plan.rigorous || plan.status != EvalModCertificationStatus::Certified)
+        return {plan.status, false, "EvalMod plan is not certified: " + plan.detail};
+    if (adapter.contextFingerprint() != plan.contextFingerprint)
+        return {EvalModCertificationStatus::ContextMismatch, false,
+                "SEAL context fingerprint differs from prepared plan"};
+    if (adapter.coeffModulusValues(evalModInput) != plan.dataPrimes)
+        return {EvalModCertificationStatus::ContextMismatch, false,
+                "active coefficient modulus primes differ from prepared plan"};
+    const auto info = adapter.info(evalModInput);
+    if (info.chainIndex != plan.inputChainIndex)
+        return {EvalModCertificationStatus::InputLevelMismatch, false,
+                "EvalMod input chain level differs from prepared plan"};
+    if (binary64Bits(info.scale) != plan.inputScaleBinary64Bits)
+        return {EvalModCertificationStatus::InputScaleMismatch, false,
+                "EvalMod input binary64 scale differs from prepared plan"};
+    if (info.ciphertextSize != 2)
+        return {EvalModCertificationStatus::CiphertextRepresentationMismatch, false,
+                "prepared EvalMod plan requires a two-component CKKS ciphertext"};
+    if (plan.circuit.cost.relinearizations && !adapter.hasRelinKeys())
+        return {EvalModCertificationStatus::MissingEvaluationKeys, false,
+                "prepared EvalMod plan requires relinearization keys"};
+    return {EvalModCertificationStatus::Certified, true, "runtime input matches prepared plan"};
+}
+
+Cipher applyEvalMod(
+    SealAdapter& adapter,
+    const PreparedEvalModPlan& plan,
+    const Cipher& evalModInput,
+    EvalModExecutionTrace* trace) {
+    const auto preflight = preflightEvalMod(adapter, plan, evalModInput);
+    if (!preflight.compatible) throw std::invalid_argument(preflight.detail);
+    return executePreparedEvalMod(
+        adapter, plan.circuit, plan.constants, evalModInput, trace);
 }
 
 std::vector<double> executeEvalModDagPlaintext(const CompiledEvalModCircuit& circuit,
@@ -1482,17 +2402,65 @@ EvalModBackendValidation validateEvalModCandidateBackend(EvalModCandidate& candi
         SealAdapter adapter = SealAdapter::create(profile);
         adapter.generateKeys(std::vector<int>{}, true);
         const Cipher encrypted = adapter.encrypt(adapter.encode(rawInput));
+        const EvalModExactModulusContext runtimeContext{
+            adapter.coeffModulusValues(encrypted), adapter.specialKeyModulusValue()};
         const auto preparedConstants = prepareEvalModConstants(
             adapter, candidate.compiledCircuit, encrypted);
+        const auto certifiedScaleSchedule = buildExactEvalModScaleSchedule(
+            candidate.compiledCircuit, runtimeContext, true);
+        if (certifiedScaleSchedule.valid) {
+            const double normalization = exactScaleUp(
+                candidate.compiledCircuit.normalizationGain);
+            const double normalizedInputBound =
+                static_cast<double>(candidate.domain.integerBound)
+                + candidate.domain.normalizedResidualBound;
+            candidate.arithmeticCertificate = certifyEvalModDagArithmetic(
+                candidate.compiledCircuit, certifiedScaleSchedule, preparedConstants,
+                normalizedInputBound / normalization,
+                problem.ciphertextModel.normalizedCoeffToSlotErrorAbsBound / normalization);
+            candidate.exactScaleSchedule = certifiedScaleSchedule;
+            candidate.arithmeticErrorRigorous = candidate.arithmeticCertificate.rigorous;
+            candidate.arithmeticErrorCertified = candidate.arithmeticCertificate.rigorous;
+            candidate.analyticalArithmeticBound =
+                candidate.arithmeticCertificate.outputError.upperBound;
+            candidate.analyticalArithmeticBoundRigorous =
+                candidate.arithmeticCertificate.outputError.rigorous;
+            if (candidate.arithmeticCertificate.rigorous) {
+                candidate.polynomialArithmeticError =
+                    candidate.arithmeticCertificate.outputError.upperBound;
+                candidate.propagationBounds.polynomialArithmetic =
+                    candidate.arithmeticCertificate.outputError.upperBound;
+                candidate.predictedBootstrapError =
+                    propagatedBootstrapError(candidate.propagationBounds);
+                candidate.certifiedBootstrapError = candidate.predictedBootstrapError;
+                candidate.satisfiesNumericalTarget = candidate.intervalCertified
+                    && candidate.predictedBootstrapError <= problem.targetAbsoluteError;
+            }
+        }
         result.preparedConstantsUsed = preparedConstants.rigorous;
         for (const auto& prepared : preparedConstants.constants)
             result.maxPreparedConstantEncodingError = std::max(
                 result.maxPreparedConstantEncodingError,
                 prepared.encodingErrorUpperBound);
         EvalModExecutionTrace trace;
-        const Cipher output = executeEvalModCircuit(adapter, candidate.compiledCircuit, encrypted,
-                                                    &trace, &rawInput, &result.differentialTrace,
-                                                    &preparedConstants);
+        const Cipher output = executePreparedEvalMod(
+            adapter, candidate.compiledCircuit, preparedConstants, encrypted,
+            &trace, &rawInput, &result.differentialTrace);
+        const auto runtimeScaleSchedule = buildExactEvalModScaleSchedule(
+            candidate.compiledCircuit, runtimeContext, false);
+        result.runtimeScaleBitsMatch = runtimeScaleSchedule.valid;
+        if (runtimeScaleSchedule.valid) {
+            for (std::size_t index = 0; index < candidate.compiledCircuit.nodes.size(); ++index) {
+                if (candidate.compiledCircuit.nodes[index].operation
+                    == EvalModOperation::EncodeConstant) continue;
+                if (binary64Bits(trace.nodeStates[index].scale)
+                    != runtimeScaleSchedule.scaleValues[index].runtimeBinary64Bits) {
+                    result.runtimeScaleBitsMatch = false;
+                    result.firstRuntimeScaleMismatchNode = index;
+                    break;
+                }
+            }
+        }
         const auto decoded = adapter.decode(adapter.decrypt(output));
         const auto polynomialReference = evaluateEvalModReferenceMpfr(
             candidate.polynomial, candidate.compiledCircuit.normalizationGain,
@@ -1527,17 +2495,21 @@ EvalModBackendValidation validateEvalModCandidateBackend(EvalModCandidate& candi
                 break;
             }
         }
-        result.passed = result.executionSucceeded && result.matchesPolynomialReference
+        result.passed = result.executionSucceeded && result.runtimeScaleBitsMatch
+            && result.matchesPolynomialReference
             && approximationWithinBudget && result.matchesEvalModTarget;
-        if (!result.matchesPolynomialReference) result.failure = "implementation_budget_exceeded";
+        if (!result.runtimeScaleBitsMatch) result.failure = "runtime_scale_schedule_mismatch";
+        else if (!result.matchesPolynomialReference) result.failure = "implementation_budget_exceeded";
         else if (!approximationWithinBudget) result.failure = "approximation_budget_exceeded";
         else if (!result.matchesEvalModTarget) result.failure = "total_budget_exceeded";
         candidate.measuredBackendError = result.implementationError;
         candidate.backendMeasured = result.executionSucceeded;
         candidate.approximationCertified = candidate.intervalCertified;
-        candidate.arithmeticErrorCertified = candidate.arithmeticErrorRigorous;
-        candidate.rigorouslyValidated = candidate.backendMeasured && candidate.approximationCertified
-            && candidate.arithmeticErrorCertified && candidate.satisfiesNumericalTarget;
+        candidate.rigorouslyValidated = candidate.approximationCertified
+            && candidate.arithmeticErrorCertified
+            && candidate.exactScaleSchedule.valid
+            && candidate.exactScaleSchedule.rigorous
+            && candidate.satisfiesNumericalTarget;
         candidate.executable = candidate.backendRunnable;
         if (candidate.backendMeasured) candidate.stage = EvalModCandidateStage::BackendMeasured;
         if (candidate.rigorouslyValidated) {

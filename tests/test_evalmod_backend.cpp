@@ -1,5 +1,6 @@
 #include "m2424/experimental/evalmod_analysis/synthesis.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdint>
@@ -67,6 +68,17 @@ int main() {
     const std::uint64_t expectedSpecialPrime = 1152921504606584833ULL;
     const em::EvalModExactModulusContext exactContext{
         contextAdapter.dataModulusValues(), contextAdapter.specialKeyModulusValue()};
+    auto certifiedProblem = problem;
+    certifiedProblem.exactModulusContext = exactContext;
+    certifiedProblem.requireCertifiedScaleSchedule = true;
+    const auto certifiedCircuit = em::compileEvalModPolynomial(
+        candidate.polynomial, certifiedProblem, candidate.compiledCircuit.babyStep);
+    const auto certifiedScaleSchedule = em::buildExactEvalModScaleSchedule(
+        certifiedCircuit, exactContext, true);
+    const auto certifiedAlignments = std::count_if(
+        certifiedCircuit.nodes.begin(), certifiedCircuit.nodes.end(), [](const auto& node) {
+            return node.operation == em::EvalModOperation::AlignScale;
+        });
 
     em::CompiledEvalModCircuit oneMultiply;
     const auto scale59 = em::ExactScale::rational(em::ExactInteger(1) << 59, 1);
@@ -106,6 +118,33 @@ int main() {
     const std::vector<double> precisionInput{-0.12, -0.06, 0.0, 0.06, 0.12};
     const auto validation = em::validateEvalModCandidateBackend(
         candidate, problem, profile, precisionInput);
+    auto certifiedCandidate = candidate;
+    certifiedCandidate.compiledCircuit = certifiedCircuit;
+    certifiedCandidate.satisfiesLevelBudget = certifiedCircuit.cost.levelConsumption
+        <= certifiedProblem.availableLevels;
+    const auto certifiedValidation = em::validateEvalModCandidateBackend(
+        certifiedCandidate, certifiedProblem, profile, precisionInput);
+    auto planAdapter = m2424::SealAdapter::create(profile);
+    planAdapter.generateKeys(std::vector<int>{}, true);
+    const auto planInputCipher = planAdapter.encrypt(planAdapter.encode(precisionInput));
+    const auto nonlinearPlan = em::prepareEvalMod(
+        planAdapter, certifiedCandidate, certifiedProblem, planInputCipher);
+    bool operationCertificatesCover = true;
+    bool sawCertifiedRescale = false;
+    bool sawCertifiedRelinearize = false;
+    for (const auto& differential : certifiedValidation.differentialTrace) {
+        if (differential.operation != em::EvalModOperation::Rescale
+            && differential.operation != em::EvalModOperation::Relinearize) continue;
+        const auto& nodeCertificate =
+            certifiedCandidate.arithmeticCertificate.nodes[differential.node];
+        operationCertificatesCover = operationCertificatesCover
+            && nodeCertificate.semanticError.rigorous
+            && differential.absoluteError <= nodeCertificate.semanticError.upperBound;
+        sawCertifiedRescale = sawCertifiedRescale
+            || differential.operation == em::EvalModOperation::Rescale;
+        sawCertifiedRelinearize = sawCertifiedRelinearize
+            || differential.operation == em::EvalModOperation::Relinearize;
+    }
     const m2424::CkksProfile shortProfile{32768, {60, 59, 60}, std::exp2(59.0), rawInput.size()};
     auto shortCandidate = candidate;
     const auto shortValidation = em::validateEvalModCandidateBackend(
@@ -146,6 +185,22 @@ int main() {
     const bool ok = !validation.passed && independentReferenceMatches
         && exactContext.dataPrimes == expectedDataPrimes
         && exactContext.specialPrime == expectedSpecialPrime
+        && certifiedScaleSchedule.valid && certifiedScaleSchedule.rigorous
+        && certifiedAlignments == 0
+        && certifiedCircuit.cost.degree == 9
+        && certifiedValidation.executionSucceeded
+        && certifiedValidation.preparedConstantsUsed
+        && certifiedValidation.runtimeScaleBitsMatch
+        && certifiedValidation.executedNodes == certifiedCircuit.nodes.size()
+        && certifiedCandidate.arithmeticCertificate.rigorous
+        && certifiedCandidate.arithmeticCertificate.status
+            == em::EvalModCertificationStatus::Certified
+        && certifiedCandidate.arithmeticCertificate.keyNoiseMetadata.rigorous
+        && sawCertifiedRescale && sawCertifiedRelinearize
+        && operationCertificatesCover
+        && !nonlinearPlan.rigorous
+        && nonlinearPlan.status == em::EvalModCertificationStatus::ApproximationInsufficient
+        && nonlinearPlan.securityBits >= 128
         && exactSchedule.available && exactSchedule.valid && exactSchedule.rigorous
         && exactSchedule.rescalePrimes[3] == expectedDataPrimes.back()
         && exactSchedule.nodeScales[3].numerator == (em::ExactInteger(1) << 118)
@@ -170,6 +225,8 @@ int main() {
         && !candidate.arithmeticErrorRigorous && !candidate.arithmeticErrorCertified
         && validation.executedNodes == candidate.compiledCircuit.nodes.size()
         && validation.preparedConstantsUsed
+        && validation.runtimeScaleBitsMatch
+        && !validation.firstRuntimeScaleMismatchNode.has_value()
         && validation.maxPreparedConstantEncodingError > 0.0
         && validation.maxPreparedConstantEncodingError < 1e-15
         && validation.executionSucceeded && validation.matchesPolynomialReference
@@ -203,9 +260,17 @@ int main() {
                     validation.implementationError <= problem.precisionBudget.implementation,
                     validation.approximationError > problem.precisionBudget.approximation,
                     shortValidation.failure.c_str());
+        std::printf("certified schedule valid=%d rigorous=%d alignments=%zu failure=%s nodes=%zu levels=%zu\n",
+                    certifiedScaleSchedule.valid, certifiedScaleSchedule.rigorous,
+                    certifiedAlignments, certifiedScaleSchedule.failure.c_str(),
+                    certifiedCircuit.nodes.size(), certifiedCircuit.cost.levelConsumption);
     }
-    std::printf("[test_evalmod_backend] error=%.3e prepared_constant_error=%.3e nodes=%zu failure=%s %s\n",
-                validation.maxAbsoluteError, validation.maxPreparedConstantEncodingError,
+    std::printf("[test_evalmod_backend] error=%.3e certified_bound=%.3e plan_status=%d "
+                "prepared_constant_error=%.3e nodes=%zu failure=%s %s\n",
+                validation.maxAbsoluteError,
+                certifiedCandidate.arithmeticCertificate.outputError.upperBound,
+                static_cast<int>(nonlinearPlan.status),
+                validation.maxPreparedConstantEncodingError,
                 validation.executedNodes, validation.failure.c_str(),
                 ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
