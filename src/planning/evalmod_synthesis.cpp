@@ -1652,21 +1652,53 @@ EvalModSynthesisResult synthesizeEvalMod(const EvalModProblem& problem) {
         || problem.coeffToSlotScale.denominator <= 0 || problem.outputScale.numerator <= 0
         || problem.outputScale.denominator <= 0 || problem.availableLevels == 0
         || problem.targetPrecisionBits < 32
-        || !std::isfinite(problem.targetAbsoluteError) || problem.targetAbsoluteError <= 0.0) {
+        || !std::isfinite(problem.targetAbsoluteError) || problem.targetAbsoluteError <= 0.0
+        || problem.minimumSearchDegree < 1
+        || problem.minimumSearchDegree > problem.maximumSearchDegree
+        || problem.minimumBabyStep < 2
+        || problem.minimumBabyStep > problem.maximumBabyStep
+        || problem.maximumBabyStep > problem.maximumSearchDegree) {
         throw std::invalid_argument("invalid EvalMod synthesis problem");
     }
     EvalModSynthesisResult result{problem, estimateEvalModDomain(problem.ciphertextModel), {}, {}};
     struct Spec { EvalModApproximationFamily family; std::size_t degree; std::size_t babyStep; };
     std::vector<Spec> specs{{EvalModApproximationFamily::PeriodicSineBaseline, 9, 3},
                             {EvalModApproximationFamily::MultiIntervalLeastSquaresPrototype, 15, 4}};
-    for (std::size_t degree : std::vector<std::size_t>{7, 9, 11, 13, 15})
-        for (std::size_t babyStep : std::vector<std::size_t>{2, 3, 4, 5})
-            specs.push_back({EvalModApproximationFamily::MultiIntervalMinimax, degree, babyStep});
-    for (std::size_t degree : std::vector<std::size_t>{7, 9, 11, 13, 15})
-        for (std::size_t babyStep : std::vector<std::size_t>{2, 3, 4, 5})
-            specs.push_back({EvalModApproximationFamily::MultiIntervalChebyshev, degree, babyStep});
+    std::size_t firstDegree = problem.minimumSearchDegree;
+    if ((firstDegree & 1U) == 0) ++firstDegree;
+    for (const auto family : {EvalModApproximationFamily::MultiIntervalMinimax,
+                              EvalModApproximationFamily::MultiIntervalChebyshev}) {
+        for (std::size_t degree = firstDegree; degree <= problem.maximumSearchDegree;) {
+            for (std::size_t babyStep = problem.minimumBabyStep;
+                 babyStep <= std::min(problem.maximumBabyStep, degree); ++babyStep)
+                specs.push_back({family, degree, babyStep});
+            if (degree > problem.maximumSearchDegree - std::min<std::size_t>(2, degree)) break;
+            degree += 2;
+        }
+    }
     specs.push_back({EvalModApproximationFamily::MinimaxInverseSine, 35, 5});
+    const double searchOutputGain = exactScaleUp(
+        ExactScale::rational(problem.qSource * problem.outputScale.denominator,
+                             problem.outputScale.numerator));
+    double normalizedApproximationBudget = problem.targetAbsoluteError
+        - problem.slotToCoeffAdditive - problem.finalAdditive;
+    if (normalizedApproximationBudget > 0.0
+        && problem.slotToCoeffOperatorNorm > 0.0 && searchOutputGain > 0.0) {
+        normalizedApproximationBudget /= problem.slotToCoeffOperatorNorm * searchOutputGain;
+        normalizedApproximationBudget -=
+            problem.ciphertextModel.normalizedCoeffToSlotErrorAbsBound;
+        normalizedApproximationBudget -= result.domain.errors.periodMismatch;
+    } else {
+        normalizedApproximationBudget = 0.0;
+    }
+    std::optional<std::size_t> minimaxTargetDegree;
+    std::optional<std::size_t> chebyshevTargetDegree;
     for (const auto& spec : specs) {
+        const auto reachedDegree = spec.family == EvalModApproximationFamily::MultiIntervalMinimax
+            ? minimaxTargetDegree
+            : spec.family == EvalModApproximationFamily::MultiIntervalChebyshev
+                ? chebyshevTargetDegree : std::optional<std::size_t>{};
+        if (reachedDegree && spec.degree > *reachedDegree) continue;
         EvalModCandidate candidate;
         candidate.family = spec.family;
         candidate.domain = result.domain;
@@ -1810,6 +1842,15 @@ EvalModSynthesisResult synthesizeEvalMod(const EvalModProblem& problem) {
             : !candidate.arithmeticErrorRigorous ? EvalModRejectionReason::ArithmeticErrorUnknown
             : !candidate.satisfiesNumericalTarget ? EvalModRejectionReason::ApproximationError
             : EvalModRejectionReason::None;
+        if (candidate.approximationConverged && candidate.intervalCertified
+            && candidate.satisfiesLevelBudget && normalizedApproximationBudget > 0.0
+            && candidate.intervalCertificate.approximationErrorUpperBoundDouble
+                <= normalizedApproximationBudget) {
+            if (candidate.family == EvalModApproximationFamily::MultiIntervalMinimax)
+                minimaxTargetDegree = spec.degree;
+            else if (candidate.family == EvalModApproximationFamily::MultiIntervalChebyshev)
+                chebyshevTargetDegree = spec.degree;
+        }
         result.candidates.push_back(std::move(candidate));
     }
     for (std::size_t i = 0; i < result.candidates.size(); ++i) {

@@ -83,7 +83,7 @@ int main() {
     bool prototypeSelected = result.provisionalSelection
         && result.candidates[*result.provisionalSelection].family
             == em::EvalModApproximationFamily::MultiIntervalLeastSquaresPrototype;
-    const bool ok = result.domain.integerBound == 1 && result.candidates.size() >= 22
+    const bool ok = result.domain.integerBound == 1 && result.candidates.size() >= 11
         && result.provisionalSelection.has_value()
         && result.candidates[0].compiledCircuit.cost.degree == 9
         && result.candidates[1].compiledCircuit.cost.degree == 15
@@ -109,7 +109,7 @@ int main() {
             != compiled.normalizationGain.numerator
         && changedOutputCircuit.denormalizationGain.denominator
             != compiled.denormalizationGain.denominator
-        && profileResult.domain.integerBound >= 1 && profileResult.candidates.size() >= 22
+        && profileResult.domain.integerBound >= 1 && profileResult.candidates.size() >= 11
         && csv.find("periodic_sine_baseline") != std::string::npos
         && json.find("multi_interval_least_squares_prototype") != std::string::npos
         && json.find("\"arithmetic_error_rigorous\":false") != std::string::npos
@@ -117,6 +117,8 @@ int main() {
         && json.find("\"headroom_certificate\"") != std::string::npos
         && json.find("\"measured_backend_error\":null") != std::string::npos
         && json.find("tail_model_provenance") != std::string::npos && plaintextMatches;
-    std::printf("[test_evalmod_synthesis] %s\n", ok ? "PASS" : "FAIL");
+    std::printf("[test_evalmod_synthesis] candidates=%zu strict=%zu profile=%zu %s\n",
+                result.candidates.size(), strict.candidates.size(),
+                profileResult.candidates.size(), ok ? "PASS" : "FAIL");
     return ok ? 0 : 1;
 }

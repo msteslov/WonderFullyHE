@@ -158,8 +158,12 @@ operation bound имеют отдельные статусы.
 
 `synthesizeEvalMod` связывает problem, rigorous domain estimate, parameter search,
 polynomial DAG, scale schedule, MPFR diagnostic, propagation и backend
-cost. Поиск перебирает degree и Paterson–Stockmeyer baby step для odd multi-interval
-MPFR Remez в monomial и Chebyshev bases. Дополнительно строятся periodic-sine baseline, исключённый из выбора
+cost. Search space задаётся `minimumSearchDegree/maximumSearchDegree` и диапазоном
+Paterson–Stockmeyer baby step, а не зашитым списком degree. Degree растёт нечётными
+значениями; после первого interval-certified approximation, попавшего в вычисленный
+normalized budget, рост соответствующей family прекращается, но layouts того же
+degree сравниваются по cost. MPFR Remez работает в monomial и Chebyshev bases.
+Дополнительно строятся periodic-sine baseline, исключённый из выбора
 least-squares diagnostic prototype и inverse-sine composition.
 Remez-кандидат допускается к сравнению только при упорядоченных extrema, чередовании
 знаков ошибки, сбалансированных амплитудах, устойчивом exchange set и стабилизации

@@ -101,6 +101,10 @@ struct EvalModProblem {
     EvalModPrecisionBudget precisionBudget;
     std::optional<EvalModExactModulusContext> exactModulusContext;
     bool requireCertifiedScaleSchedule{};
+    std::size_t minimumSearchDegree{7};
+    std::size_t maximumSearchDegree{15};
+    std::size_t minimumBabyStep{2};
+    std::size_t maximumBabyStep{5};
 };
 
 enum class EvalModApproximationFamily {
