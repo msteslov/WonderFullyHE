@@ -60,7 +60,10 @@ real/complex derivative maxima и ошибку на всей границе ко
 `double`; NaN и infinity отклоняются. Исполняемый evaluator остаётся monomial.
 Chebyshev synthesis функционален: MPFR Remez строит coefficients в базисе `T_k`,
 после чего exact-rational recurrence конвертирует их в monomial coefficients без
-ошибки basis conversion. Composite basis пока не является certified family.
+ошибки basis conversion. Composite basis не реализован как certified family:
+предварительный feasibility proof показал, что в текущем explicit-alpha compiler
+он попадает под тот же обязательный normalization-Rescale stop, поэтому реализация
+была бы заведомо неспособна пройти target.
 
 Grid diagnostic остаётся измерением. Отдельный certificate разбивает каждый real
 interval на `subdivisions` ячеек, вычисляет center через outward MPFR intervals,
@@ -230,3 +233,17 @@ Least-squares prototype остаётся запрещённым независи
 четырёхуровневого CoeffToSlot и сравнивает обе половины с exact MPFR target. При scale
 около `2^59.5` в доступный security budget не помещается одновременно этот CoeffToSlot
 и нелинейный minimax DAG; полный нелинейный профиль остаётся тестом `N=32768`.
+
+## Конечный nonlinear feasibility status
+
+`prepareEvalModSearch` намеренно сохраняет bounded-search semantics и не превращает
+`NoCertifiedPlanInSearchSpace` в невозможность. Конечный scoped negative result
+строит отдельный `analyzeEvalModFeasibility`: он декомпозирует arithmetic certificate
+по источникам, выводит actual/max security chain, применяет необходимую
+central-interval sensitivity, исчерпывает стандартные `tc128` profiles и отдельно
+фиксирует direct, probabilistic и Composite stop conditions.
+
+Итоговая область доказательства, формулы, численные таблицы и оставшиеся классы
+описаны в [evalmod_final_feasibility.md](evalmod_final_feasibility.md). Regression
+`test_evalmod_feasibility` требует `CertificateClassInfeasible`, а не принимает
+обычный `NoCertifiedPlanInSearchSpace` за финальный ответ.

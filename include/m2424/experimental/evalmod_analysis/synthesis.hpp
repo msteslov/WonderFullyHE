@@ -258,10 +258,29 @@ struct EvalModNodeCertificate {
     double headroomBits{-std::numeric_limits<double>::infinity()};
 };
 
+/// Additive decomposition of the certified DAG output error. Multiplication
+/// cross terms are assigned to `multiplicationInteraction`; all other fields
+/// retain the source that introduced the error while exact DAG amplification
+/// is applied at every subsequent node.
+struct EvalModArithmeticErrorBreakdown {
+    double inputCoeffToSlot{};
+    double coefficientQuantization{};
+    double multiplicationInteraction{};
+    double rescale{};
+    double keySwitch{};
+    double other{};
+
+    double total() const noexcept {
+        return inputCoeffToSlot + coefficientQuantization
+            + multiplicationInteraction + rescale + keySwitch + other;
+    }
+};
+
 struct EvalModArithmeticCertificate {
     EvalModCertificationStatus status{EvalModCertificationStatus::InvalidInput};
     std::vector<EvalModNodeCertificate> nodes;
     CertifiedBound outputError;
+    EvalModArithmeticErrorBreakdown outputBreakdown;
     EvaluationKeyNoiseCertificateMetadata keyNoiseMetadata;
     double log2FailureProbability{};
     std::optional<std::size_t> failingNode;

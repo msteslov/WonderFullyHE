@@ -639,6 +639,7 @@ std::vector<EvalModNodeErrorState> propagateNodeErrors(
 double upperAdd(double left, double right) {
     if (!std::isfinite(left) || !std::isfinite(right))
         return std::numeric_limits<double>::infinity();
+    if (left == 0.0 && right == 0.0) return 0.0;
     const double value = left + right;
     return std::isfinite(value)
         ? std::nextafter(value, std::numeric_limits<double>::infinity())
@@ -1471,7 +1472,28 @@ EvalModArithmeticCertificate certifyEvalModDagArithmetic(
         }
 
     result.nodes.resize(circuit.nodes.size());
+    std::vector<EvalModArithmeticErrorBreakdown> breakdowns(circuit.nodes.size());
     std::vector<std::size_t> ciphertextComponents(circuit.nodes.size(), 0);
+    const auto addBreakdown = [](const EvalModArithmeticErrorBreakdown& left,
+                                 const EvalModArithmeticErrorBreakdown& right) {
+        return EvalModArithmeticErrorBreakdown{
+            upperAdd(left.inputCoeffToSlot, right.inputCoeffToSlot),
+            upperAdd(left.coefficientQuantization, right.coefficientQuantization),
+            upperAdd(left.multiplicationInteraction, right.multiplicationInteraction),
+            upperAdd(left.rescale, right.rescale),
+            upperAdd(left.keySwitch, right.keySwitch),
+            upperAdd(left.other, right.other)};
+    };
+    const auto amplifiedBreakdown = [](const EvalModArithmeticErrorBreakdown& value,
+                                       double factor) {
+        return EvalModArithmeticErrorBreakdown{
+            upperMultiply(value.inputCoeffToSlot, factor),
+            upperMultiply(value.coefficientQuantization, factor),
+            upperMultiply(value.multiplicationInteraction, factor),
+            upperMultiply(value.rescale, factor),
+            upperMultiply(value.keySwitch, factor),
+            upperMultiply(value.other, factor)};
+    };
     bool operationBoundUnavailable = false;
     for (std::size_t index = 0; index < circuit.nodes.size(); ++index) {
         const auto& node = circuit.nodes[index];
@@ -1493,6 +1515,7 @@ EvalModArithmeticCertificate certifyEvalModDagArithmetic(
             certificate.semanticError = deterministicBound(
                 inputSemanticErrorUpperBound, "upstream CoeffToSlot input error certificate");
             certificate.localAddedError = deterministicBound(0.0, "input adds no local error");
+            breakdowns[index].inputCoeffToSlot = inputSemanticErrorUpperBound;
         } else if (node.operation == EvalModOperation::EncodeConstant) {
             const auto intended = parseExactDecimal(node.constantDecimal);
             certificate.valueAbs = deterministicBound(
@@ -1501,6 +1524,8 @@ EvalModArithmeticCertificate certifyEvalModDagArithmetic(
                 preparedByNode[index]->encodingErrorUpperBound,
                 "prepared RNS plaintext coefficient quantization certificate");
             certificate.localAddedError = certificate.semanticError;
+            breakdowns[index].coefficientQuantization =
+                preparedByNode[index]->encodingErrorUpperBound;
         } else if (node.operation == EvalModOperation::Add
                    || node.operation == EvalModOperation::AddPlain) {
             const auto& left = result.nodes[node.inputs[0]];
@@ -1520,6 +1545,8 @@ EvalModArithmeticCertificate certifyEvalModDagArithmetic(
             else
                 certificate.semanticError = unknownBound(
                     "addition depends on an unknown operand error");
+            breakdowns[index] = addBreakdown(
+                breakdowns[node.inputs[0]], breakdowns[node.inputs[1]]);
         } else if (node.operation == EvalModOperation::MultiplyPlain
                    || node.operation == EvalModOperation::MultiplyCipher) {
             const auto& left = result.nodes[node.inputs[0]];
@@ -1548,8 +1575,15 @@ EvalModArithmeticCertificate certifyEvalModDagArithmetic(
                 certificate.semanticError = unknownBound(
                     "multiplication depends on an unknown operand error");
             }
+            breakdowns[index] = addBreakdown(
+                amplifiedBreakdown(breakdowns[node.inputs[0]], right.valueAbs.upperBound),
+                amplifiedBreakdown(breakdowns[node.inputs[1]], left.valueAbs.upperBound));
+            breakdowns[index].multiplicationInteraction = upperAdd(
+                breakdowns[index].multiplicationInteraction,
+                upperMultiply(left.semanticError.upperBound, right.semanticError.upperBound));
         } else {
             const auto& input = result.nodes[node.inputs[0]];
+            breakdowns[index] = breakdowns[node.inputs[0]];
             certificate.valueAbs = input.valueAbs;
             if (node.operation == EvalModOperation::Relinearize) {
                 const auto inputComponents = ciphertextComponents[node.inputs[0]];
@@ -1566,6 +1600,8 @@ EvalModArithmeticCertificate certifyEvalModDagArithmetic(
                     certificate.semanticError = deterministicBound(
                         upperAdd(input.semanticError.upperBound, local),
                         "E_out = E_in + deterministic key-switch bound");
+                    breakdowns[index].keySwitch = upperAdd(
+                        breakdowns[index].keySwitch, local);
                 } else {
                     certificate.localAddedError = unknownBound(
                         "finite-support SEAL key-switch bound unavailable");
@@ -1592,6 +1628,8 @@ EvalModArithmeticCertificate certifyEvalModDagArithmetic(
                     certificate.semanticError = deterministicBound(
                         upperAdd(input.semanticError.upperBound, local),
                         "E_out = E_in + deterministic rescale residual bound");
+                    breakdowns[index].rescale = upperAdd(
+                        breakdowns[index].rescale, local);
                 } else {
                     certificate.localAddedError = unknownBound(
                         "finite SEAL divide-and-round residual bound unavailable");
@@ -1634,6 +1672,12 @@ EvalModArithmeticCertificate certifyEvalModDagArithmetic(
     }
 
     result.outputError = result.nodes[circuit.outputNode].semanticError;
+    result.outputBreakdown = breakdowns[circuit.outputNode];
+    const double classified = result.outputBreakdown.total();
+    if (result.outputError.rigorous && std::isfinite(classified)
+        && classified < result.outputError.upperBound)
+        result.outputBreakdown.other = upperAdd(
+            result.outputBreakdown.other, result.outputError.upperBound - classified);
     result.rigorous = !operationBoundUnavailable && result.outputError.rigorous;
     result.log2FailureProbability = result.rigorous
         ? -std::numeric_limits<double>::infinity() : 0.0;

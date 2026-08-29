@@ -40,6 +40,7 @@ if(M2424_ENABLE_EVALMOD_ANALYSIS)
         math/approximation_lab.cpp
         math/exact_modular_oracle.cpp
         planning/evalmod_cost_model.cpp
+        planning/evalmod_feasibility.cpp
         planning/evalmod_synthesis.cpp
     )
     add_library(m2424::evalmod_analysis ALIAS m2424_evalmod_analysis)
