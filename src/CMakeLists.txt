@@ -13,6 +13,7 @@ add_library(m2424
     math/canonical_embedding_reference.cpp
     math/coeff_to_slot.cpp
 
+    planning/evalround_planner.cpp
     planning/profile_report.cpp
     planning/security_report.cpp
 )
@@ -41,6 +42,7 @@ if(M2424_ENABLE_EVALMOD_ANALYSIS)
         core/evalmod_domain_analysis.cpp
         math/approximation_lab.cpp
         math/exact_modular_oracle.cpp
+        math/evalround_reference.cpp
         planning/evalmod_cost_model.cpp
         planning/evalmod_feasibility.cpp
         planning/evalmod_synthesis.cpp

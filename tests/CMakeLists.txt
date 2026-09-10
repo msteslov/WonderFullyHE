@@ -11,6 +11,7 @@ set(M2424_TESTS
     test_adapter_failures
     test_bootstrap_candidates
     test_bootstrap_contract
+    test_evalround_planner
     test_canonical_embedding_reference
     test_coeff_to_slot_contract
     test_coeff_to_slot
@@ -28,7 +29,7 @@ if(M2424_ENABLE_EVALMOD_ANALYSIS)
     target_link_libraries(test_coeff_to_slot PRIVATE m2424::evalmod_analysis)
     target_compile_definitions(test_coeff_to_slot PRIVATE M2424_TEST_EVALMOD_PIPELINE)
     foreach(target IN ITEMS test_evalmod_contract test_evalmod_synthesis test_evalmod_backend
-                            test_evalmod_certificates test_evalmod_feasibility)
+                            test_evalmod_certificates test_evalmod_feasibility test_evalround_reference)
         add_executable(${target} ${target}.cpp)
         target_compile_features(${target} PRIVATE cxx_std_17)
         target_link_libraries(${target} PRIVATE m2424::evalmod_analysis)
