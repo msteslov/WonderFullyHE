@@ -1,0 +1,109 @@
+#pragma once
+
+#include "m2424/seal_adapter.hpp"
+#include <array>
+#include <limits>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace m2424 {
+
+struct BootstrapTarget {
+    double targetAbsoluteError{1e-10};
+    int targetSecurityBits{128};
+    double maxFailureProbabilityLog2{-128};
+    // Zero means no configured resource limit.
+    std::size_t maxEvaluationKeyBytes{};
+    double maxLatencyMs{};
+};
+
+enum class BootstrapCertificationStatus {
+    Certified, InvalidInput, MissingExactModulusContext, InputScaleMismatch,
+    DomainViolation, SparseSecretCertificateUnavailable, KeySwitchBoundUnavailable,
+    ExtractionNotCertified, CleaningBoundUnavailable, SlotToCoeffGainUnavailable,
+    ScaleScheduleInfeasible, HeadroomViolation, InsufficientLevels,
+    MissingEvaluationKeys, ErrorBudgetExceeded, FailureProbabilityExceeded,
+    SecurityBudgetExceeded, RequiredBoundUnavailable, ResourceBudgetExceeded
+};
+
+enum class BootstrapBoundKind { Unknown, Deterministic, Probabilistic };
+struct BootstrapBound {
+    double upperBound{std::numeric_limits<double>::infinity()};
+    BootstrapBoundKind kind{BootstrapBoundKind::Unknown};
+    double log2FailureProbability{-std::numeric_limits<double>::infinity()};
+    std::string provenance;
+};
+
+/// Exact factored integer qSource = product(sourcePrimes), never a bit-count proxy.
+/// Resolve BEFORE ModRaise. The binary64 bit pattern represents Delta0 exactly.
+struct BootstrapInputContext {
+    std::vector<std::uint64_t> sourcePrimes;
+    std::vector<std::uint64_t> raisedPrimes;
+    std::uint64_t scaleBinary64Bits{};
+    std::array<std::uint64_t, 4> contextFingerprint{};
+    std::uint64_t specialPrime{};
+    std::size_t chainIndex{};
+};
+
+/// Certified means this particular validation succeeded; input/target validation
+/// alone is not a full-plan certificate. No executable Bootstrapper is exposed.
+struct BootstrapContractResult {
+    BootstrapCertificationStatus status{BootstrapCertificationStatus::InvalidInput};
+    std::string gate;
+    std::string provenance;
+};
+struct BootstrapInputResolution {
+    BootstrapContractResult result;
+    std::optional<BootstrapInputContext> context;
+};
+BootstrapInputResolution resolveBootstrapInput(const SealAdapter&, const Cipher&,
+    std::optional<std::uint64_t> expectedScaleBinary64Bits = std::nullopt);
+
+/// Fixed required gates prevent an empty/partial list from certifying a plan.
+/// Evidence is supplied by future stage verifiers; PR-0 does not generate proofs.
+enum class BootstrapGate : std::size_t {
+    Input, SparseSecret, KeySwitch, Domain, Extraction, Arithmetic,
+    CoeffToSlotHP, CoeffToSlotLP, Reconstruction, Combination, SlotToCoeff,
+    ScaleSchedule, Headroom, EvaluationKeys, Security, Count
+};
+struct BootstrapGateEvidence {
+    bool verified{};
+    std::string provenance;
+    std::vector<BootstrapBound> requiredBounds;
+};
+struct BootstrapPlanMetadata {
+    std::string id;
+    std::optional<BootstrapInputContext> input;
+    std::size_t levelsUsed{};
+    std::size_t evaluationKeyBytes{};
+    double latencyMs{};
+};
+struct BootstrapCertificate {
+    std::array<BootstrapGateEvidence, static_cast<std::size_t>(BootstrapGate::Count)> gates;
+    BootstrapBound outputError;
+    std::optional<int> minimumSecurityBits;
+};
+struct BootstrapTraceNode {
+    std::string stage;
+    std::size_t node{};
+    BootstrapInputContext state;
+    BootstrapBound valueAbs, semanticError, localError;
+    std::optional<double> observedError;
+};
+struct BootstrapTrace {
+    BootstrapPlanMetadata plan;
+    std::vector<BootstrapTraceNode> nodes;
+    BootstrapCertificate certificate;
+    BootstrapContractResult result;
+};
+
+/// Conservative union bound: max(delta_j) * nextPowerOfTwo(event count).
+/// Operates in log space without underflow; may reject a feasible tight budget.
+/// Unknown/malformed bounds return nullopt, deterministic-only returns -infinity.
+std::optional<double> bootstrapFailureLog2UpperBound(const std::vector<BootstrapBound>&);
+BootstrapContractResult validateBootstrapTarget(const BootstrapTarget&);
+BootstrapContractResult validateBootstrapCertificate(const BootstrapTarget&,
+    const BootstrapPlanMetadata&, const BootstrapCertificate&);
+
+} // namespace m2424
