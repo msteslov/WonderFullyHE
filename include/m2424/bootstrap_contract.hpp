@@ -31,8 +31,9 @@ enum class BootstrapBoundKind { Unknown, Deterministic, Probabilistic };
 struct BootstrapBound {
     double upperBound{std::numeric_limits<double>::infinity()};
     BootstrapBoundKind kind{BootstrapBoundKind::Unknown};
-    double log2FailureProbability{-std::numeric_limits<double>::infinity()};
     std::string provenance;
+    // References to primary assumptions, not probabilities of derived bounds.
+    std::vector<std::string> failureEventIds;
 };
 
 /// Exact factored integer qSource = product(sourcePrimes), never a bit-count proxy.
@@ -72,15 +73,26 @@ struct BootstrapGateEvidence {
     std::string provenance;
     std::vector<BootstrapBound> requiredBounds;
 };
+/// ScaleSchedule and EvaluationKeys need only verified evidence; Security also
+/// needs minimumSecurityBits. Other gates require at least one known bound.
+bool bootstrapGateRequiresNumericalBound(BootstrapGate);
+
+struct BootstrapFailureEvent {
+    std::string id;
+    double log2FailureProbability{std::numeric_limits<double>::quiet_NaN()};
+    std::string provenance;
+};
 struct BootstrapPlanMetadata {
     std::string id;
     std::optional<BootstrapInputContext> input;
     std::size_t levelsUsed{};
-    std::size_t evaluationKeyBytes{};
-    double latencyMs{};
+    // Missing measurement is allowed only when its target limit is unset.
+    std::optional<std::size_t> evaluationKeyBytes;
+    std::optional<double> latencyMs;
 };
 struct BootstrapCertificate {
     std::array<BootstrapGateEvidence, static_cast<std::size_t>(BootstrapGate::Count)> gates;
+    std::vector<BootstrapFailureEvent> failureEvents;
     BootstrapBound outputError;
     std::optional<int> minimumSecurityBits;
 };
@@ -98,10 +110,12 @@ struct BootstrapTrace {
     BootstrapContractResult result;
 };
 
-/// Conservative union bound: max(delta_j) * nextPowerOfTwo(event count).
-/// Operates in log space without underflow; may reject a feasible tight budget.
-/// Unknown/malformed bounds return nullopt, deterministic-only returns -infinity.
-std::optional<double> bootstrapFailureLog2UpperBound(const std::vector<BootstrapBound>&);
+/// Union bound over unique primary event IDs (v9 section 6.4), capped at 1.
+/// Identical duplicate events count once; conflicting IDs or invalid events fail.
+/// Uses outward-rounded arithmetic and bounded exp/log series, not libm accuracy
+/// assumptions. Requires round-to-nearest, without fast-math reassociation.
+/// Empty events return log2(0) = -infinity.
+std::optional<double> bootstrapFailureLog2UpperBound(const std::vector<BootstrapFailureEvent>&);
 BootstrapContractResult validateBootstrapTarget(const BootstrapTarget&);
 BootstrapContractResult validateBootstrapCertificate(const BootstrapTarget&,
     const BootstrapPlanMetadata&, const BootstrapCertificate&);
