@@ -29,7 +29,8 @@ if(M2424_ENABLE_EVALMOD_ANALYSIS)
     target_link_libraries(test_coeff_to_slot PRIVATE m2424::evalmod_analysis)
     target_compile_definitions(test_coeff_to_slot PRIVATE M2424_TEST_EVALMOD_PIPELINE)
     foreach(target IN ITEMS test_evalmod_contract test_evalmod_synthesis test_evalmod_backend
-                            test_evalmod_certificates test_evalmod_feasibility test_evalround_reference)
+                            test_evalmod_certificates test_evalmod_feasibility test_evalround_reference
+                            test_evalround_backend test_evalround_certificates)
         add_executable(${target} ${target}.cpp)
         target_compile_features(${target} PRIVATE cxx_std_17)
         target_link_libraries(${target} PRIVATE m2424::evalmod_analysis)
@@ -43,3 +44,7 @@ endif()
 set_tests_properties(test_coeff_to_slot PROPERTIES TIMEOUT 600)
 
 set_tests_properties(test_evalround_plus_coeff_to_slot PROPERTIES TIMEOUT 600)
+
+if(M2424_ENABLE_EVALMOD_ANALYSIS)
+    set_tests_properties(test_evalround_backend test_evalround_certificates PROPERTIES TIMEOUT 600)
+endif()

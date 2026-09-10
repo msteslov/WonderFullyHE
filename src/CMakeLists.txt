@@ -8,6 +8,7 @@ add_library(m2424
     core/m2424.cpp
     core/profiles.cpp
 
+    ckks/evalround_execution.cpp
     ckks/seal_adapter.cpp
 
     math/canonical_embedding_reference.cpp
@@ -43,6 +44,7 @@ if(M2424_ENABLE_EVALMOD_ANALYSIS)
         math/approximation_lab.cpp
         math/exact_modular_oracle.cpp
         math/evalround_reference.cpp
+        planning/evalround_execution.cpp
         planning/evalmod_cost_model.cpp
         planning/evalmod_feasibility.cpp
         planning/evalmod_synthesis.cpp
