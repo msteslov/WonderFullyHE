@@ -14,6 +14,7 @@ set(M2424_TESTS
     test_canonical_embedding_reference
     test_coeff_to_slot_contract
     test_coeff_to_slot
+    test_evalround_plus_coeff_to_slot
     test_ckks_primitives
     test_double_hoisted_bsgs
     test_mod_raise
@@ -39,3 +40,5 @@ if(M2424_ENABLE_EVALMOD_ANALYSIS)
 endif()
 
 set_tests_properties(test_coeff_to_slot PROPERTIES TIMEOUT 600)
+
+set_tests_properties(test_evalround_plus_coeff_to_slot PROPERTIES TIMEOUT 600)

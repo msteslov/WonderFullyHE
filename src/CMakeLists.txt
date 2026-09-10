@@ -4,6 +4,7 @@ add_library(m2424
     core/bootstrap_candidates.cpp
     core/bootstrap_contract.cpp
     core/coeff_to_slot_contract.cpp
+    core/coeff_to_slot_prefactor.cpp
     core/m2424.cpp
     core/profiles.cpp
 

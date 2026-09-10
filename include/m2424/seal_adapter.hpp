@@ -12,6 +12,7 @@ namespace m2424 {
 
 class CoeffToSlot;
 class CoeffToSlotPlan;
+class EvalRoundPlusCoeffToSlot;
 
 /// Параметры CKKS-контекста, используемые при создании SealAdapter.
 struct CkksProfile {
@@ -110,6 +111,7 @@ private:
 
     friend class SealAdapter;
     friend class ::m2424::CoeffToSlot;
+    friend class ::m2424::EvalRoundPlusCoeffToSlot;
     friend class ::m2424::CoeffToSlotPlan;
 };
 

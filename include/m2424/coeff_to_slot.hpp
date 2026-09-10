@@ -3,6 +3,7 @@
 #include "m2424/canonical_embedding_reference.hpp"
 #include "m2424/coeff_to_slot_contract.hpp"
 #include "m2424/seal_adapter.hpp"
+#include "m2424/coeff_to_slot_prefactor.hpp"
 
 #include <cstddef>
 #include <memory>
@@ -63,6 +64,7 @@ private:
     std::unique_ptr<Impl> pimpl_;
     friend class CoeffToSlotPlan;
     friend class CoeffToSlot;
+    friend class EvalRoundPlusCoeffToSlot;
 };
 
 /**
@@ -95,14 +97,24 @@ public:
     PreparedCoeffToSlotPlan prepare(SealAdapter& adapter,
                                     const RaisedCipher& input,
                                     const CoeffToSlotContract& contract) const;
+    /// The scalar is folded into BOTH first factors during constant preparation.
+    PreparedCoeffToSlotPlan prepare(SealAdapter&, const RaisedCipher&,
+                                    const CoeffToSlotContract&, const CoeffToSlotPrefactor&) const;
+
     /// Проверяет context fingerprint, parms_id, уровень, scale и контракт подготовки.
     bool isPreparedFor(const PreparedCoeffToSlotPlan& prepared,
                        const SealAdapter& adapter,
                        const RaisedCipher& input,
                        const CoeffToSlotContract& contract) const;
 
+    bool isPreparedFor(const PreparedCoeffToSlotPlan&, const SealAdapter&,
+                       const RaisedCipher&, const CoeffToSlotContract&,
+                       const CoeffToSlotPrefactor&) const;
+
     /// Независимое plaintext-исполнение факторизации для математических тестов.
     std::pair<ComplexVector, ComplexVector> applyPlain(const ComplexVector& slots) const;
+    std::pair<ComplexVector, ComplexVector> applyPlain(
+        const ComplexVector&, const CoeffToSlotPrefactor&) const;
 
     /// Возвращает измеренный preset, если он явно подтверждён для пары N/depth.
     static std::optional<CoeffToSlotFactorization> knownTunedFactorization(
@@ -118,6 +130,7 @@ private:
     struct Impl;
     std::unique_ptr<Impl> pimpl_;
     friend class CoeffToSlot;
+    friend class EvalRoundPlusCoeffToSlot;
 };
 
 /**
