@@ -1,20 +1,24 @@
 #pragma once
 #include "m2424/slot_to_coeff.hpp"
 #include <map>
+#include "m2424/coeff_to_slot_prefactor.hpp"
 namespace m2424 {
 // Every nonzero entry is exactly a power of zeta. -1 denotes exact zero.
 using RootDiagonalMap=std::map<std::size_t,std::vector<int>>;
-struct SlotToCoeffPlan::Impl {
+struct RootLinearTransformPlan {
     std::size_t degree{};
     SlotToCoeffFactorization factorization;
     std::vector<RootDiagonalMap> factors[2];
     std::vector<std::size_t> babySteps;
     SlotToCoeffRequirements keys;
     SlotToCoeffMetrics metrics;
+    CoeffToSlotPrefactor prefactor;
+    bool inverse{}, combine{true};
 };
+struct SlotToCoeffPlan::Impl : RootLinearTransformPlan {};
 struct StCPreparedTerm { int baby{}; Plain diagonal; BootstrapBound perturbation; };
 struct StCPreparedGroup { int giant{}; std::vector<StCPreparedTerm> terms; };
-struct PreparedSlotToCoeffPlan::Impl {
+struct PreparedRootLinearTransform {
     std::size_t degree{},chainIndex{};
     std::size_t inputComponents[2]{};
     SlotToCoeffFactorization factorization;
@@ -23,4 +27,6 @@ struct PreparedSlotToCoeffPlan::Impl {
     std::vector<std::vector<StCPreparedGroup>> factors[2];
     SlotToCoeffCertificate certificate;
 };
+struct PreparedSlotToCoeffPlan::Impl : PreparedRootLinearTransform {};
+std::shared_ptr<PreparedRootLinearTransform> prepareRootLinearTransform(const RootLinearTransformPlan&, SealAdapter&, const Cipher&, const Cipher&, const SlotToCoeffContract&);
 }

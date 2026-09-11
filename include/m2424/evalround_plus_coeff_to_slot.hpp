@@ -1,6 +1,7 @@
 #pragma once
 
 #include "m2424/coeff_to_slot.hpp"
+#include "m2424/slot_to_coeff.hpp"
 
 namespace m2424 {
 
@@ -25,12 +26,39 @@ struct CoeffToSlotBranchTrace {
     BootstrapBound outputError;
     BootstrapGateEvidence evidence;
     BootstrapContractResult certificate;
+    std::vector<SlotToCoeffFactorTrace> certifiedFactors;
+    BootstrapContractResult errorBudget;
 };
 
 struct EvalRoundPlusCoeffToSlotResult {
     Cipher hpFirst, hpSecond, lpFirst, lpSecond;
     CoeffToSlotBranchTrace hpTrace, lpTrace;
 };
+
+
+struct CoeffToSlotCertificationInput {
+    // Sup norm of the exact raised y=sigma(u/Delta0), including source noise.
+    BootstrapBound raisedMagnitude;
+    // Coefficient sup norms in unscaled integer units, before ModRaise.
+    BootstrapBound messageMagnitude, sourceNoiseMagnitude;
+};
+struct CoeffToSlotDomainCertificate {
+    BootstrapBound rho;
+    BootstrapContractResult result;
+};
+// Optional analysis: unscaled coefficient bounds and the certified LP error.
+CoeffToSlotDomainCertificate certifyCoeffToSlotDomain(const BootstrapInputContext&,
+    const CoeffToSlotCertificationInput&, const BootstrapBound& lpError);
+class CertifiedEvalRoundPlusCoeffToSlot {
+public:
+    const CoeffToSlotBranchTrace& hp() const;
+    const CoeffToSlotBranchTrace& lp() const;
+    const CoeffToSlotDomainCertificate& domain() const;
+private:
+    struct Impl; std::shared_ptr<const Impl> impl_;
+    friend class EvalRoundPlusCoeffToSlot;
+};
+struct RootLinearTransformPlan;
 
 class PreparedEvalRoundPlusCoeffToSlot {
 public:
@@ -65,7 +93,20 @@ public:
     /// for diagnostics, but remains Unknown in the trace. nu_b is part of u.
     EvalRoundPlusCoeffToSlotResult apply(SealAdapter&, const RaisedCipher&,
         const PreparedEvalRoundPlusCoeffToSlot&, const BootstrapBound& inputMagnitude = {}) const;
+    // Optional analysis preparation; execution remains in the dependency-free core.
+    CertifiedEvalRoundPlusCoeffToSlot prepareCertified(SealAdapter&, const RaisedCipher&,
+        const BootstrapInputContext&, const CoeffToSlotContract&, const CoeffToSlotContract&,
+        const CoeffToSlotCertificationInput&) const;
+    BootstrapContractResult preflight(const SealAdapter&, const RaisedCipher&,
+        const BootstrapInputContext&, const CertifiedEvalRoundPlusCoeffToSlot&) const;
+    EvalRoundPlusCoeffToSlotResult apply(SealAdapter&, const RaisedCipher&,
+        const CertifiedEvalRoundPlusCoeffToSlot&,
+        const std::function<void(BootstrapGate,const SlotToCoeffRuntimeStage&,const Cipher&)>& observer={}) const;
+    std::vector<ComplexVector> applyPlainTrace(const ComplexVector&, std::size_t half,
+        const CoeffToSlotPrefactor& = {}) const;
 private:
+    std::vector<std::size_t> certificationBabySteps() const;
+    RootLinearTransformPlan certificationLayout(const CoeffToSlotPrefactor&) const;
     CoeffToSlotPlan plan_;
 };
 

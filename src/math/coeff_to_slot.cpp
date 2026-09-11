@@ -923,4 +923,8 @@ EvalRoundPlusCoeffToSlotResult EvalRoundPlusCoeffToSlot::apply(SealAdapter& adap
             std::move(hp.second), std::move(lp.second)};
 }
 
+std::vector<std::size_t> EvalRoundPlusCoeffToSlot::certificationBabySteps() const {
+    return plan_.pimpl_->babySteps;
+}
+
 } // namespace m2424

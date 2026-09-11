@@ -28,6 +28,7 @@ struct SlotToCoeffFactorTrace {
     std::vector<SlotToCoeffRuntimeStage> runtime;
     // Analytic headroom checks inside the atomic double-hoisted kernel.
     std::vector<std::string> internalHeadroomProofs;
+    std::vector<std::pair<std::string,BootstrapBound>> arithmeticTerms;
 };
 struct SlotToCoeffCertificate {
     BootstrapContractResult result;
@@ -67,6 +68,7 @@ public:
         const std::function<void(const SlotToCoeffRuntimeStage&,const Cipher&)>& observer={}) const;
 private:
     struct Impl; std::shared_ptr<const Impl> impl_;
+    friend class EvalRoundPlusCoeffToSlot;
 };
 // Same plan -> prepare -> preflight -> apply API under the operation name.
 using SlotToCoeff = SlotToCoeffPlan;
