@@ -12,6 +12,7 @@
 #include "m2424/profiles.hpp"
 #include "m2424/profile_report.hpp"
 #include "m2424/seal_adapter.hpp"
+#include "m2424/slot_to_coeff.hpp"
 #include "m2424/security_report.hpp"
 
 namespace m2424 {

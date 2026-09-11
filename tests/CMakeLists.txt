@@ -7,6 +7,8 @@ function(m2424_add_test target)
 endfunction()
 
 set(M2424_TESTS
+    test_slot_to_coeff
+    test_slot_to_coeff_contract
     test_accuracy
     test_adapter_failures
     test_bootstrap_candidates
@@ -47,4 +49,12 @@ set_tests_properties(test_evalround_plus_coeff_to_slot PROPERTIES TIMEOUT 600)
 
 if(M2424_ENABLE_EVALMOD_ANALYSIS)
     set_tests_properties(test_evalround_backend test_evalround_certificates PROPERTIES TIMEOUT 600)
+endif()
+
+if(M2424_ENABLE_EVALMOD_ANALYSIS)
+    foreach(target IN ITEMS test_slot_to_coeff test_slot_to_coeff_contract)
+        target_link_libraries(${target} PRIVATE m2424::evalmod_analysis)
+        target_compile_definitions(${target} PRIVATE M2424_TEST_STC_BACKEND)
+        set_tests_properties(${target} PROPERTIES TIMEOUT 1800)
+    endforeach()
 endif()

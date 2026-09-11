@@ -1,6 +1,7 @@
 #include "m2424/experimental/evalmod_analysis/evalround_execution.hpp"
 #include "../core/evalround_execution_internal.hpp"
 #include <gmpxx.h>
+#include "m2424/experimental/evalmod_analysis/finite_support_arithmetic.hpp"
 #include <seal/util/defines.h>
 #include <algorithm>
 #include <cmath>
@@ -51,13 +52,11 @@ struct Builder {
         degree(2*a.slotCount()),initialIndex(a.chainIndex(c)),keyNoise(q(noise.upperBound)),
         keyProvenance(noise.provenance+"; N="+std::to_string(degree)+"; secret coefficient support=1; P="+std::to_string(special)+"; B_key="+std::to_string(noise.upperBound)) {}
     mpq_class divideRound(std::size_t components,double scale) const {
-        mpz_class power=1,sum=0;
-        for(std::size_t i=0;i<components;++i) { sum+=power; power*=degree; }
-        return rational(integer(degree)*sum,2)/q(scale);
+        return finiteSupportDivideRound(degree,1,components,q(scale));
     }
     mpq_class keySwitch(std::size_t level,double scale) const {
-        mpz_class sum=0; for(std::size_t i=0;i<primes.size()-level;++i) sum+=integer(primes[i]-1);
-        return rational(integer(degree)*integer(degree)*sum,integer(special))*keyNoise/q(scale)+divideRound(2,scale);
+        const std::vector<std::uint64_t> active(primes.begin(),primes.end()-level);
+        return finiteSupportKeyNoise(degree,keyNoise,active,special,q(scale))+divideRound(2,scale);
     }
     Calculation calculate(std::size_t index,const std::vector<State>& s) const {
         const auto& n=nodes[index];
@@ -191,13 +190,7 @@ struct Builder {
 };
 struct DigitPath { std::vector<std::size_t> outputs; std::vector<double> errors; };
 }
-BootstrapBound evalRoundBackendKeyNoiseSupport() {
-#ifdef SEAL_USE_GAUSSIAN_NOISE
-    return {INFINITY,BootstrapBoundKind::Unknown,"Gaussian evaluation-key finite support has not been certified",{}};
-#else
-    return {21,BootstrapBoundKind::Deterministic,"SEAL sample_poly_cbd: difference of two 21-bit Hamming weights",{}};
-#endif
-}
+BootstrapBound evalRoundBackendKeyNoiseSupport() { return finiteSupportBackendKeyNoise(); }
 
 EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,const Cipher& input,
     const EvalRoundPlan& reference,const EvalRoundExecutionOptions& options) {

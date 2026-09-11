@@ -468,6 +468,38 @@ Plain SealAdapter::encodeScalarRnsAtScaleFor(const std::vector<std::uint64_t>& r
     return out;
 }
 
+Plain SealAdapter::encodePolynomialRnsAtKeyScale(const std::vector<std::uint64_t>& residues,double scale) {
+    const auto data=pimpl_->context->key_context_data();
+    const auto& moduli=data->parms().coeff_modulus();
+    const auto N=data->parms().poly_modulus_degree();
+    if(!std::isfinite(scale)||scale<=0||std::log2(scale)>=data->total_coeff_modulus_bit_count()||residues.size()!=N*moduli.size())
+        throw std::invalid_argument("Invalid exact polynomial dimensions/scale");
+    Plain out; out.pimpl_->pt.parms_id()=seal::parms_id_zero; out.pimpl_->pt.resize(residues.size());
+    for(std::size_t i=0;i<moduli.size();++i) for(std::size_t j=0;j<N;++j) {
+        if(residues[i*N+j]>=moduli[i].value()) throw std::invalid_argument("Unreduced polynomial residue");
+        out.pimpl_->pt[i*N+j]=residues[i*N+j];
+    }
+    seal::util::ntt_negacyclic_harvey(seal::util::RNSIter(out.pimpl_->pt.data(),N),moduli.size(),data->small_ntt_tables());
+    out.pimpl_->pt.parms_id()=data->parms_id(); out.pimpl_->pt.scale()=scale; return out;
+}
+
+Plain SealAdapter::modSwitchPlainTo(const Plain& plain,const Cipher& target) {
+    const auto source=pimpl_->context->get_context_data(plain.pimpl_->pt.parms_id());
+    const auto destination=pimpl_->context->get_context_data(target.pimpl_->ct.parms_id());
+    if(!source||!destination||!plain.pimpl_->pt.is_ntt_form()) throw std::invalid_argument("Invalid prepared plaintext context");
+    const auto& from=source->parms().coeff_modulus(); const auto& to=destination->parms().coeff_modulus();
+    const auto N=destination->parms().poly_modulus_degree();
+    if(from.size()<to.size()||plain.pimpl_->pt.coeff_count()!=N*from.size()) throw std::invalid_argument("Invalid plaintext modulus reduction");
+    for(std::size_t i=0;i<to.size();++i) if(from[i]!=to[i]) throw std::invalid_argument("Plaintext target is not a modulus prefix");
+    // CKKS plaintext mod-switch is exact limb restriction. SEAL's public
+    // plaintext evaluator rejects pure key-level plaintexts, so handle that
+    // representation explicitly without decoding/re-encoding or rescaling.
+    Plain out; out.pimpl_->pt.resize(N*to.size());
+    std::copy_n(plain.pimpl_->pt.data(),N*to.size(),out.pimpl_->pt.data());
+    out.pimpl_->pt.parms_id()=destination->parms_id(); out.pimpl_->pt.scale()=plain.pimpl_->pt.scale();
+    return out;
+}
+
 Cipher SealAdapter::encrypt(const Plain& plain) {
     if (!pimpl_->has_public || !pimpl_->encryptor) throw std::runtime_error("public key not loaded");
     Cipher out;

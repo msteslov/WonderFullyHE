@@ -161,6 +161,11 @@ public:
     Plain encodeScalarRnsAtScaleFor(const std::vector<std::uint64_t>& residues,
                                     double scale, const Cipher& reference,
                                     std::size_t levelsConsumed);
+    /// Encodes an exact polynomial at key level. Input is modulus-major,
+    /// coefficient-domain RNS; no floating-point FFT is performed.
+    Plain encodePolynomialRnsAtKeyScale(const std::vector<std::uint64_t>& residues,double scale);
+    /// Exact RNS reduction of a prepared plaintext to the target level, without encoding.
+    Plain modSwitchPlainTo(const Plain&,const Cipher&);
     /// Шифрует plaintext public key; ключ должен быть сгенерирован или загружен заранее.
     Cipher encrypt(const Plain&);
     /// Расшифровывает ciphertext secret key; ключ должен быть сгенерирован или загружен заранее.
