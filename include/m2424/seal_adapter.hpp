@@ -9,6 +9,7 @@
 #include <vector>
 
 namespace m2424 {
+namespace test { class BootstrapFixture; }
 
 class CoeffToSlot;
 class CoeffToSlotPlan;
@@ -68,6 +69,7 @@ private:
     std::unique_ptr<Impl> pimpl_;
 
     friend class SealAdapter;
+    friend class test::BootstrapFixture;
 };
 
 class Cipher {
@@ -84,6 +86,7 @@ private:
     std::unique_ptr<Impl> pimpl_;
 
     friend class SealAdapter;
+    friend class test::BootstrapFixture;
 };
 
 struct HoistedBsgsTerm {
@@ -199,6 +202,7 @@ public:
     SealRescaleAnalysis analyzeCkksRescale(const Cipher&) const;
     /// Снижает ciphertext до уровня target; повышение уровня невозможно.
     Cipher modSwitchTo(const Cipher&, const Cipher&);
+    Cipher modSwitchToChainIndex(const Cipher&, std::size_t);
     /// Поднимает ciphertext с нижнего уровня текущей modulus chain на верхний уровень через centered RNS lift.
     /// Операция сохраняет residues исходной базы и не использует secret key.
     RaisedCipher modRaiseToTop(const Cipher&);
@@ -292,6 +296,7 @@ private:
     struct Impl;
     std::unique_ptr<Impl> pimpl_;
     friend class ::m2424::CoeffToSlotPlan;
+    friend class test::BootstrapFixture;
 };
 
 } // namespace m2424

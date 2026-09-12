@@ -1,3 +1,4 @@
+#include "../core/certified_arithmetic_internal.hpp"
 #include "../core/evalround_execution_internal.hpp"
 #include <cstring>
 #include <stdexcept>
@@ -34,23 +35,27 @@ Cipher executeEvalRound(SealAdapter& a,const Cipher& input,const EvalRoundExecut
     const std::function<void(std::size_t,const Cipher&)>& observer) {
     const auto gate=preflightEvalRound(a,input,p);
     if(gate.status!=BootstrapCertificationStatus::Certified) throw std::invalid_argument(gate.provenance);
-    std::vector<std::unique_ptr<Cipher>> values(p.nodes().size());
+    return executeCertifiedArithmetic(a,{input},p.nodes(),p.data_->constants,p.outputNode(),observer);
+}
+Cipher executeCertifiedArithmetic(SealAdapter& a,const std::vector<Cipher>& inputs,const std::vector<EvalRoundExecutionNode>& nodes,const std::vector<Plain>& constants,std::size_t outputNode,const std::function<void(std::size_t,const Cipher&)>& observer) {
+    std::size_t inputIndex=0;
+    std::vector<std::unique_ptr<Cipher>> values(nodes.size());
     std::vector<std::size_t> uses(values.size());
-    for(const auto& n:p.nodes()) for(auto i:n.inputs) ++uses[i];
+    for(const auto& n:nodes) for(auto i:n.inputs) ++uses[i];
     for(std::size_t i=0;i<values.size();++i) {
-        const auto& n=p.nodes()[i];
+        const auto& n=nodes[i];
         auto x=[&](std::size_t j)->const Cipher& { return *values.at(n.inputs.at(j)); };
         Cipher out;
         switch(n.operation) {
-        case EvalRoundOperation::Input: out=input; break;
+        case EvalRoundOperation::Input: out=inputs.at(inputIndex++); break;
         case EvalRoundOperation::Multiply: out=a.multiply(x(0),x(1)); break;
-        case EvalRoundOperation::MultiplyPlain: out=a.multiplyPlain(x(0),p.data_->constants[i]); break;
+        case EvalRoundOperation::MultiplyPlain: out=a.multiplyPlain(x(0),constants[i]); break;
         case EvalRoundOperation::Add: out=a.add(x(0),x(1)); break;
         case EvalRoundOperation::Subtract: out=a.sub(x(0),x(1)); break;
-        case EvalRoundOperation::AddPlain: out=a.addPlain(x(0),p.data_->constants[i]); break;
+        case EvalRoundOperation::AddPlain: out=a.addPlain(x(0),constants[i]); break;
         case EvalRoundOperation::Relinearize: out=a.relinearize(x(0)); break;
         case EvalRoundOperation::Rescale: out=a.rescaleToNext(x(0)); break;
-        case EvalRoundOperation::ModSwitch: out=a.modSwitchTo(x(0),x(1)); break;
+        case EvalRoundOperation::ModSwitch: out=n.inputs.size()==1?a.modSwitchToChainIndex(x(0),n.chainIndex):a.modSwitchTo(x(0),x(1)); break;
         case EvalRoundOperation::Conjugate: out=a.conjugate(x(0)); break;
         }
         const auto info=a.info(out);
@@ -60,7 +65,7 @@ Cipher executeEvalRound(SealAdapter& a,const Cipher& input,const EvalRoundExecut
         values[i]=std::make_unique<Cipher>(std::move(out));
         for(auto j:n.inputs) if(--uses[j]==0) values[j].reset();
     }
-    return std::move(*values.at(p.outputNode()));
+    return std::move(*values.at(outputNode));
 }
 EvalRoundPairResult executeEvalRoundPair(SealAdapter& a,const Cipher& x,const Cipher& y,const EvalRoundExecutionPlan& p) {
     for(const auto* input:{&x,&y}) {

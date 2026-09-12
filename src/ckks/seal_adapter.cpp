@@ -1,3 +1,6 @@
+#ifdef M2424_ENABLE_MOD_RAISE_CHECKS
+#include "../../tests/bootstrap_fixture.hpp"
+#endif
 #include "m2424/seal_adapter.hpp"
 
 #include <seal/seal.h>
@@ -302,6 +305,13 @@ static void load_from_buffer(T& value, const seal::SEALContext& context,
     value.load(context, reinterpret_cast<const seal::seal_byte*>(buffer.data()), buffer.size());
 }
 
+Cipher SealAdapter::modSwitchToChainIndex(const Cipher& input,std::size_t index) {
+    auto data=pimpl_->context->first_context_data();
+    while(data&&data->chain_index()!=index) data=data->next_context_data();
+    if(!data||index>info(input).chainIndex) throw std::invalid_argument("Invalid modulus transition");
+    Cipher out=input; pimpl_->evaluator->mod_switch_to_inplace(out.pimpl_->ct,data->parms_id()); return out;
+}
+
 SealAdapter SealAdapter::create(const CkksProfile& profile) {
     validate_profile_shape(profile);
 
@@ -322,6 +332,26 @@ SealAdapter SealAdapter::create(const CkksProfile& profile) {
     }
     return a;
 }
+
+#ifdef M2424_ENABLE_MOD_RAISE_CHECKS
+SealAdapter test::BootstrapFixture::create(const CkksProfile& profile) {
+    validate_profile_shape(profile); SealAdapter a; a.pimpl_->profile=profile;
+    a.pimpl_->context=std::make_shared<seal::SEALContext>(make_ckks_parms(profile),true,seal::sec_level_type::none);
+    if(!a.pimpl_->context->parameters_set()) throw std::invalid_argument("Invalid explicit test-only CKKS fixture");
+    a.pimpl_->encoder=std::make_unique<seal::CKKSEncoder>(*a.pimpl_->context);
+    a.pimpl_->evaluator=std::make_unique<seal::Evaluator>(*a.pimpl_->context);
+    a.pimpl_->scale=profile.scale; a.pimpl_->slotCount=a.pimpl_->encoder->slot_count(); return a;
+}
+Cipher test::BootstrapFixture::input(SealAdapter& a,const Plain& plain) {
+    auto data=a.pimpl_->context->get_context_data(plain.pimpl_->pt.parms_id());
+    if(!data||!plain.pimpl_->pt.is_ntt_form()) throw std::invalid_argument("Fixture requires NTT plaintext at source level");
+    Cipher out; out.pimpl_->ct.resize(*a.pimpl_->context,data->parms_id(),2);
+    const auto size=data->parms().poly_modulus_degree()*data->parms().coeff_modulus().size();
+    std::copy_n(plain.pimpl_->pt.data(),size,out.pimpl_->ct.data(0));
+    std::fill_n(out.pimpl_->ct.data(1),size,1); // NTT of constant polynomial 1
+    out.pimpl_->ct.is_ntt_form()=true; out.pimpl_->ct.scale()=plain.pimpl_->pt.scale(); return out;
+}
+#endif
 
 void SealAdapter::generateKeys(bool needRelin, bool needGalois) {
     if (!pimpl_->context) throw std::runtime_error("SealAdapter not initialized");

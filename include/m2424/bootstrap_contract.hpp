@@ -2,6 +2,7 @@
 
 #include "m2424/seal_adapter.hpp"
 #include <array>
+#include <map>
 #include <limits>
 #include <optional>
 #include <string>
@@ -24,7 +25,8 @@ enum class BootstrapCertificationStatus {
     ExtractionNotCertified, CleaningBoundUnavailable, SlotToCoeffGainUnavailable,
     ScaleScheduleInfeasible, HeadroomViolation, InsufficientLevels,
     MissingEvaluationKeys, ErrorBudgetExceeded, FailureProbabilityExceeded,
-    SecurityBudgetExceeded, RequiredBoundUnavailable, ResourceBudgetExceeded
+    SecurityBudgetExceeded, RequiredBoundUnavailable, ResourceBudgetExceeded,
+    LiftBoundUnavailable, UnsupportedEvalRoundDomain, TestOnlyAssumption
 };
 
 enum class BootstrapBoundKind { Unknown, Deterministic, Probabilistic };
@@ -102,12 +104,17 @@ struct BootstrapTraceNode {
     BootstrapInputContext state;
     BootstrapBound valueAbs, semanticError, localError;
     std::optional<double> observedError;
+    std::vector<std::uint64_t> activePrimes;
+    std::size_t chainIndex{};
 };
 struct BootstrapTrace {
     BootstrapPlanMetadata plan;
     std::vector<BootstrapTraceNode> nodes;
     BootstrapCertificate certificate;
     BootstrapContractResult result;
+    std::map<std::string,BootstrapBound> bounds;
+    std::map<std::string,std::string> details;
+    std::vector<BootstrapContractResult> gateResults;
 };
 
 /// Union bound over unique primary event IDs (v9 section 6.4), capped at 1.
