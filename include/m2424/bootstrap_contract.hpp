@@ -56,6 +56,30 @@ struct BootstrapContractResult {
     std::string gate;
     std::string provenance;
 };
+// Evidence is an auditable external estimator result, not SEAL's tc128 flag.
+struct RlweSecurityEvidence {
+    std::string familyId, statement, estimator, version, artifact, assumptions;
+    std::optional<double> lowerSecurityBits;
+};
+struct PublicRlweFamily {
+    std::string id;
+    std::size_t degree{};
+    std::vector<std::uint64_t> modulus;
+    std::string secretDistribution,errorDistribution,relations,purpose,provenance;
+    std::size_t samples{},components{};
+    std::string statement;
+    std::optional<double> searchSpaceCeilingBits;
+    std::optional<RlweSecurityEvidence> evidence;
+    BootstrapContractResult result;
+};
+struct BootstrapSecurityReport {
+    std::vector<PublicRlweFamily> families;
+    std::optional<double> minimumSecurityBits;
+    BootstrapContractResult result;
+};
+BootstrapSecurityReport certifyPublicRlweFamilies(std::vector<PublicRlweFamily>,
+    const std::vector<RlweSecurityEvidence>&,int targetBits);
+
 struct BootstrapInputResolution {
     BootstrapContractResult result;
     std::optional<BootstrapInputContext> context;
@@ -108,6 +132,7 @@ struct BootstrapTraceNode {
     std::size_t chainIndex{};
 };
 struct BootstrapTrace {
+    std::optional<BootstrapSecurityReport> publicRlwe;
     BootstrapPlanMetadata plan;
     std::vector<BootstrapTraceNode> nodes;
     BootstrapCertificate certificate;

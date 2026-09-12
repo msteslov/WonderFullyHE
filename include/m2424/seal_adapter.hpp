@@ -7,9 +7,10 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <utility>
 
 namespace m2424 {
-namespace test { class BootstrapFixture; }
+namespace test { class BootstrapFixture; class SparseBootstrapOracle; }
 
 class CoeffToSlot;
 class CoeffToSlotPlan;
@@ -70,6 +71,7 @@ private:
 
     friend class SealAdapter;
     friend class test::BootstrapFixture;
+    friend class test::SparseBootstrapOracle;
 };
 
 class Cipher {
@@ -87,6 +89,7 @@ private:
 
     friend class SealAdapter;
     friend class test::BootstrapFixture;
+    friend class test::SparseBootstrapOracle;
 };
 
 struct HoistedBsgsTerm {
@@ -116,6 +119,40 @@ private:
     friend class ::m2424::CoeffToSlot;
     friend class ::m2424::EvalRoundPlusCoeffToSlot;
     friend class ::m2424::CoeffToSlotPlan;
+    friend class test::SparseBootstrapOracle;
+};
+
+// Runtime-owned metadata; callers cannot attach a weight to an arbitrary key.
+struct SparseKeyMetadata {
+    std::size_t degree{},weight{};
+    std::uint64_t generation{};
+    std::array<std::uint64_t,4> context{};
+    std::size_t publicKeySamples{},relinSamples{},galoisSamples{},encryptionSamples{};
+    bool ordinaryDistributionKnown{};
+    std::vector<std::uint32_t> galoisElements;
+    std::vector<std::pair<std::vector<std::uint64_t>,std::size_t>> encryptionModuli;
+    std::string distribution;
+};
+class SparseCipher {
+public:
+    SparseCipher(const SparseCipher&)=default;
+    SparseCipher(SparseCipher&&)=default;
+private:
+    SparseCipher(Cipher c,std::uint64_t id):cipher_(std::move(c)),generation_(id) {}
+    Cipher cipher_;
+    std::uint64_t generation_{};
+    friend class SealAdapter;
+    friend class test::SparseBootstrapOracle;
+};
+class SparseRaisedCipher {
+public:
+    SparseRaisedCipher(SparseRaisedCipher&&)=default;
+private:
+    SparseRaisedCipher(RaisedCipher c,std::uint64_t id):cipher_(std::move(c)),generation_(id) {}
+    RaisedCipher cipher_;
+    std::uint64_t generation_{};
+    friend class SealAdapter;
+    friend class test::SparseBootstrapOracle;
 };
 
 class SealAdapter {
@@ -135,6 +172,15 @@ public:
     /// @param rotationSteps Разрешённые шаги ротации слотов.
     /// @param needRelin Создавать ли relinearization keys.
     void generateKeys(const std::vector<int>& rotationSteps, bool needRelin = true);
+    // Generates fixed-weight signed ternary s_b and both directional switch keys.
+    // h>=2: this API never reduces weight to fit the K=1 EvalRound executor.
+    void generateSparseBootstrapKeys(std::size_t weight);
+    bool hasSparseEncapsulationKey() const noexcept;
+    bool hasSparseRestorationKey() const noexcept;
+    SparseKeyMetadata sparseKeyMetadata() const;
+    SparseCipher encapsulateSparse(const Cipher&);
+    SparseRaisedCipher modRaiseSparse(const SparseCipher&);
+    RaisedCipher restoreSparse(const SparseRaisedCipher&);
     /// Возвращает физическую ёмкость слотов CKKS-контекста.
     std::size_t slotCount() const;
     /// Stable fingerprint of the full key-level encryption parameters.
@@ -297,6 +343,7 @@ private:
     std::unique_ptr<Impl> pimpl_;
     friend class ::m2424::CoeffToSlotPlan;
     friend class test::BootstrapFixture;
+    friend class test::SparseBootstrapOracle;
 };
 
 } // namespace m2424

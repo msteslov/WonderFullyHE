@@ -82,6 +82,45 @@ BootstrapPlan Bootstrapper::prepare(SealAdapter& a,const Cipher& input,const Boo
         auto resolved=resolveBootstrapInput(a,input); require(bool(resolved.context),resolved.result.status,resolved.result.gate,resolved.result.provenance);
         trace.plan.input=*resolved.context; const auto& source=*trace.plan.input;
         require(a.slotCount()*2==p->degree&&a.info(input).ciphertextSize==2,S::InvalidInput,"input","Degree and two-component input required");
+        if(a.sparseKeyMetadata().generation) {
+            SparseBootstrapInput upstream;
+            upstream.messageMagnitude=request.upstream.messageMagnitude;
+            upstream.sourceNoiseMagnitude=request.upstream.sourceNoiseMagnitude;
+            upstream.evaluationKeyNoiseSupport=request.sparseEvaluationKeyNoiseSupport;
+            upstream.securityEvidence=request.securityEvidence; upstream.targetSecurityBits=request.target.targetSecurityBits;
+            const auto sparse=prepareSparseBootstrap(a,input,upstream);
+            const auto& cert=sparse.certificate();
+            trace.publicRlwe=cert.security;
+            trace.certificate.gates[static_cast<std::size_t>(BootstrapGate::Security)]={
+                cert.security.result.status==S::Certified,cert.security.result.provenance,{}};
+            if(cert.security.minimumSecurityBits) trace.certificate.minimumSecurityBits=static_cast<int>(std::floor(*cert.security.minimumSecurityBits));
+            trace.details["sparse.schedule"]="encapsulation at source chain/scale -> centered ModRaise to top at same scale -> separate restoration at raised chain/scale; zero rescales";
+            trace.details["h_b"]=std::to_string(cert.keys.weight);
+            trace.details["sparse.distribution"]=cert.keys.distribution;
+            trace.details["sparse.keyGeneration"]=std::to_string(cert.keys.generation);
+            trace.details["K.provenance"]=cert.liftProvenance;
+            trace.details["K.evidence"]="Derived from generated sparse key certificate; caller lift ignored";
+            trace.bounds["encapsulation.KS"]=cert.encapsulationError;
+            trace.bounds["restoration.KS"]=cert.restorationError;
+            trace.bounds["nu_b"]=cert.sourceNoiseMagnitude;
+            trace.bounds["raisedMagnitude"]=cert.raisedMagnitude;
+            trace.bounds["restoredMagnitude"]=cert.restoredMagnitude;
+            trace.bounds["rho.beforeCtS"]=cert.rhoBeforeCoeffToSlot;
+            trace.details["lambda_boot"]=cert.security.minimumSecurityBits?std::to_string(*cert.security.minimumSecurityBits):"Unknown: missing audited per-family concrete estimator evidence";
+            require(cert.result.status==S::Certified,cert.result.status,cert.result.gate,cert.result.provenance);
+            trace.bounds["K"]=bound(cert.K,cert.liftProvenance);
+            trace.certificate.gates[static_cast<std::size_t>(BootstrapGate::SparseSecret)]={true,cert.liftProvenance,{trace.bounds["K"]}};
+            trace.certificate.gates[static_cast<std::size_t>(BootstrapGate::KeySwitch)]={true,"Two separate audited identity-key-switch operations",{cert.encapsulationError,cert.restorationError}};
+            trace.gateResults.push_back(cert.result);
+            // PR-6 deliberately has no h=1 path. A future larger-domain executor
+            // must explicitly integrate restoration error into the CtS input.
+            require(cert.K==1,S::UnsupportedEvalRoundDomain,"EvalRound.domain","Derived sparse K="+std::to_string(cert.K)+" exceeds the certified K=1 ciphertext executor; h is never reduced");
+            throw Rejection{{S::UnsupportedEvalRoundDomain,"EvalRound.domain","Sparse K=1 path is not enabled"}};
+        }
+#ifndef M2424_ENABLE_BOOTSTRAP_FIXTURE
+        require(request.lift.evidence!=BootstrapLiftEvidence::TestFixtureAssumption,S::TestOnlyAssumption,"lift.fixture","Test fixture execution is disabled in production builds");
+#endif
+        require(request.lift.evidence!=BootstrapLiftEvidence::Analytical,S::LiftBoundUnavailable,"lift","Caller production K is not trusted; generate sparse bootstrap keys");
         require(a.hasRotationKeys(p->keys)&&a.hasRelinKeys()&&a.hasConjugationKey(),S::MissingEvaluationKeys,"keys","CtS/StC rotations, conjugation and relinearization keys required before execution");
         trace.details["keys"]="relinearization, conjugation, rotations:"; for(auto key:p->keys) trace.details["keys"]+=std::to_string(key)+",";
         require(request.lift.K.has_value()&&request.lift.evidence!=BootstrapLiftEvidence::Unknown&&!request.lift.provenance.empty(),S::LiftBoundUnavailable,"lift","Analytical |I|<=K unavailable; ordinary ModRaise does not imply K=1");
@@ -216,6 +255,8 @@ BootstrapPlan Bootstrapper::prepare(SealAdapter& a,const Cipher& input,const Boo
     } catch(const Rejection& f) { note(f.gate); p->readiness=f.gate; }
       catch(const experimental::arithmetic::Failure& f) { BootstrapContractResult g{f.status,"arithmetic",f.why}; note(g); p->readiness=g; }
       catch(const std::exception& e) { BootstrapContractResult g{S::InvalidInput,"planning",e.what()}; note(g); p->readiness=g; }
+    if(trace.publicRlwe) trace.gateResults.push_back(trace.publicRlwe->result);
+    trace.details["firstFailingGate"]=trace.result.gate;
     if(trace.result.status!=S::Certified) for(auto& entry:trace.bounds) if(entry.second.kind==BootstrapBoundKind::Unknown)
         entry.second.provenance="Unavailable after "+trace.result.gate+": "+trace.result.provenance;
     if(trace.certificate.outputError.kind==BootstrapBoundKind::Unknown) trace.certificate.outputError=trace.bounds["E_boot"];

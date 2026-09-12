@@ -7,6 +7,7 @@ function(m2424_add_test target)
 endfunction()
 
 set(M2424_TESTS
+    test_sparse_security
     test_slot_to_coeff
     test_slot_to_coeff_contract
     test_accuracy
@@ -71,4 +72,11 @@ if(M2424_ENABLE_EVALMOD_ANALYSIS)
     target_link_libraries(test_bootstrap_end_to_end PRIVATE m2424::evalmod_analysis)
     add_test(NAME test_bootstrap_end_to_end COMMAND test_bootstrap_end_to_end)
     set_tests_properties(test_bootstrap_end_to_end PROPERTIES TIMEOUT 600)
+endif()
+
+if(M2424_ENABLE_EVALMOD_ANALYSIS)
+    add_executable(test_sparse_bootstrap test_sparse_bootstrap.cpp)
+    target_link_libraries(test_sparse_bootstrap PRIVATE m2424::evalmod_analysis)
+    add_test(NAME test_sparse_bootstrap COMMAND test_sparse_bootstrap)
+    set_tests_properties(test_sparse_bootstrap PROPERTIES TIMEOUT 600)
 endif()

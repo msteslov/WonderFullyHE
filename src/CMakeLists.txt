@@ -2,6 +2,7 @@ add_library(m2424
     core/abft.cpp
     core/accuracy.cpp
     core/bootstrap_candidates.cpp
+    core/sparse_bootstrap.cpp
     core/bootstrap_contract.cpp
     core/coeff_to_slot_contract.cpp
     core/coeff_to_slot_prefactor.cpp
@@ -51,6 +52,7 @@ if(M2424_ENABLE_EVALMOD_ANALYSIS)
         math/certified_diagonal.cpp
         planning/slot_to_coeff_preparation.cpp
         planning/coeff_to_slot_preparation.cpp
+        planning/sparse_bootstrap.cpp
         planning/bootstrap_planner.cpp
         planning/evalround_execution.cpp
         planning/evalmod_cost_model.cpp
@@ -64,5 +66,6 @@ if(M2424_ENABLE_EVALMOD_ANALYSIS)
     )
     target_link_libraries(m2424_evalmod_analysis PUBLIC
         m2424::m2424 PkgConfig::GMPXX PkgConfig::MPFR)
+    target_compile_definitions(m2424_evalmod_analysis PRIVATE $<$<BOOL:${BUILD_TESTING}>:M2424_ENABLE_BOOTSTRAP_FIXTURE>)
     target_compile_features(m2424_evalmod_analysis PUBLIC cxx_std_17)
 endif()

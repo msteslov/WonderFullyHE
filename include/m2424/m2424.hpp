@@ -22,3 +22,5 @@ namespace m2424 {
 const char* version() noexcept;
 
 } // namespace m2424
+
+#include "m2424/sparse_bootstrap.hpp"

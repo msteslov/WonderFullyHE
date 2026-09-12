@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath>
+#include "m2424/sparse_bootstrap.hpp"
 #include "m2424/evalround_plus_coeff_to_slot.hpp"
 #include "m2424/evalround_execution.hpp"
 namespace m2424 {
@@ -12,7 +13,10 @@ struct BootstrapLiftBound {
 struct BootstrapRequest {
     BootstrapTarget target;
     CoeffToSlotCertificationInput upstream;
+    // Legacy test fixture only. Production lift comes from generated sparse keys.
     BootstrapLiftBound lift;
+    std::optional<BootstrapBound> sparseEvaluationKeyNoiseSupport;
+    std::vector<RlweSecurityEvidence> securityEvidence;
     // Fixed output-side schedule. No scale metadata rewrite is permitted.
     double combinationScale{std::ldexp(1.,49)};
     double minimumArithmeticScale{std::ldexp(1.,40)};
