@@ -31,6 +31,7 @@ public:
     const BootstrapTrace& trace() const;
     const BootstrapContractResult& executionReadiness() const;
     const EvalRoundExecutionPlan& evalRound() const;
+    const CertifiedEvalRoundPlusCoeffToSlot* coeffToSlot() const;
     const std::vector<EvalRoundExecutionNode>& combinationNodes() const;
 private:
     struct Data; std::shared_ptr<const Data> data_;

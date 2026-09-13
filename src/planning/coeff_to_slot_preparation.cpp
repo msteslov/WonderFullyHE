@@ -3,7 +3,23 @@
 namespace m2424 {
 using namespace linear_certificate;
 CertifiedEvalRoundPlusCoeffToSlot EvalRoundPlusCoeffToSlot::prepareCertified(SealAdapter& a,const RaisedCipher& x,const BootstrapInputContext& source,const CoeffToSlotContract& hp,const CoeffToSlotContract& lp,const CoeffToSlotCertificationInput& input) const {
+    return prepareCertifiedImpl(a,x,source,hp,lp,input,nullptr);
+}
+CertifiedEvalRoundPlusCoeffToSlot EvalRoundPlusCoeffToSlot::prepareCertified(SealAdapter& a,const SparseRaisedCipher& x,const SparseBootstrapPlan& sparse,const CoeffToSlotContract& hp,const CoeffToSlotContract& lp) const {
+    const auto& c=sparse.certificate();
+    const auto gate=sparseCoeffToSlotKeyGate(a,x.generation_,sparse);
+    if(gate.status!=Status::Certified) {
+        CertifiedEvalRoundPlusCoeffToSlot out; auto p=std::make_shared<CertifiedEvalRoundPlusCoeffToSlot::Impl>(); out.impl_=p;
+        p->source=c.input; p->sparse=sparse;
+        for(auto& t:p->traces) t.certificate=gate;
+        p->domain.result=gate; p->domain.rho.provenance=gate.provenance; return out;
+    }
+    CoeffToSlotCertificationInput input{c.raisedMagnitude,c.messageMagnitude,c.sourceNoiseMagnitude};
+    return prepareCertifiedImpl(a,x.cipher_,c.input,hp,lp,input,&sparse);
+}
+CertifiedEvalRoundPlusCoeffToSlot EvalRoundPlusCoeffToSlot::prepareCertifiedImpl(SealAdapter& a,const RaisedCipher& x,const BootstrapInputContext& source,const CoeffToSlotContract& hp,const CoeffToSlotContract& lp,const CoeffToSlotCertificationInput& input,const SparseBootstrapPlan* sparse) const {
     CertifiedEvalRoundPlusCoeffToSlot result; auto p=std::make_shared<CertifiedEvalRoundPlusCoeffToSlot::Impl>(); result.impl_=p;
+    if(sparse) p->sparse=*sparse;
     p->source=source; p->hpContract=hp; p->lpContract=lp; p->factorization=plan_.factorization();
     p->domain.result={Status::RequiredBoundUnavailable,"EvalRoundDomain","Upstream message/noise coefficient bounds required"};
     p->domain.rho.provenance=p->domain.result.provenance;
@@ -12,20 +28,50 @@ CertifiedEvalRoundPlusCoeffToSlot EvalRoundPlusCoeffToSlot::prepareCertified(Sea
         if(!known(input.raisedMagnitude)) throw Failure{Status::RequiredBoundUnavailable,"Raised canonical-embedding magnitude bound with provenance required"};
         if(a.info(x).ciphertextSize!=2) throw Failure{Status::InvalidInput,"Certified CtS requires size-two raised input"};
         const auto depth=plan_.depth(),N=plan_.polyModulusDegree();
+        BootstrapBound incoming=bound(0,"Exact raised y=sigma(u/Delta0) is the semantic input; source noise belongs to u");
+        std::optional<SlotToCoeffRuntimeStage> restoration;
+        if(sparse) {
+            const auto& sc=sparse->certificate();
+            const auto backend=experimental::finiteSupportBackendKeyNoise();
+            if(!known(backend)||!known(sc.restorationError)||sc.restorationError.upperBound<=0||
+               !known(sc.restorationKeyNoise)||sc.restorationKeyNoise.upperBound<=0||
+               !known(sc.restorationModDown)||sc.restorationModDown.upperBound<=0)
+                throw Failure{Status::KeySwitchBoundUnavailable,"First-factor restoration requires known nonzero key-switch and ModDown bounds"};
+            const mpq_class key=experimental::finiteSupportKeyNoise(N,q(backend.upperBound),source.raisedPrimes,source.specialPrime,q(a.info(x).scale));
+            const mpq_class round=experimental::finiteSupportDivideRound(N,1,2,q(a.info(x).scale));
+            if(q(sc.restorationError.upperBound)<key+round||q(sc.restorationKeyNoise.upperBound)<key||q(sc.restorationModDown.upperBound)<round)
+                throw Failure{Status::KeySwitchBoundUnavailable,"Restoration envelope understates the shared audited backend bounds"};
+            incoming=sc.restorationError;
+            SlotToCoeffRuntimeStage stage; stage.operation="first-factor sparse restoration (shared HP/LP)";
+            stage.activePrimes=source.raisedPrimes; stage.chainIndex=a.info(x).chainIndex;
+            stage.inputScale=stage.outputScale=stage.arithmeticScale=scale(q(a.info(x).scale),a.info(x).scale);
+            stage.magnitude=input.raisedMagnitude; stage.semanticError=incoming; stage.localError=incoming;
+            stage.scaleRepresentationError=bound(0,"Identity switching leaves the exact binary64 scale unchanged");
+            stage.centeredHeadroomNumerator=headroom(stage.activePrimes,q(a.info(x).scale),q(input.raisedMagnitude.upperBound)+q(incoming.upperBound),"CtS first-factor restoration");
+            stage.headroomProvenance="Actual raised modulus; restoration precedes the first factor and leaves ideal u unchanged";
+            restoration=stage;
+        }
         for(std::size_t b=0;b<2;++b) {
             auto& trace=p->traces[b]; trace.gate=b?BootstrapGate::CoeffToSlotLP:BootstrapGate::CoeffToSlotHP;
             trace.prefactor=b?CoeffToSlotPrefactor::sourceNormalization(source):CoeffToSlotPrefactor{};
             trace.inputMagnitude=input.raisedMagnitude;
+            trace.inputSemanticError=incoming; trace.firstFactorRestoration=restoration;
             auto layout=certificationLayout(trace.prefactor);
             // Shared preparation uses 2^bitlength(actual prime), exactly the legacy CtS schedule.
             SlotToCoeffContract c; c.inputMagnitude[0]=c.inputMagnitude[1]=input.raisedMagnitude;
-            c.inputError[0]=c.inputError[1]=bound(0,"Exact raised y=sigma(u/Delta0) is the semantic input; source noise belongs to u");
+            c.inputError[0]=c.inputError[1]=incoming;
             auto prepared=prepareRootLinearTransform(layout,a,x.cipher_,x.cipher_,c); p->branches[b]=prepared;
             if(prepared->certificate.result.status!=Status::Certified) throw Failure{prepared->certificate.result.status,prepared->certificate.result.provenance};
             double finalError=0;
             for(std::size_t h=0;h<2;++h) {
                 for(std::size_t r=0;r<depth;++r) {
                     auto factor=prepared->certificate.factors[h*depth+r];
+                    factor.incomingSemanticError=r?prepared->certificate.factors[h*depth+r-1].propagation.semanticError:incoming;
+                    if(sparse&&r==0) {
+                        factor.arithmeticTerms.insert(factor.arithmeticTerms.begin(),{
+                            {"incoming restoration key noise (not B_local)",sparse->certificate().restorationKeyNoise},
+                            {"incoming restoration ModDown (not B_local)",sparse->certificate().restorationModDown}});
+                    }
                     CoeffToSlotFactorTrace old; old.operation="certified BSGS factor/rescale"; old.activePrimes=factor.runtime.back().activePrimes;
                     old.outputState=a.info(x);
                     auto stateBits=factor.runtime.back().outputScale.binary64Bits;
@@ -42,7 +88,7 @@ CertifiedEvalRoundPlusCoeffToSlot EvalRoundPlusCoeffToSlot::prepareCertified(Sea
                 double outputScale; auto sb=state.outputScale.binary64Bits; std::memcpy(&outputScale,&sb,8);
                 const mpq_class local=experimental::finiteSupportKeyNoise(N,q(c.evaluationKeyNoiseSupport.upperBound),state.activePrimes,source.specialPrime,q(outputScale))
                     +experimental::finiteSupportDivideRound(N,1,2,q(outputScale));
-                SlotToCoeffFactorTrace projection; projection.branch=h; projection.factor=depth;
+                SlotToCoeffFactorTrace projection; projection.branch=h; projection.factor=depth; projection.incomingSemanticError=E;
                 projection.bounds={bound(2,"Exact real projection v+conj(v) has real-linear infinity norm two"),bound(0,"Projection has no encoded coefficients"),bound(local,"Shared finite-support conjugation key noise plus two-component ModDown; "+c.evaluationKeyNoiseSupport.provenance)};
                 projection.arithmeticTerms={
                     {"conjugation key noise",bound(experimental::finiteSupportKeyNoise(N,q(c.evaluationKeyNoiseSupport.upperBound),state.activePrimes,source.specialPrime,q(outputScale)),"Shared key noise at actual active primes and scale")},

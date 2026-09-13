@@ -22,6 +22,8 @@ struct SlotToCoeffRuntimeStage {
     std::string centeredHeadroomNumerator,headroomProvenance;
 };
 struct SlotToCoeffFactorTrace {
+    // Incoming semantic error is separate from this factor's local arithmetic.
+    BootstrapBound incomingSemanticError;
     std::size_t branch{},factor{};
     LinearTransformFactorBound bounds;
     LinearTransformPropagation propagation;

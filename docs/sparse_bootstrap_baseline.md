@@ -1,5 +1,11 @@
 # PR-6: fixed-weight encapsulation and all-family security
 
+This is the historical report for the base PR-6 revision. The focused
+[first-factor follow-up](sparse_coeff_to_slot_first_factor.md) supersedes its
+standalone-restoration placement: production now restores inside certified
+CtS, while the old standalone APIs exist only in diagnostic builds. The
+bounds, K and security semantics documented here remain unchanged.
+
 Base: bb04c5c05120c164de85698418480b1536a07cf6.
 Part A passed; see [the source audit](seal_backend_bound_audit.md). No PR-3/4/5
 finite-support formula, tolerance, security parameter or accuracy target changed.

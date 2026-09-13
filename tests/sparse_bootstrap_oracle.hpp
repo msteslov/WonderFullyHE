@@ -9,5 +9,6 @@ public:
     static std::vector<double> raised(SealAdapter&,const SparseRaisedCipher&);
     static std::vector<double> original(SealAdapter&,const Cipher&);
     static void removeKey(SealAdapter&,bool restoration);
+    static std::size_t restorationCount(const SealAdapter&);
 };
 }

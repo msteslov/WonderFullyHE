@@ -10,7 +10,7 @@
 #include <utility>
 
 namespace m2424 {
-namespace test { class BootstrapFixture; class SparseBootstrapOracle; }
+namespace test { class BootstrapFixture; class SparseBootstrapOracle; class SparseCoeffToSlotFixture; }
 
 class CoeffToSlot;
 class CoeffToSlotPlan;
@@ -153,6 +153,7 @@ private:
     std::uint64_t generation_{};
     friend class SealAdapter;
     friend class test::SparseBootstrapOracle;
+    friend class EvalRoundPlusCoeffToSlot;
 };
 
 class SealAdapter {
@@ -180,7 +181,10 @@ public:
     SparseKeyMetadata sparseKeyMetadata() const;
     SparseCipher encapsulateSparse(const Cipher&);
     SparseRaisedCipher modRaiseSparse(const SparseCipher&);
+#ifdef M2424_ENABLE_SPARSE_DIAGNOSTICS
+    // Legacy test-only standalone restoration; production uses CtS ownership.
     RaisedCipher restoreSparse(const SparseRaisedCipher&);
+#endif
     /// Возвращает физическую ёмкость слотов CKKS-контекста.
     std::size_t slotCount() const;
     /// Stable fingerprint of the full key-level encryption parameters.
@@ -335,6 +339,8 @@ public:
     SealAdapter& operator=(SealAdapter&&) noexcept;
 
 private:
+    RaisedCipher restoreSparseForFirstFactor(const SparseRaisedCipher&);
+    friend class EvalRoundPlusCoeffToSlot;
     std::vector<double> decryptRaisedCoefficients(const RaisedCipher&, std::size_t modulusCount);
     std::array<std::uint64_t, 4> parmsFingerprint(const RaisedCipher&) const;
     double rescalePlaintextScaleAtChainIndex(std::size_t chainIndex) const;

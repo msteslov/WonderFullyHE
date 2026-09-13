@@ -51,6 +51,10 @@ std::vector<ComplexVector> EvalRoundPlusCoeffToSlot::applyPlainTrace(const Compl
     for(auto& v:x) v+=std::conj(v); result.push_back(std::move(x)); return result;
 }
 BootstrapContractResult EvalRoundPlusCoeffToSlot::preflight(const SealAdapter& a,const RaisedCipher& x,const BootstrapInputContext& source,const CertifiedEvalRoundPlusCoeffToSlot& p) const {
+    if(p.impl_&&p.impl_->sparse) return {BootstrapCertificationStatus::InvalidInput,"CoeffToSlot","Sparse certificate requires the owned sparse first-factor path"};
+    return preflightCertifiedState(a,x,source,p);
+}
+BootstrapContractResult EvalRoundPlusCoeffToSlot::preflightCertifiedState(const SealAdapter& a,const RaisedCipher& x,const BootstrapInputContext& source,const CertifiedEvalRoundPlusCoeffToSlot& p) const {
     using Status=BootstrapCertificationStatus;
     if(!p.impl_) return {Status::InvalidInput,"CoeffToSlot","Empty prepared certificate"};
     if(a.info(x).ciphertextSize!=2) return {Status::InvalidInput,"CoeffToSlot","Prepared execution requires size-two raised input"};
@@ -65,6 +69,9 @@ BootstrapContractResult EvalRoundPlusCoeffToSlot::preflight(const SealAdapter& a
 EvalRoundPlusCoeffToSlotResult EvalRoundPlusCoeffToSlot::apply(SealAdapter& a,const RaisedCipher& x,const CertifiedEvalRoundPlusCoeffToSlot& p,const std::function<void(BootstrapGate,const SlotToCoeffRuntimeStage&,const Cipher&)>& observer) const {
     if(!p.impl_) throw std::invalid_argument("Empty CtS certificate");
     auto gate=preflight(a,x,p.impl_->source,p); if(gate.status!=BootstrapCertificationStatus::Certified) throw std::invalid_argument(gate.provenance);
+    return applyCertifiedFactors(a,x,p,observer);
+}
+EvalRoundPlusCoeffToSlotResult EvalRoundPlusCoeffToSlot::applyCertifiedFactors(SealAdapter& a,const RaisedCipher& x,const CertifiedEvalRoundPlusCoeffToSlot& p,const std::function<void(BootstrapGate,const SlotToCoeffRuntimeStage&,const Cipher&)>& observer) const {
     Cipher outputs[4]; const auto depth=plan_.depth();
     for(std::size_t b=0;b<2;++b) {
         const auto& prepared=*p.impl_->branches[b]; const auto& trace=p.impl_->traces[b];
@@ -89,4 +96,36 @@ EvalRoundPlusCoeffToSlotResult EvalRoundPlusCoeffToSlot::apply(SealAdapter& a,co
     }
     return {std::move(outputs[0]),std::move(outputs[1]),std::move(outputs[2]),std::move(outputs[3]),p.hp(),p.lp()};
 }
+BootstrapContractResult sparseCoeffToSlotKeyGate(const SealAdapter& a,std::uint64_t generation,const SparseBootstrapPlan& p) {
+    using S=BootstrapCertificationStatus;
+    if(!a.hasSparseEncapsulationKey()||!a.hasSparseRestorationKey())
+        return {S::MissingEvaluationKeys,"CoeffToSlot.firstFactor.keys","Both directional sparse keys required before first-factor arithmetic"};
+    const auto current=a.sparseKeyMetadata(); const auto& expected=p.certificate().keys;
+    if(generation!=expected.generation||current.generation!=expected.generation||current.weight!=expected.weight||
+       current.degree!=expected.degree||current.context!=expected.context||
+       current.publicKeySamples!=expected.publicKeySamples||current.relinSamples!=expected.relinSamples||
+       current.galoisSamples!=expected.galoisSamples||current.galoisElements!=expected.galoisElements||current.encryptionModuli!=expected.encryptionModuli)
+        return {S::InvalidInput,"CoeffToSlot.firstFactor.keys","Sparse generation/context/public inventory differs from prepared certificate"};
+    return p.certificate().result;
+}
+BootstrapContractResult EvalRoundPlusCoeffToSlot::preflight(const SealAdapter& a,const SparseRaisedCipher& x,const CertifiedEvalRoundPlusCoeffToSlot& p) const {
+    using S=BootstrapCertificationStatus;
+    if(!p.impl_||!p.impl_->sparse) return {S::InvalidInput,"CoeffToSlot.firstFactor","Sparse first-factor certificate required"};
+    auto gate=sparseCoeffToSlotKeyGate(a,x.generation_,*p.impl_->sparse);
+    if(gate.status!=S::Certified) return gate;
+    return preflightCertifiedState(a,x.cipher_,p.impl_->source,p);
+}
+EvalRoundPlusCoeffToSlotResult EvalRoundPlusCoeffToSlot::apply(SealAdapter& a,const SparseRaisedCipher& x,const CertifiedEvalRoundPlusCoeffToSlot& p,const std::function<void(BootstrapGate,const SlotToCoeffRuntimeStage&,const Cipher&)>& observer) const {
+    const auto gate=preflight(a,x,p);
+    if(gate.status!=BootstrapCertificationStatus::Certified) throw std::invalid_argument(gate.provenance);
+    // First-factor ownership: one shared identity switch before any HP/LP BSGS.
+    // Preparation never switched x; the ideal input remains sigma(u/Delta0).
+    auto ordinary=a.restoreSparseForFirstFactor(x);
+    const auto& stage=*p.hp().firstFactorRestoration;
+    if(a.info(ordinary).chainIndex!=stage.chainIndex||bits(a.info(ordinary).scale)!=stage.outputScale.binary64Bits)
+        throw std::runtime_error("First-factor restoration changed the certified scale/modulus");
+    if(observer) observer(BootstrapGate::CoeffToSlotHP,stage,ordinary.cipher_);
+    auto out=applyCertifiedFactors(a,ordinary,p,observer); out.restorationOperations=1; return out;
+}
+
 }

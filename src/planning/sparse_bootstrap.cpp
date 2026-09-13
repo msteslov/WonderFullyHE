@@ -82,6 +82,9 @@ SparseBootstrapPlan prepareSparseBootstrap(const SealAdapter& a,const Cipher& in
              +experimental::finiteSupportDivideRound(N,1,2,scale));
     };
     const auto enc=ks(c.input.sourcePrimes),restore=ks(c.input.raisedPrimes);
+    c.messageMagnitude=request.messageMagnitude;
+    c.restorationKeyNoise=bound(experimental::finiteSupportKeyNoise(N,q(noise.upperBound),c.input.raisedPrimes,c.input.specialPrime,scale),"s_b -> s: audited identity-switch key noise at exact raised primes and unchanged dyadic scale");
+    c.restorationModDown=bound(experimental::finiteSupportDivideRound(N,1,2,scale),"s_b -> s: audited two-component special-prime ModDown/divide-round under ordinary ternary s");
     c.encapsulationError=bound(enc,"s -> s_b: shared K(active source primes)+R(N,H=1,2); canonical error / Delta0; H=1 conservative also for fixed weight");
     c.restorationError=bound(restore,"s_b -> s: shared K(all raised data primes)+R(N,H=1,2); canonical error / Delta0; distinct from nu_b");
     const mpq_class nu=q(request.sourceNoiseMagnitude.upperBound)+enc*scale;

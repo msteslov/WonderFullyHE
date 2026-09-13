@@ -31,6 +31,7 @@ target_include_directories(m2424
         $<INSTALL_INTERFACE:include>
 )
 
+target_compile_definitions(m2424 PUBLIC $<$<BOOL:${BUILD_TESTING}>:M2424_ENABLE_SPARSE_DIAGNOSTICS>)
 target_compile_features(m2424 PUBLIC cxx_std_17)
 target_compile_definitions(m2424 PRIVATE $<$<BOOL:${BUILD_TESTING}>:M2424_ENABLE_MOD_RAISE_CHECKS>)
 

@@ -15,6 +15,7 @@ struct SparseBootstrapCertificate {
     std::uint32_t K{};
     std::string liftProvenance;
     BootstrapBound encapsulationError,restorationError,sourceNoiseMagnitude;
+    BootstrapBound messageMagnitude,restorationKeyNoise,restorationModDown;
     BootstrapBound raisedMagnitude,restoredMagnitude,rhoBeforeCoeffToSlot;
     BootstrapSecurityReport security;
     BootstrapContractResult result;
@@ -25,10 +26,14 @@ public:
     const SparseBootstrapCertificate& certificate() const;
 private:
     struct Data; std::shared_ptr<const Data> data_;
+    friend class test::SparseCoeffToSlotFixture;
     friend SparseBootstrapPlan prepareSparseBootstrap(const SealAdapter&,const Cipher&,const SparseBootstrapInput&);
 };
 // Optional analysis preparation; bounds use shared exact finite-support helpers.
 SparseBootstrapPlan prepareSparseBootstrap(const SealAdapter&,const Cipher&,const SparseBootstrapInput&);
 BootstrapContractResult preflightSparseBootstrap(const SealAdapter&,const Cipher&,const SparseBootstrapPlan&);
+#ifdef M2424_ENABLE_SPARSE_DIAGNOSTICS
+// Legacy diagnostic only; production restores inside certified CtS.
 RaisedCipher executeSparseBootstrap(SealAdapter&,const Cipher&,const SparseBootstrapPlan&);
+#endif
 }

@@ -51,6 +51,7 @@ BootstrapContractResult preflightSparseBootstrap(const SealAdapter& a,const Ciph
         return {S::InvalidInput,"sparse.context","Prepared active modulus/context/components mismatch"};
     return cert.result;
 }
+#ifdef M2424_ENABLE_SPARSE_DIAGNOSTICS
 RaisedCipher executeSparseBootstrap(SealAdapter& a,const Cipher& c,const SparseBootstrapPlan& p) {
     const auto gate=preflightSparseBootstrap(a,c,p);
     if(gate.status!=BootstrapCertificationStatus::Certified) throw std::invalid_argument(gate.provenance);
@@ -58,4 +59,5 @@ RaisedCipher executeSparseBootstrap(SealAdapter& a,const Cipher& c,const SparseB
     // issued by this stage, just as the PR-3/4 executors expose local readiness.
     auto sparse=a.encapsulateSparse(c); auto raised=a.modRaiseSparse(sparse); return a.restoreSparse(raised);
 }
+#endif
 }

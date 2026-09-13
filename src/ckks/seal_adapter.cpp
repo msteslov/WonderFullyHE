@@ -142,6 +142,9 @@ struct SealAdapter::Impl {
     std::unique_ptr<seal::Encryptor> encryptor;
     std::unique_ptr<seal::Decryptor> decryptor;
 
+#ifdef M2424_ENABLE_SPARSE_DIAGNOSTICS
+    std::size_t sparseRestorationOperations{};
+#endif
     seal::SecretKey sparseSk;
     seal::GaloisKeys encapsulationKey,restorationKey;
     std::size_t sparseWeight{},encryptionSamples{};
@@ -1185,13 +1188,21 @@ SparseRaisedCipher SealAdapter::modRaiseSparse(const SparseCipher& input) {
         throw std::invalid_argument("Sparse ciphertext key generation mismatch");
     return SparseRaisedCipher(modRaiseToTop(input.cipher_),input.generation_);
 }
-RaisedCipher SealAdapter::restoreSparse(const SparseRaisedCipher& input) {
+RaisedCipher SealAdapter::restoreSparseForFirstFactor(const SparseRaisedCipher& input) {
     if(!hasSparseRestorationKey()||input.generation_!=pimpl_->sparseGeneration)
         throw std::invalid_argument("Missing or mismatched sparse restoration key");
     Cipher out=input.cipher_.cipher_;
     pimpl_->evaluator->apply_galois_inplace(out.pimpl_->ct,1,pimpl_->restorationKey);
+#ifdef M2424_ENABLE_SPARSE_DIAGNOSTICS
+    ++pimpl_->sparseRestorationOperations;
+#endif
     return RaisedCipher(std::move(out),input.cipher_.sourceCoeffModulusSize_);
 }
+#ifdef M2424_ENABLE_SPARSE_DIAGNOSTICS
+RaisedCipher SealAdapter::restoreSparse(const SparseRaisedCipher& input) {
+    return restoreSparseForFirstFactor(input);
+}
+#endif
 #ifdef M2424_ENABLE_MOD_RAISE_CHECKS
 std::vector<int> test::SparseBootstrapOracle::secret(const SealAdapter& a) {
     const auto& d=*a.pimpl_->context->key_context_data(); const auto N=a.slotCount()*2;
@@ -1214,6 +1225,7 @@ std::vector<double> test::SparseBootstrapOracle::raised(SealAdapter& a,const Spa
     try { auto out=a.decryptRaisedCoefficientsAtRaisedModulus(c.cipher_); a.pimpl_->decryptor=std::move(old); return out; }
     catch(...) { a.pimpl_->decryptor=std::move(old); throw; }
 }
+std::size_t test::SparseBootstrapOracle::restorationCount(const SealAdapter& a) { return a.pimpl_->sparseRestorationOperations; }
 void test::SparseBootstrapOracle::removeKey(SealAdapter& a,bool restoration) {
     if(restoration) a.pimpl_->restorationKey={}; else a.pimpl_->encapsulationKey={};
 }

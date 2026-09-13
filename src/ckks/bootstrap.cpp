@@ -8,6 +8,7 @@ BootstrapPlan::BootstrapPlan():data_(std::make_shared<Data>()) {}
 const BootstrapTrace& BootstrapPlan::trace() const { return data_->trace; }
 const BootstrapContractResult& BootstrapPlan::executionReadiness() const { return data_->readiness; }
 const EvalRoundExecutionPlan& BootstrapPlan::evalRound() const { return data_->evalRound; }
+const CertifiedEvalRoundPlusCoeffToSlot* BootstrapPlan::coeffToSlot() const { return data_->cts?&*data_->cts:nullptr; }
 const std::vector<EvalRoundExecutionNode>& BootstrapPlan::combinationNodes() const { return data_->combination; }
 Bootstrapper::Bootstrapper(std::size_t N,std::size_t c,std::size_t s):cts_(N,c),stc_(N,s) {}
 std::vector<int> Bootstrapper::rotationKeys() const {

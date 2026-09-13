@@ -94,7 +94,7 @@ BootstrapPlan Bootstrapper::prepare(SealAdapter& a,const Cipher& input,const Boo
             trace.certificate.gates[static_cast<std::size_t>(BootstrapGate::Security)]={
                 cert.security.result.status==S::Certified,cert.security.result.provenance,{}};
             if(cert.security.minimumSecurityBits) trace.certificate.minimumSecurityBits=static_cast<int>(std::floor(*cert.security.minimumSecurityBits));
-            trace.details["sparse.schedule"]="encapsulation at source chain/scale -> centered ModRaise to top at same scale -> separate restoration at raised chain/scale; zero rescales";
+            trace.details["sparse.schedule"]="encapsulation at source chain/scale -> centered ModRaise under s_b -> CtS first-factor shared restoration at raised chain/scale -> factorized HP/LP under s; no standalone restoration";
             trace.details["h_b"]=std::to_string(cert.keys.weight);
             trace.details["sparse.distribution"]=cert.keys.distribution;
             trace.details["sparse.keyGeneration"]=std::to_string(cert.keys.generation);
@@ -112,8 +112,21 @@ BootstrapPlan Bootstrapper::prepare(SealAdapter& a,const Cipher& input,const Boo
             trace.certificate.gates[static_cast<std::size_t>(BootstrapGate::SparseSecret)]={true,cert.liftProvenance,{trace.bounds["K"]}};
             trace.certificate.gates[static_cast<std::size_t>(BootstrapGate::KeySwitch)]={true,"Two separate audited identity-key-switch operations",{cert.encapsulationError,cert.restorationError}};
             trace.gateResults.push_back(cert.result);
-            // PR-6 deliberately has no h=1 path. A future larger-domain executor
-            // must explicitly integrate restoration error into the CtS input.
+            // Prepare the owned first-factor path while preserving the K>1
+            // execution rejection. Parameter/key shortages remain explicit CtS
+            // diagnostics; they cannot authorize a narrower EvalRound domain.
+            auto sparseRaised=a.modRaiseSparse(a.encapsulateSparse(input));
+            CoeffToSlotContract schedule{"bootstrap/sparse-CtS",a.slotCount(),p->degree,
+                std::log2(a.scale(input)),std::log2(a.scale(input)),.25,request.target.targetAbsoluteError};
+            p->cts=cts_.prepareCertified(a,sparseRaised,sparse,schedule,schedule);
+            trace.bounds["E_HP"]=p->cts->hp().outputError;
+            trace.bounds["E_LP"]=p->cts->lp().outputError;
+            trace.bounds["rho_cert"]=p->cts->domain().rho;
+            trace.gateResults.push_back(p->cts->hp().certificate);
+            trace.gateResults.push_back(p->cts->lp().certificate);
+            trace.gateResults.push_back(p->cts->domain().result);
+            trace.certificate.gates[static_cast<std::size_t>(BootstrapGate::CoeffToSlotHP)]=p->cts->hp().evidence;
+            trace.certificate.gates[static_cast<std::size_t>(BootstrapGate::CoeffToSlotLP)]=p->cts->lp().evidence;
             require(cert.K==1,S::UnsupportedEvalRoundDomain,"EvalRound.domain","Derived sparse K="+std::to_string(cert.K)+" exceeds the certified K=1 ciphertext executor; h is never reduced");
             throw Rejection{{S::UnsupportedEvalRoundDomain,"EvalRound.domain","Sparse K=1 path is not enabled"}};
         }
