@@ -2,6 +2,7 @@
 
 #include "m2424/bootstrap_contract.hpp"
 #include <cstdint>
+#include "m2424/decimal_polynomial.hpp"
 
 namespace m2424 {
 
@@ -29,6 +30,22 @@ struct EvalRoundCost {
     double cleaningPerDigitIteration{1};
     double reconstruction{};
 };
+enum class EvalRoundPolynomialProof { Unknown, GridDiagnostic, BinaryQuadraticIdentity, OutwardInterval };
+enum class EvalRoundDigitTarget { BinaryOffsetDigit, TernaryRoot };
+struct EvalRoundDigitPolynomial {
+    EvalRoundRadix radix{EvalRoundRadix::Binary};
+    std::size_t digitIndex{};
+    experimental::EvalModPolynomial polynomial;
+    EvalRoundDigitTarget target{EvalRoundDigitTarget::BinaryOffsetDigit};
+    std::uint32_t certifiedK{};
+    double certifiedRho{};
+    BootstrapBound approximationError;
+    EvalRoundPolynomialProof proof{EvalRoundPolynomialProof::Unknown};
+    bool verified{};
+    std::string provenance;
+    std::vector<std::string> failureEventIds;
+    std::size_t intervalSubdivisions{64};
+};
 struct EvalRoundExtractionDescription {
     EvalRoundExtractionMethod method{EvalRoundExtractionMethod::ExternalPolynomial};
     std::string description;
@@ -39,6 +56,7 @@ struct EvalRoundExtractionDescription {
     std::uint32_t certifiedK{};
     double certifiedRho{};
     std::string provenance;
+    std::vector<EvalRoundDigitPolynomial> polynomials;
 };
 struct EvalRoundDigitBounds {
     BootstrapBound extractionError;

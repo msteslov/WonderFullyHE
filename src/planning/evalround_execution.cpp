@@ -1,4 +1,5 @@
 #include "certified_arithmetic_internal.hpp"
+#include "evalround_polynomial_internal.hpp"
 #include "m2424/experimental/evalmod_analysis/evalround_execution.hpp"
 #include "../core/evalround_execution_internal.hpp"
 #include <gmpxx.h>
@@ -24,8 +25,8 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
     result.data_=data;
     try {
         if(std::fegetround()!=FE_TONEAREST) throw Failure{Status::ScaleScheduleInfeasible,"Compilation requires round-to-nearest binary64"};
-        if(reference.extraction.method!=EvalRoundExtractionMethod::BinaryQuadraticK1 || reference.radix!=EvalRoundRadix::Binary || reference.problem.K!=1)
-            throw Failure{Status::ExtractionNotCertified,"Reference-only or unsupported extractor: executable PR-3 path is BinaryQuadraticK1; exact phase is not a polynomial"};
+        if(reference.radix!=EvalRoundRadix::Binary||reference.extraction.method==EvalRoundExtractionMethod::PiecewiseReference||reference.extraction.method==EvalRoundExtractionMethod::TernaryPhaseReferenceK1)
+            throw Failure{Status::ExtractionNotCertified,"Reference-only target is not a certified binary polynomial extractor"};
         if(reference.status!=EvalRoundPlanStatus::Certified)
             throw Failure{Status::ExtractionNotCertified,"Mathematical/reference certificate required before compilation"};
         if(!known(options.inputSemanticError)) throw Failure{Status::RequiredBoundUnavailable,"Deterministic input semantic error with provenance is required"};
@@ -34,32 +35,57 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
             throw Failure{Status::RequiredBoundUnavailable,"Unknown/insufficient evaluation-key coefficient support; no zero local bound substitution"};
         if(!adapter.hasRelinKeys() || !adapter.hasConjugationKey()) throw Failure{Status::MissingEvaluationKeys,"Binary real projection requires conjugation and relinearization keys"};
         if(adapter.info(input).ciphertextSize!=2) throw Failure{Status::InvalidInput,"Two-component input required"};
-        auto candidate=makeEvalRoundReferenceCandidate(reference.problem,EvalRoundRadix::Binary,
-            EvalRoundExtractionMethod::BinaryQuadraticK1,reference.cost);
-        // Validate even if a caller has forged fields of the mutable reference plan.
+        EvalRoundCandidate candidate;candidate.id=reference.candidateId+"/SEAL-polynomial-baseline";
+        candidate.radix=reference.radix;candidate.cost=reference.cost;candidate.extraction=reference.extraction;candidate.failureEvents=reference.failureEvents;
+        const auto count=evalRoundDigitCount(reference.problem.K,reference.radix);
+        if(!count||candidate.extraction.polynomials.size()!=count)
+            throw Failure{Status::ExtractionNotCertified,"One concrete polynomial with whole-domain evidence per digit is required"};
+        candidate.digits.resize(count);
+        for(std::size_t j=0;j<count;++j) {
+            const auto& p=candidate.extraction.polynomials[j];
+            if(!p.verified||p.provenance.empty()||p.radix!=reference.radix||p.digitIndex!=j||
+               p.certifiedK!=reference.problem.K||bits(p.certifiedRho)!=bits(reference.problem.rho)||
+               p.target!=EvalRoundDigitTarget::BinaryOffsetDigit||!known(p.approximationError)||!p.failureEventIds.empty())
+                throw Failure{Status::ExtractionNotCertified,"Polynomial/domain/target binding or deterministic approximation evidence missing"};
+            BootstrapBound verified;
+            if(p.proof==EvalRoundPolynomialProof::BinaryQuadraticIdentity) {
+                if(reference.problem.K!=1)throw Failure{Status::ExtractionNotCertified,"Quadratic identity proof covers only K=1"};
+                auto exact=makeEvalRoundReferenceCandidate(reference.problem,reference.radix,EvalRoundExtractionMethod::BinaryQuadraticK1);
+                const auto& coefficients=exact.extraction.polynomials[j].polynomial;
+                if(p.polynomial.basis!=coefficients.basis||p.polynomial.decimalCoefficients.size()!=coefficients.decimalCoefficients.size())
+                    throw Failure{Status::ExtractionNotCertified,"Polynomial differs from its analytic identity proof"};
+                for(std::size_t k=0;k<coefficients.decimalCoefficients.size();++k)
+                    if(parseExactDecimal(p.polynomial.decimalCoefficients[k])!=parseExactDecimal(coefficients.decimalCoefficients[k]))
+                        throw Failure{Status::ExtractionNotCertified,"Changed polynomial coefficients invalidate the identity proof"};
+                verified=exact.digits[j].extractionError;
+            } else if(p.proof==EvalRoundPolynomialProof::OutwardInterval) {
+                verified=certifyEvalRoundDigitPolynomial(reference.problem,j,p.polynomial,p.intervalSubdivisions).approximationError;
+            } else throw Failure{Status::ExtractionNotCertified,"Unknown/grid-only polynomial evidence is not a whole-domain certificate"};
+            if(p.approximationError.upperBound<verified.upperBound)
+                throw Failure{Status::ExtractionNotCertified,"Claimed polynomial approximation understates verified whole-domain error"};
+            candidate.digits[j].extractionError=p.approximationError;
+            candidate.digits[j].cleaningLocalErrors.assign(reference.problem.maxCleaningRoundsPerDigit,bound(0,"Exact reference cleaner only, replaced by backend bounds"));
+            candidate.digits[j].reconstructionLocalError=bound(0,"Exact reference reconstruction only, replaced by backend bounds");
+        }
         if(planEvalRoundCandidate(reference.problem,candidate).status!=EvalRoundPlanStatus::Certified)
-            throw Failure{Status::ExtractionNotCertified,"Reference problem does not certify the actual quadratic extractor"};
-        candidate.id="BinaryQuadraticK1/SEAL-baseline";
+            throw Failure{Status::ExtractionNotCertified,"The actual polynomial candidate does not satisfy the mathematical extraction contract"};
         Builder b(adapter,input,options.evaluationKeyNoiseCoefficientSupport);
-        const auto start=b.input(adapter.scale(input),up(1+q(reference.problem.rho)),options.inputSemanticError.upperBound);
+        const auto start=b.input(adapter.scale(input),up(integer(reference.problem.K)+q(reference.problem.rho)),options.inputSemanticError.upperBound);
         b.nodes[start].semanticError.provenance=options.inputSemanticError.provenance;
         b.nodes[start].propagatedSemanticError.provenance=options.inputSemanticError.provenance;
         auto conjugate=b.add(Op::Conjugate,{start},"real projection");
         auto sum=b.add(Op::Add,{start,conjugate},"real projection");
         auto x=b.scalar(sum,mpq_class(1,2),2,"real projection");
-        auto square=b.mul(x,x,"extraction");
-        auto squareReduced=b.reduce(square,"extraction b0");
-        auto b0=b.plus(b.scalar(squareReduced,-1,1,"extraction b0"),1,"extraction b0");
-        auto linear=b.scalar(x,1,b.states[x].scale,"extraction b1");
-        auto numerator=b.add(Op::Add,{square,linear},"extraction b1");
-        auto b1=b.reduce(b.scalar(numerator,mpq_class(1,2),2,"extraction b1"),"extraction b1");
-        DigitPath paths[2];
+        PolynomialCompiler polynomials(b,x);
+        std::vector<std::size_t> extracted;
+        for(std::size_t j=0;j<count;++j)extracted.push_back(polynomials.compile(candidate.extraction.polynomials[j].polynomial,"extraction digit "+std::to_string(j)));
+        std::vector<DigitPath> paths(count);
         bool levelLimited=false;
-        for(std::size_t digit=0;digit<2;++digit) {
-            const auto extraction=digit?b1:b0;
+        for(std::size_t digit=0;digit<count;++digit) {
+            const auto extraction=extracted[digit];
             double refError=candidate.digits[digit].extractionError.upperBound;
             double error=up(q(refError)+b.states[extraction].E);
-            candidate.digits[digit].extractionError=bound(q(error),"Whole-domain quadratic approximation plus compiled input/projection/extraction arithmetic");
+            candidate.digits[digit].extractionError=bound(q(error),"Whole-domain digit polynomial approximation plus compiled input/projection/polynomial arithmetic");
             candidate.digits[digit].cleaningLocalErrors.clear();
             paths[digit].outputs.push_back(extraction); paths[digit].errors.push_back(error);
             b.tightenMagnitude(extraction,up(1+q(refError)));
@@ -87,7 +113,8 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
         // actual dyadic scale. The products have identical binary64 bits.
         // Bound reconstruction uniformly over all retained round counts so the
         // PR-2 dynamic program can still choose the minimum cleaning count.
-        mpq_class rec[2]={0,0};
+        std::vector<mpq_class> rec(count,0);
+        if(count==2) {
         for(std::size_t i=0;i<paths[0].outputs.size();++i) for(std::size_t j=0;j<paths[1].outputs.size();++j) {
             const double a=b.states[paths[0].outputs[i]].scale, c=b.states[paths[1].outputs[j]].scale;
             const double out=a*c;
@@ -98,23 +125,40 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
                 const mpq_class delta=absq(mpq_class(roundq(weight*q(cs)))/q(cs)-weight);
                 const double e=paths[d].errors[d?j:i];
                 mpq_class local=(1+q(e))*(delta+absq(ratio-1)*(weight+delta));
-                if(d==0) local+=absq(mpq_class(roundq(-q(out)))/q(out)+1);
+                if(d==0) local+=absq(mpq_class(roundq(-mpq_class(integer(reference.problem.K))*q(out)))/q(out)+integer(reference.problem.K));
                 local/=weight;
                 if(local>rec[d]) rec[d]=local;
             }
         }
-        for(std::size_t d=0;d<2;++d) candidate.digits[d].reconstructionLocalError=bound(rec[d],
+        } else {
+            // Uniform arithmetic reservation across reachable cleaning choices.
+            // Reuse Builder for exact scalar/scale error, never a grid estimate.
+            std::size_t combinations=1;for(const auto& p:paths) { if(combinations>65536/p.outputs.size())throw Failure{Status::ScaleScheduleInfeasible,"Reconstruction search exceeds baseline work limit"};combinations*=p.outputs.size(); }
+            for(std::size_t choice=0;choice<combinations;++choice) {
+                auto temporary=b;std::vector<std::size_t> roots;auto code=choice;
+                for(std::size_t d=0;d<count;++d) {const auto r=code%paths[d].outputs.size();code/=paths[d].outputs.size();auto root=paths[d].outputs[r];roots.push_back(root);temporary.states[root].M=q(up(1+q(paths[d].errors[r])));temporary.states[root].E=0;}
+                auto total=roots[0];
+                for(std::size_t d=1;d<count;++d) {auto next=roots[d];if(temporary.states[total].level<temporary.states[next].level)total=temporary.alignLevel(total,next,"reconstruction reserve");if(temporary.states[next].level<temporary.states[total].level)next=temporary.alignLevel(next,total,"reconstruction reserve");const auto a=temporary.states[total].scale,c=temporary.states[next].scale;total=temporary.scalar(total,1,c,"reconstruction reserve");next=temporary.scalar(next,mpq_class(mpz_class(1)<<d),a,"reconstruction reserve");total=temporary.add(Op::Add,{total,next},"reconstruction reserve");}
+                total=temporary.plus(total,-mpq_class(integer(reference.problem.K)),"reconstruction reserve shift");
+                if(temporary.states[total].E>rec[0])rec[0]=temporary.states[total].E;
+            }
+        }
+        for(std::size_t d=0;d<count;++d) candidate.digits[d].reconstructionLocalError=bound(rec[d],
             "Uniform exact scalar alignment/weight encoding, scale representation and constant-shift bound over available cleaning counts");
         auto selected=planEvalRoundCandidate(reference.problem,candidate);
         if(selected.status!=EvalRoundPlanStatus::Certified) throw Failure{levelLimited?Status::InsufficientLevels:Status::ErrorBudgetExceeded,
             "No certified backend cleaning schedule within levels/scales and requiredIntegerError: "+selected.provenance};
-        auto a=paths[0].outputs[selected.digits[0].cleaningIterations];
-        auto c=paths[1].outputs[selected.digits[1].cleaningIterations];
-        if(b.states[a].level<b.states[c].level) a=b.alignLevel(a,c,"reconstruction");
-        if(b.states[c].level<b.states[a].level) c=b.alignLevel(c,a,"reconstruction");
-        const auto as=b.states[a].scale,cs=b.states[c].scale;
-        a=b.scalar(a,1,cs,"reconstruction b0"); c=b.scalar(c,2,as,"reconstruction 2*b1");
-        auto output=b.plus(b.add(Op::Add,{a,c},"reconstruction"),-1,"reconstruction I=b0+2*b1-1");
+        auto output=paths[0].outputs[selected.digits[0].cleaningIterations];
+        for(std::size_t d=1;d<count;++d) {
+            auto next=paths[d].outputs[selected.digits[d].cleaningIterations];
+            if(b.states[output].level<b.states[next].level)output=b.alignLevel(output,next,"reconstruction");
+            if(b.states[next].level<b.states[output].level)next=b.alignLevel(next,output,"reconstruction");
+            const auto a=b.states[output].scale,c=b.states[next].scale;
+            output=b.scalar(output,1,c,"reconstruction accumulated digits");
+            next=b.scalar(next,mpq_class(mpz_class(1)<<d),a,"reconstruction weighted digit "+std::to_string(d));
+            output=b.add(Op::Add,{output,next},"reconstruction");
+        }
+        output=b.plus(output,-mpq_class(integer(reference.problem.K)),"reconstruction sum(2^j*b_j)-K");
         // Remove diagnostic search nodes. Only the immutable reachable DAG can execute.
         std::vector<bool> used(b.nodes.size());
         std::function<void(std::size_t)> visit=[&](std::size_t n) { if(used[n]) return; used[n]=true; for(auto j:b.nodes[n].inputs) visit(j); };
@@ -132,7 +176,7 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
             }
         }
         data->output=mapping[output]; data->fingerprint=adapter.contextFingerprint(); data->mathematicalPlan=std::move(selected);
-        data->certification={Status::Certified,"EvalRoundExecution","BinaryQuadraticK1 polynomial DAG; exact SEAL prime/dyadic schedule; deterministic finite-support arithmetic and v9 cleaning/reconstruction"};
+        data->certification={Status::Certified,"EvalRoundExecution","Generic exact-decimal polynomial DAG; exact SEAL prime/dyadic schedule; deterministic finite-support arithmetic and v9 cleaning/reconstruction"};
     } catch(const Failure& f) { data->certification={f.status,"EvalRoundExecution",f.why}; }
       catch(const std::exception& e) { data->certification={Status::InvalidInput,"EvalRoundExecution",e.what()}; }
     return result;

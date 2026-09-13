@@ -144,6 +144,17 @@ EvalRoundCandidate makeEvalRoundReferenceCandidate(const EvalRoundProblem& p, Ev
             deterministic(0, "Exact-arithmetic reference cleaner; not a backend arithmetic certificate"));
         c.digits[j].reconstructionLocalError = deterministic(0, "Exact-arithmetic reference reconstruction; binary -K is exact");
     }
+    if(method==EvalRoundExtractionMethod::BinaryQuadraticK1) {
+        for(std::size_t j=0;j<c.digits.size();++j) {
+            EvalRoundDigitPolynomial polynomial; polynomial.digitIndex=j;
+            polynomial.polynomial.decimalCoefficients=j?std::vector<std::string>{"0","0.5","0.5"}:std::vector<std::string>{"1","0","-1"};
+            polynomial.certifiedK=p.K; polynomial.certifiedRho=p.rho;
+            polynomial.approximationError=c.digits[j].extractionError;
+            polynomial.proof=EvalRoundPolynomialProof::BinaryQuadraticIdentity;
+            polynomial.verified=true; polynomial.provenance=c.extraction.provenance;
+            c.extraction.polynomials.push_back(std::move(polynomial));
+        }
+    }
     return c;
 }
 EvalRoundPlan planEvalRoundCandidate(const EvalRoundProblem& p, const EvalRoundCandidate& c) {

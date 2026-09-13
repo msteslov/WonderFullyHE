@@ -1,5 +1,6 @@
 #include "m2424/experimental/evalmod_analysis/evalround_reference.hpp"
 #include <mpfr.h>
+#include "m2424/experimental/evalmod_analysis/exact_decimal.hpp"
 #include <cmath>
 #include <stdexcept>
 
@@ -103,7 +104,20 @@ EvalRoundReferenceTrace evaluateEvalRoundReference(const EvalRoundProblem& p, co
         extracted = {{asRational(real),asRational(imaginary)}};
         break;
     }
-    default: throw std::invalid_argument("external extraction has no PR-2 reference evaluator");
+    case EvalRoundExtractionMethod::ExternalPolynomial:
+    case EvalRoundExtractionMethod::DigitExtract:
+        if(candidate.radix!=EvalRoundRadix::Binary||candidate.extraction.polynomials.size()!=trace.targetDigits.size())
+            throw std::invalid_argument("Concrete binary polynomials required for reference evaluation");
+        for(const auto& digit:candidate.extraction.polynomials) {
+            if(digit.polynomial.basis!=PolynomialBasis::Monomial||digit.polynomial.decimalCoefficients.empty())
+                throw std::invalid_argument("Known monomial coefficients required");
+            mpq_class value=0;
+            for(auto it=digit.polynomial.decimalCoefficients.rbegin();it!=digit.polynomial.decimalCoefficients.rend();++it)
+                value=value*z+parseExactDecimal(*it);
+            extracted.push_back({value,0});
+        }
+        break;
+    default: throw std::invalid_argument("Unknown extraction method");
     }
     for (std::size_t j=0; j<extracted.size(); ++j) {
         auto value = extracted[j];

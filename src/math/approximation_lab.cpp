@@ -1,6 +1,8 @@
 #include "m2424/experimental/evalmod_analysis/approximation_lab.hpp"
 
 #include <mpfr.h>
+#include "m2424/experimental/evalmod_analysis/evalround_execution.hpp"
+#include "m2424/experimental/evalmod_analysis/exact_decimal.hpp"
 
 #include <algorithm>
 #include <array>
@@ -23,6 +25,29 @@ private:
     mpfr_t value_;
 };
 
+struct Interval {
+    Real lo, hi;
+    explicit Interval(mpfr_prec_t p) : lo(p), hi(p) {}
+};
+void multiplyInterval(const Interval& left, const Interval& right, Interval& out) {
+    const auto precision=mpfr_get_prec(left.lo.get());
+    std::array<Real, 4> productsLo{Real(precision), Real(precision), Real(precision), Real(precision)};
+    std::array<Real, 4> productsHi{Real(precision), Real(precision), Real(precision), Real(precision)};
+    mpfr_mul(productsLo[0].get(), left.lo.get(), right.lo.get(), MPFR_RNDD);
+    mpfr_mul(productsLo[1].get(), left.lo.get(), right.hi.get(), MPFR_RNDD);
+    mpfr_mul(productsLo[2].get(), left.hi.get(), right.lo.get(), MPFR_RNDD);
+    mpfr_mul(productsLo[3].get(), left.hi.get(), right.hi.get(), MPFR_RNDD);
+    mpfr_mul(productsHi[0].get(), left.lo.get(), right.lo.get(), MPFR_RNDU);
+    mpfr_mul(productsHi[1].get(), left.lo.get(), right.hi.get(), MPFR_RNDU);
+    mpfr_mul(productsHi[2].get(), left.hi.get(), right.lo.get(), MPFR_RNDU);
+    mpfr_mul(productsHi[3].get(), left.hi.get(), right.hi.get(), MPFR_RNDU);
+    mpfr_set(out.lo.get(), productsLo[0].get(), MPFR_RNDD);
+    mpfr_set(out.hi.get(), productsHi[0].get(), MPFR_RNDU);
+    for (int i = 1; i < 4; ++i) {
+        mpfr_min(out.lo.get(), out.lo.get(), productsLo[i].get(), MPFR_RNDD);
+        mpfr_max(out.hi.get(), out.hi.get(), productsHi[i].get(), MPFR_RNDU);
+    }
+}
 struct ComplexValue { Real real; Real imag; explicit ComplexValue(mpfr_prec_t p) : real(p), imag(p) {} };
 
 void evaluate(const std::vector<Real>& coefficients, const Real& xr, const Real& xi,
@@ -197,10 +222,6 @@ EvalModIntervalCertificate certifyEvalModPolynomialIntervals(
         mpfr_mul(term.get(), term.get(), power.get(), MPFR_RNDU);
         mpfr_add(derivative.get(), derivative.get(), term.get(), MPFR_RNDU);
     }
-    struct Interval {
-        Real lo, hi;
-        explicit Interval(mpfr_prec_t p) : lo(p), hi(p) {}
-    };
     std::vector<Interval> coefficientIntervals;
     coefficientIntervals.reserve(polynomial.decimalCoefficients.size());
     for (const auto& decimalCoefficient : polynomial.decimalCoefficients) {
@@ -211,24 +232,7 @@ EvalModIntervalCertificate certifyEvalModPolynomialIntervals(
                             MPFR_RNDU) != 0)
             throw std::invalid_argument("invalid interval coefficient");
     }
-    const auto multiplyInterval = [&](const Interval& left, const Interval& right, Interval& out) {
-        std::array<Real, 4> productsLo{Real(precision), Real(precision), Real(precision), Real(precision)};
-        std::array<Real, 4> productsHi{Real(precision), Real(precision), Real(precision), Real(precision)};
-        mpfr_mul(productsLo[0].get(), left.lo.get(), right.lo.get(), MPFR_RNDD);
-        mpfr_mul(productsLo[1].get(), left.lo.get(), right.hi.get(), MPFR_RNDD);
-        mpfr_mul(productsLo[2].get(), left.hi.get(), right.lo.get(), MPFR_RNDD);
-        mpfr_mul(productsLo[3].get(), left.hi.get(), right.hi.get(), MPFR_RNDD);
-        mpfr_mul(productsHi[0].get(), left.lo.get(), right.lo.get(), MPFR_RNDU);
-        mpfr_mul(productsHi[1].get(), left.lo.get(), right.hi.get(), MPFR_RNDU);
-        mpfr_mul(productsHi[2].get(), left.hi.get(), right.lo.get(), MPFR_RNDU);
-        mpfr_mul(productsHi[3].get(), left.hi.get(), right.hi.get(), MPFR_RNDU);
-        mpfr_set(out.lo.get(), productsLo[0].get(), MPFR_RNDD);
-        mpfr_set(out.hi.get(), productsHi[0].get(), MPFR_RNDU);
-        for (int i = 1; i < 4; ++i) {
-            mpfr_min(out.lo.get(), out.lo.get(), productsLo[i].get(), MPFR_RNDD);
-            mpfr_max(out.hi.get(), out.hi.get(), productsHi[i].get(), MPFR_RNDU);
-        }
-    };
+
     Real approximation(precision), complexError(precision), targetModulus(precision);
     mpfr_set_zero(approximation.get(), 0);
     for (std::int64_t integer = -static_cast<std::int64_t>(domain.integerBound);
@@ -282,6 +286,51 @@ EvalModIntervalCertificate certifyEvalModPolynomialIntervals(
             mpfr_get_d(complexError.get(), MPFR_RNDU),
             mpfr_number_p(approximation.get()) && mpfr_number_p(derivative.get())
                 && mpfr_number_p(complexError.get())};
+}
+
+EvalRoundDigitPolynomial certifyEvalRoundDigitPolynomial(const EvalRoundProblem& problem,std::size_t digit,
+    const EvalModPolynomial& polynomial,std::size_t subdivisions) {
+    if(problem.K>4096||!std::isfinite(problem.rho)||problem.rho<0||problem.rho>=.5||
+       digit>=evalRoundDigitCount(problem.K,EvalRoundRadix::Binary)||subdivisions<2||subdivisions>4096||
+       polynomial.basis!=PolynomialBasis::Monomial||polynomial.decimalCoefficients.empty()||polynomial.decimalCoefficients.size()>257)
+        throw std::invalid_argument("Invalid binary digit interval proof domain/polynomial/work limit");
+    constexpr mpfr_prec_t precision=384;
+    std::vector<Interval> coefficients;
+    for(const auto& text:polynomial.decimalCoefficients) {
+        const auto exact=parseExactDecimal(text); coefficients.emplace_back(precision);
+        mpfr_set_q(coefficients.back().lo.get(),exact.get_mpq_t(),MPFR_RNDD);
+        mpfr_set_q(coefficients.back().hi.get(),exact.get_mpq_t(),MPFR_RNDU);
+    }
+    Real maximum(precision),absolute(precision); mpfr_set_zero(maximum.get(),0);
+    for(std::int64_t I=-std::int64_t(problem.K);I<=std::int64_t(problem.K);++I) {
+        const auto target=evalRoundIntegerDigits(I,problem.K,EvalRoundRadix::Binary)[digit];
+        for(std::size_t cell=0;cell<subdivisions;++cell) {
+            // Exact dyadic rho and complete closed cells; no point/grid inference.
+            mpq_class leftFraction(2*cell,subdivisions),rightFraction(2*(cell+1),subdivisions);
+            leftFraction.canonicalize();rightFraction.canonicalize();
+            const mpq_class lo=mpq_class(static_cast<long>(I))+mpq_class(problem.rho)*(leftFraction-1);
+            const mpq_class hi=mpq_class(static_cast<long>(I))+mpq_class(problem.rho)*(rightFraction-1);
+            Interval x(precision),value(precision),product(precision);
+            mpfr_set_q(x.lo.get(),lo.get_mpq_t(),MPFR_RNDD);mpfr_set_q(x.hi.get(),hi.get_mpq_t(),MPFR_RNDU);
+            mpfr_set_zero(value.lo.get(),0);mpfr_set_zero(value.hi.get(),0);
+            for(std::size_t k=coefficients.size();k-->0;) {
+                multiplyInterval(value,x,product);
+                mpfr_add(value.lo.get(),product.lo.get(),coefficients[k].lo.get(),MPFR_RNDD);
+                mpfr_add(value.hi.get(),product.hi.get(),coefficients[k].hi.get(),MPFR_RNDU);
+            }
+            mpfr_sub_si(value.lo.get(),value.lo.get(),target,MPFR_RNDD);
+            mpfr_sub_si(value.hi.get(),value.hi.get(),target,MPFR_RNDU);
+            for(auto endpoint:{value.lo.get(),value.hi.get()}) {
+                mpfr_abs(absolute.get(),endpoint,MPFR_RNDU);mpfr_max(maximum.get(),maximum.get(),absolute.get(),MPFR_RNDU);
+            }
+        }
+    }
+    EvalRoundDigitPolynomial out;out.digitIndex=digit;out.polynomial=polynomial;
+    out.certifiedK=problem.K;out.certifiedRho=problem.rho;out.verified=true;
+    out.proof=EvalRoundPolynomialProof::OutwardInterval;out.intervalSubdivisions=subdivisions;
+    out.provenance="384-bit outward MPFR Horner on every complete closed cell of D_K,rho, subtracting bit_j(I+K); no grid or EvalMod target bound";
+    out.approximationError={mpfr_get_d(maximum.get(),MPFR_RNDU),BootstrapBoundKind::Deterministic,out.provenance,{}};
+    return out;
 }
 
 } // namespace m2424::experimental

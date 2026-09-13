@@ -24,8 +24,8 @@ struct EvalRoundReferenceTrace {
 };
 /// Exact rational polynomials, MPFR phase/root evaluation, and rounding to the
 /// requested reference precision after each stage. These values are diagnostics,
-/// NEVER analytical error bounds. ExternalPolynomial/DigitExtract are descriptors
-/// for externally proved extractors, not implemented reference algorithms here.
+/// NEVER analytical error bounds. Concrete external polynomials can be evaluated
+/// as diagnostics; this evaluation does not prove their digit approximation.
 EvalRoundReferenceTrace evaluateEvalRoundReference(const EvalRoundProblem&, const EvalRoundCandidate&,
     const mpq_class& z, const std::vector<std::size_t>& cleaningCounts, std::size_t precisionBits = 256);
 

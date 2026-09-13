@@ -1,4 +1,5 @@
 #pragma once
+#include "m2424/decimal_polynomial.hpp"
 
 #include "m2424/experimental/evalmod_analysis/domain_analysis.hpp"
 
@@ -7,13 +8,6 @@
 #include <vector>
 
 namespace m2424::experimental {
-
-enum class PolynomialBasis { Monomial, Chebyshev, Composite };
-
-struct EvalModPolynomial {
-    PolynomialBasis basis{PolynomialBasis::Monomial};
-    std::vector<std::string> decimalCoefficients;
-};
 
 struct EvalModGridDiagnostic {
     double approximationMaxError{};
