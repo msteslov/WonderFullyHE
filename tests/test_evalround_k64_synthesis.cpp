@@ -1,7 +1,8 @@
 #include "m2424/experimental/evalmod_analysis/evalround_synthesis.hpp"
-#include "bootstrap_fixture.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
@@ -14,6 +15,10 @@ void check(bool value, const char* why) { if (!value) throw std::runtime_error(w
 int main() { try {
     // Exact binary64 value emitted by the selected sparse CtS certificate.
     const EvalRoundProblem problem{64, 5.2020386213659767e-5, 1e-2, 16};
+    std::uint64_t rhoBits{};
+    std::memcpy(&rhoBits, &problem.rho, sizeof(rhoBits));
+    check(rhoBits == std::uint64_t{0x3f0b460edc2fc0f3ULL},
+          "K=64 search uses the fixed sparse-CtS rho bits");
     check(evalRoundDigitCount(64, EvalRoundRadix::Binary) == 8,
           "K=64 must have eight offset-binary digits");
     const auto search = searchEvalRoundBinaryDigitPolynomials(problem);
@@ -25,10 +30,26 @@ int main() { try {
             "target row is exactly bit_j(I+64)");
     }
     check(search.records.size() == 8 * 2 * 4, "every digit/family/degree is recorded");
+    check(search.config.degrees == std::vector<std::size_t>({64, 128, 192, 256}),
+          "bounded degrees remain exactly 64,128,192,256");
+    std::vector<std::vector<bool>> remezAttempted(8, std::vector<bool>(4));
+    bool sawConvergedRemez = false;
     for (const auto& record : search.records) {
         if (record.family == EvalModApproximationFamily::MultiIntervalMinimax) {
-            check(record.generatorStatus == EvalRoundDigitGeneratorStatus::NotApplicableToTarget
-                && !record.certificate, "target-locked Remez output is never relabelled as a digit proof");
+            const auto degree = std::find(search.config.degrees.begin(),
+                search.config.degrees.end(), record.requestedDegree);
+            check(degree != search.config.degrees.end(), "Remez attempted only configured degrees");
+            remezAttempted[record.digitIndex][degree - search.config.degrees.begin()] = true;
+            check(record.generatorStatus == EvalRoundDigitGeneratorStatus::Generated
+                    && record.certificate && record.exchangeIterations > 0
+                    && std::isfinite(record.rigorousIntervalError),
+                  "direct target-agnostic Remez produces a separately certified candidate");
+            check(record.exchangePointsInsideDomain,
+                  "Remez exchange points never enter excluded gaps");
+            check(record.cleanerInputDomainSatisfied
+                    == (record.rigorousIntervalError <= 1),
+                  "cleaner-domain flag is derived from the rigorous certificate");
+            sawConvergedRemez = sawConvergedRemez || record.generatorConverged;
         }
         if (record.certificate) {
             const auto& proof = *record.certificate;
@@ -42,43 +63,24 @@ int main() { try {
                   "certificate is bound to the actual rho bits");
         }
     }
+    for (const auto& digits : remezAttempted) for (const bool attempted : digits)
+        check(attempted, "all eight digits and four degrees are attempted by Remez");
+    check(sawConvergedRemez && !search.extractorCertified,
+          "Remez convergence alone cannot certify the extractor");
+    for (std::size_t digit = 0; digit < 8; ++digit) {
+        const auto& selected = search.records[*search.selectedRecordByDigit[digit]];
+        for (const auto& record : search.records)
+            if (record.digitIndex == digit && record.certificate
+                && std::isfinite(record.rigorousIntervalError))
+                check(selected.rigorousIntervalError <= record.rigorousIntervalError,
+                      "selection uses the rigorous bound across Remez and diagnostics");
+    }
     auto candidate = makeEvalRoundBinaryPolynomialCandidate(search);
     if (search.allDigitsCertified) {
-        check(candidate.extraction.polynomials.size() == 8 && candidate.extraction.verified,
-              "complete result contains all eight certificates");
         check(!search.allCleanerInputDomainsSatisfied && !search.extractorCertified,
               "finite outward bounds do not imply a cleaner-feasible extractor");
-        for (const double budget : {1e-2, 1e-4, 1e-6}) {
-            auto diagnostic = problem; diagnostic.requiredIntegerError = budget;
-            const auto plan = planEvalRoundCandidate(diagnostic, candidate);
-            check(plan.status != EvalRoundPlanStatus::Certified
-                    && plan.rejection == EvalRoundRejectionReason::CleaningDomainViolation,
-                  "all local budgets stop at the unchanged cleaner-domain gate");
-        }
-        auto fixture = test::BootstrapFixture::create(
-            {16, std::vector<int>(10, 50), std::ldexp(1., 49), 8});
-        fixture.generateKeys(std::vector<int>{0}, true);
-        const auto input = fixture.encrypt(fixture.encode({0.}));
-        EvalRoundExecutionOptions options;
-        options.inputSemanticError = {1e-8, BootstrapBoundKind::Deterministic,
-                                      "analysis-only compiler input bound", {}};
-        const auto rejectedMath = planEvalRoundCandidate(problem, candidate);
-        const auto compileAttempt = EvalRoundExecutionCompiler::compile(
-            fixture, input, rejectedMath, options);
-        check(compileAttempt.certification().status
-                == BootstrapCertificationStatus::ExtractionNotCertified,
-              "analysis compile attempt stops at the mathematical cleaner-domain blocker");
-        auto missing = candidate; missing.extraction.polynomials.pop_back();
-        check(missing.extraction.polynomials.size() != 8,
-              "removing one digit cannot leave a complete extractor");
-        auto wrongIndex = candidate.extraction.polynomials[0]; wrongIndex.digitIndex = 1;
-        auto wrongK = candidate.extraction.polynomials[0]; wrongK.certifiedK = 1;
-        auto wrongRho = candidate.extraction.polynomials[0]; wrongRho.certifiedRho = std::nextafter(problem.rho, 1.0);
-        auto modified = candidate.extraction.polynomials[0]; modified.polynomial.decimalCoefficients[0] += "1";
-        check(wrongIndex.digitIndex != 0 && wrongK.certifiedK != problem.K
-                && wrongRho.certifiedRho != problem.rho
-                && modified.polynomial.decimalCoefficients != candidate.extraction.polynomials[0].polynomial.decimalCoefficients,
-              "certificate-binding mutations are observable and require rejection/recomputation");
+        check(!candidate.extraction.verified && candidate.extraction.polynomials.empty(),
+              "cleaner-domain failure prevents candidate construction and planner input");
     } else {
         check(!candidate.extraction.verified && candidate.extraction.polynomials.empty()
                 && search.status.find("not a global impossibility") != std::string::npos,

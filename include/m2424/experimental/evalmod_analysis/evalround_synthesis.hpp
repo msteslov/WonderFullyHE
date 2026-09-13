@@ -20,6 +20,8 @@ struct EvalRoundDigitSearchRecord {
     std::size_t requestedDegree{};
     EvalRoundDigitGeneratorStatus generatorStatus{EvalRoundDigitGeneratorStatus::GenerationFailed};
     bool generatorConverged{};
+    std::size_t exchangeIterations{};
+    bool exchangePointsInsideDomain{};
     double gridMaximumError{std::numeric_limits<double>::infinity()};
     double rigorousIntervalError{std::numeric_limits<double>::infinity()};
     double maximumCoefficientMagnitude{};
@@ -35,6 +37,8 @@ struct EvalRoundBinaryDigitSearchConfig {
         EvalModApproximationFamily::MultiIntervalChebyshev};
     std::size_t gridPointsPerInterval{3};
     std::size_t intervalSubdivisions{16};
+    std::size_t remezSamplesPerInterval{8};
+    std::size_t remezMaximumIterations{4};
 };
 
 struct EvalRoundBinaryDigitSearchResult {

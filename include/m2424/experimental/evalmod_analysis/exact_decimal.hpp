@@ -1,5 +1,6 @@
 #pragma once
 #include <gmpxx.h>
+#include <algorithm>
 #include <string>
 #include <stdexcept>
 namespace m2424::experimental {
@@ -58,5 +59,39 @@ inline mpq_class parseExactDecimal(const std::string& text) {
     mpq_class result(numerator, denominator);
     result.canonicalize();
     return result;
+}
+inline std::string exactRationalTerminatingDecimal(const mpq_class& input) {
+    mpq_class value = input;
+    value.canonicalize();
+    mpz_class denominator = value.get_den();
+    std::size_t twos = 0, fives = 0;
+    while (mpz_divisible_ui_p(denominator.get_mpz_t(), 2)) {
+        denominator /= 2; ++twos;
+    }
+    while (mpz_divisible_ui_p(denominator.get_mpz_t(), 5)) {
+        denominator /= 5; ++fives;
+    }
+    if (denominator != 1)
+        throw std::invalid_argument("exact rational decimal is not terminating");
+    const std::size_t digits = std::max(twos, fives);
+    mpz_class scaled = value.get_num();
+    if (digits > twos) {
+        mpz_class power;
+        mpz_ui_pow_ui(power.get_mpz_t(), 2, static_cast<unsigned long>(digits - twos));
+        scaled *= power;
+    }
+    if (digits > fives) {
+        mpz_class power;
+        mpz_ui_pow_ui(power.get_mpz_t(), 5, static_cast<unsigned long>(digits - fives));
+        scaled *= power;
+    }
+    const bool negative = scaled < 0;
+    std::string text = (negative ? -scaled : scaled).get_str();
+    if (digits == 0) return negative ? "-" + text : text;
+    if (text.size() <= digits) text.insert(0, digits + 1 - text.size(), '0');
+    text.insert(text.size() - digits, 1, '.');
+    while (text.size() > 1 && text.back() == '0') text.pop_back();
+    if (!text.empty() && text.back() == '.') text.pop_back();
+    return negative ? "-" + text : text;
 }
 }

@@ -7,6 +7,11 @@
 using namespace m2424;
 using namespace m2424::experimental;
 
+const char* familyName(EvalModApproximationFamily family) {
+    return family == EvalModApproximationFamily::MultiIntervalMinimax
+        ? "multi_interval_minimax" : "multi_interval_chebyshev";
+}
+
 int main() {
     // Exact binary64 value emitted by test_sparse_coeff_to_slot for the
     // unchanged N=16384, seven-60-bit-prime sparse certificate.
@@ -26,7 +31,8 @@ int main() {
             && record.certificate && std::isfinite(record.rigorousIntervalError)
             && (!best || record.rigorousIntervalError < best->rigorousIntervalError)) best = &record;
         std::cout << "digit=" << digit;
-        if (best) std::cout << " family=multi_interval_chebyshev degree=" << best->requestedDegree
+        if (best) std::cout << " family=" << familyName(best->family)
+            << " degree=" << best->requestedDegree
             << " generated=" << best->generatorConverged
             << " grid=" << best->gridMaximumError
             << " rigorous=" << best->rigorousIntervalError
@@ -35,34 +41,27 @@ int main() {
         else std::cout << " no_finite_interval_candidate";
         std::cout << '\n';
     }
-    std::cout << "minimax_status=not_applicable: existing remezOdd target is nearest-integer residual\n";
     for (const auto& record : result.records) {
-        if (record.family != EvalModApproximationFamily::MultiIntervalChebyshev) continue;
-        std::cout << "record digit=" << record.digitIndex
+        std::cout << "record family=" << familyName(record.family)
+                  << " digit=" << record.digitIndex
                   << " degree=" << record.requestedDegree
                   << " status=" << static_cast<int>(record.generatorStatus)
                   << " converged=" << record.generatorConverged
+                  << " iterations=" << record.exchangeIterations
+                  << " exchange_inside_domain=" << record.exchangePointsInsideDomain
                   << " grid=" << record.gridMaximumError
                   << " rigorous=" << record.rigorousIntervalError
                   << " max_coefficient=" << record.maximumCoefficientMagnitude
                   << " cleaner_a_le_1=" << record.cleanerInputDomainSatisfied << '\n';
     }
-    const auto candidate = makeEvalRoundBinaryPolynomialCandidate(result);
-    for (const double budget : {1e-2, 1e-4, 1e-6}) {
-        auto diagnostic = problem; diagnostic.requiredIntegerError = budget;
-        const auto plan = planEvalRoundCandidate(diagnostic, candidate);
-        std::cout << "cleaning budget=" << budget
-                  << " status=" << static_cast<int>(plan.status)
-                  << " rejection=" << static_cast<int>(plan.rejection)
-                  << " iterations=" << plan.totalCleaningIterations
-                  << " final_E_I=" << plan.integerErrorUpper
-                  << " cleaner_domain=false contributions=";
-        for (std::size_t digit = 0; digit < 8; ++digit) {
-            const auto& selected = result.records[*result.selectedRecordByDigit[digit]];
-            std::cout << std::ldexp(selected.rigorousIntervalError,
-                                    static_cast<int>(digit)) << ',';
-        }
-        std::cout << '\n';
+    std::cout << "cleaning_planner=not_attempted; prerequisite_all_a_le_1="
+              << result.allCleanerInputDomainsSatisfied << '\n';
+    std::cout << "selected_precleaning_weighted_bounds=";
+    for (std::size_t digit = 0; digit < 8; ++digit) {
+        const auto& selected = result.records[*result.selectedRecordByDigit[digit]];
+        std::cout << std::ldexp(selected.rigorousIntervalError,
+                                static_cast<int>(digit)) << ',';
     }
-    std::cout << "ciphertext_compile=attempted_in_test; first_blocker=ExtractionNotCertified because mathematical planning stops at CleaningDomainViolation; no ciphertext depth claim\n";
+    std::cout << '\n';
+    std::cout << "ciphertext_compile=not_attempted; first_blocker=CleaningDomainViolation; no ciphertext depth claim\n";
 }

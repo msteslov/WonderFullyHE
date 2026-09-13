@@ -173,6 +173,15 @@ Remez-кандидат допускается к сравнению только
 dense-grid maximum. Исключение одного кандидата превращается в
 `ApproximationNotConverged` и не прерывает synthesis.
 
+Экспериментальный `generateMultiIntervalRemez` переиспользует тот же MPFR-384
+exchange core для произвольной кусочно-постоянной цели на упорядоченном объединении
+замкнутых интервалов. Endpoints и target парсятся как exact decimal rationals;
+полная monomial/Chebyshev basis и нормировка переменной задаются request-ом.
+Генератор не добавляет точки в промежутки между интервалами. Его convergence,
+exchange points и sampled maximum являются только диагностикой: доказательство
+по-прежнему выдаёт отдельный outward interval verifier. Legacy `remezOdd` сохраняет
+прежние odd powers, target `x-round(x)`, grid и iteration bound.
+
 Operation counts, depth, level consumption и peak liveness выводятся из узлов DAG.
 `ModSwitch`, `AlignScale` и `AddPlain` представлены отдельными узлами и входят в
 стоимостную модель, а не вставляются backend-исполнителем скрыто.

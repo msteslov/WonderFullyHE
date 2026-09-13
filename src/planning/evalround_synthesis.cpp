@@ -112,7 +112,8 @@ EvalRoundBinaryDigitSearchResult searchEvalRoundBinaryDigitPolynomials(
         || !std::isfinite(problem.rho) || problem.rho < 0 || problem.rho >= .5
         || config.degrees.empty() || config.families.empty()
         || config.gridPointsPerInterval == 0 || config.intervalSubdivisions < 2
-        || config.intervalSubdivisions > 4096)
+        || config.intervalSubdivisions > 4096 || config.remezSamplesPerInterval < 2
+        || config.remezMaximumIterations == 0 || config.remezMaximumIterations > 24)
         throw std::invalid_argument("invalid bounded K=64 binary digit search");
     for (const auto degree : config.degrees)
         if (degree == 0 || degree > 256)
@@ -136,8 +137,42 @@ EvalRoundBinaryDigitSearchResult searchEvalRoundBinaryDigitPolynomials(
             record.family = family;
             record.requestedDegree = degree;
             if (family == EvalModApproximationFamily::MultiIntervalMinimax) {
-                record.generatorStatus = EvalRoundDigitGeneratorStatus::NotApplicableToTarget;
-                record.provenance = "Existing remezOdd/MultiIntervalMinimax is restricted to the odd nearest-integer residual target; its coefficients are not binary-digit candidates";
+                try {
+                    MultiIntervalRemezRequest request;
+                    request.degree = degree;
+                    request.basis = PolynomialBasis::Chebyshev;
+                    request.variableScaleDecimal = "64";
+                    request.samplesPerInterval = config.remezSamplesPerInterval;
+                    request.maximumIterations = config.remezMaximumIterations;
+                    for (std::int64_t integer = -64; integer <= 64; ++integer) {
+                        const mpq_class center(static_cast<long>(integer));
+                        const mpq_class rho(problem.rho);
+                        request.intervals.push_back({
+                            exactRationalTerminatingDecimal(center - rho),
+                            exactRationalTerminatingDecimal(center + rho),
+                            std::to_string(evalRoundIntegerDigits(
+                                integer, 64, EvalRoundRadix::Binary)[digit])});
+                    }
+                    const auto remez = generateMultiIntervalRemez(request);
+                    auto certificate = certifyEvalRoundDigitPolynomial(
+                        problem, digit, remez.polynomial, config.intervalSubdivisions);
+                    record.generatorStatus = EvalRoundDigitGeneratorStatus::Generated;
+                    record.generatorConverged = remez.converged;
+                    record.exchangeIterations = remez.exchangeIterations;
+                    record.exchangePointsInsideDomain = remez.exchangePointsInsideDomain;
+                    record.gridMaximumError = remez.sampledMaximumError;
+                    record.rigorousIntervalError = certificate.approximationError.upperBound;
+                    record.maximumCoefficientMagnitude = maximumCoefficient(remez.polynomial);
+                    record.cleanerInputDomainSatisfied = std::isfinite(record.rigorousIntervalError)
+                        && record.rigorousIntervalError <= 1;
+                    record.provenance = "Generalized existing MPFR-384 Remez exchange over only the 129 exact closed digit intervals; full Chebyshev basis in x/64; convergence and sampled error are diagnostic only";
+                    certificate.provenance += "; candidate generator: " + record.provenance;
+                    record.certificate = std::move(certificate);
+                } catch (const std::exception& error) {
+                    record.generatorStatus = EvalRoundDigitGeneratorStatus::GenerationFailed;
+                    record.provenance = std::string("Remez generation/certification failed: ")
+                        + error.what();
+                }
                 result.records.push_back(std::move(record));
                 continue;
             }
@@ -150,6 +185,8 @@ EvalRoundBinaryDigitSearchResult searchEvalRoundBinaryDigitPolynomials(
                     problem, digit, monomial, config.intervalSubdivisions);
                 record.generatorStatus = EvalRoundDigitGeneratorStatus::Generated;
                 record.generatorConverged = true;
+                record.exchangeIterations = 0;
+                record.exchangePointsInsideDomain = false;
                 record.rigorousIntervalError = certificate.approximationError.upperBound;
                 record.maximumCoefficientMagnitude = maximumCoefficient(monomial);
                 record.cleanerInputDomainSatisfied = std::isfinite(record.rigorousIntervalError)
@@ -182,7 +219,7 @@ EvalRoundBinaryDigitSearchResult searchEvalRoundBinaryDigitPolynomials(
     result.status = result.extractorCertified
         ? "All eight digits have deterministic whole-domain certificates inside a<=1"
         : result.allDigitsCertified
-            ? "All eight digits have finite outward bounds, but the selected bounds violate the cleaner input domain; no Certified K=64 extractor in this bounded search; this is not a global impossibility result"
+            ? "No Certified direct multi-interval Remez extractor was found in this bounded degree search."
             : "One or more digits lack a finite outward bound; no complete certified K=64 extractor in this bounded search; this is not a global impossibility result";
     return result;
 }
@@ -196,10 +233,10 @@ EvalRoundCandidate makeEvalRoundBinaryPolynomialCandidate(
     candidate.extraction.description = "Bounded K=64 binary digit polynomial search";
     candidate.extraction.certifiedK = search.problem.K;
     candidate.extraction.certifiedRho = search.problem.rho;
-    candidate.extraction.verified = search.allDigitsCertified;
+    candidate.extraction.verified = search.extractorCertified;
     candidate.extraction.provenance = search.status;
     candidate.digits.resize(8);
-    if (!search.allDigitsCertified) return candidate;
+    if (!search.extractorCertified) return candidate;
     for (std::size_t digit = 0; digit < 8; ++digit) {
         const auto& record = search.records[*search.selectedRecordByDigit[digit]];
         candidate.extraction.polynomials.push_back(*record.certificate);

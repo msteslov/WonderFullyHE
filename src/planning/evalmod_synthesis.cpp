@@ -5,6 +5,7 @@
 #include <seal/util/config.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <iomanip>
@@ -81,51 +82,59 @@ std::vector<long double> fit(const EvalModDomain& domain, std::size_t degree, bo
     return result;
 }
 
-struct RemezResult { EvalModPolynomial polynomial; bool converged{}; };
+struct RemezGridPoint {
+    MpReal x, target;
+    RemezGridPoint(MpReal&& xValue, MpReal&& targetValue)
+        : x(std::move(xValue)), target(std::move(targetValue)) {}
+};
 
-RemezResult remezOdd(const EvalModDomain& domain, std::size_t degree,
-                     bool chebyshevBasis = false) {
-    const std::size_t terms = (degree + 1) / 2;
+struct RemezResult {
+    EvalModPolynomial polynomial;
+    bool converged{};
+    std::size_t iterations{};
+    double sampledMaximumError{std::numeric_limits<double>::infinity()};
+    std::vector<std::size_t> extrema;
+};
+
+RemezResult remezExchange(const std::vector<RemezGridPoint>& grid,
+                          const std::vector<std::size_t>& powers,
+                          std::size_t degree, bool chebyshevBasis,
+                          mpfr_srcptr variableScale,
+                          std::size_t maximumIterations) {
+    const std::size_t terms = powers.size();
     const std::size_t unknowns = terms + 1;
-    std::vector<MpReal> grid;
-    MpReal rho;
-    if (mpfr_set_str(rho.get(), domain.normalizedResidualBoundDecimal.c_str(), 10, MPFR_RNDN) != 0)
-        throw std::invalid_argument("invalid Remez domain radius");
-    for (std::size_t integer = 0; integer <= domain.integerBound; ++integer) {
-        for (std::size_t sample = 0; sample < 2048; ++sample) {
-            MpReal residual, x, fraction;
-            mpfr_set_ui(fraction.get(), 2 * sample, MPFR_RNDN);
-            mpfr_div_ui(fraction.get(), fraction.get(), 2047, MPFR_RNDN);
-            mpfr_sub_ui(fraction.get(), fraction.get(), 1, MPFR_RNDN);
-            mpfr_mul(residual.get(), rho.get(), fraction.get(), MPFR_RNDN);
-            mpfr_add_ui(x.get(), residual.get(), integer, MPFR_RNDN);
-            if (mpfr_sgn(x.get()) >= 0) grid.push_back(std::move(x));
-        }
-    }
+    if (grid.size() < unknowns || terms == 0 || maximumIterations == 0)
+        throw std::invalid_argument("insufficient Remez grid, basis, or iterations");
     std::vector<std::size_t> extrema(unknowns);
     for (std::size_t i = 0; i < unknowns; ++i) extrema[i] = i * (grid.size() - 1) / (unknowns - 1);
     std::vector<MpReal> solution(unknowns);
     bool converged = false;
+    std::size_t iterations = 0;
+    double sampledMaximumError = std::numeric_limits<double>::infinity();
     MpReal previousMaximum;
     mpfr_set_inf(previousMaximum.get(), 1);
-    for (std::size_t iteration = 0; iteration < 24; ++iteration) {
+    const bool unitScale = mpfr_cmp_ui(variableScale, 1) == 0;
+    bool legacyOddMonomial = !chebyshevBasis && unitScale;
+    for (std::size_t col = 0; col < powers.size(); ++col)
+        legacyOddMonomial = legacyOddMonomial && powers[col] == 2 * col + 1;
+    for (std::size_t iteration = 0; iteration < maximumIterations; ++iteration) {
+        iterations = iteration + 1;
         std::vector<std::vector<MpReal>> a;
         a.reserve(unknowns);
         for (std::size_t row = 0; row < unknowns; ++row) {
             a.emplace_back(unknowns + 1);
-            MpReal base, residual, nearest;
-            mpfr_set(base.get(), grid[extrema[row]].get(), MPFR_RNDN);
-            mpfr_add_d(nearest.get(), base.get(), 0.5, MPFR_RNDN);
-            mpfr_floor(nearest.get(), nearest.get());
-            mpfr_sub(residual.get(), base.get(), nearest.get(), MPFR_RNDN);
+            MpReal base, normalized;
+            mpfr_set(base.get(), grid[extrema[row]].x.get(), MPFR_RNDN);
+            if (unitScale) mpfr_set(normalized.get(), base.get(), MPFR_RNDN);
+            else mpfr_div(normalized.get(), base.get(), variableScale, MPFR_RNDN);
             for (std::size_t col = 0; col < terms; ++col) {
                 if (chebyshevBasis)
-                    chebyshevValue(a[row][col].get(), base.get(), 2 * col + 1);
+                    chebyshevValue(a[row][col].get(), normalized.get(), powers[col]);
                 else
-                    mpfr_pow_ui(a[row][col].get(), base.get(), 2 * col + 1, MPFR_RNDN);
+                    mpfr_pow_ui(a[row][col].get(), normalized.get(), powers[col], MPFR_RNDN);
             }
             mpfr_set_si(a[row][terms].get(), row % 2 ? -1 : 1, MPFR_RNDN);
-            mpfr_set(a[row][unknowns].get(), residual.get(), MPFR_RNDN);
+            mpfr_set(a[row][unknowns].get(), grid[extrema[row]].target.get(), MPFR_RNDN);
         }
         for (std::size_t pivot = 0; pivot < unknowns; ++pivot) {
             std::size_t best = pivot;
@@ -162,28 +171,29 @@ RemezResult remezOdd(const EvalModDomain& domain, std::size_t degree,
             std::size_t fallbackPoint = begin;
             int fallbackSign = 0;
             for (std::size_t point = begin; point < end; ++point) {
-                MpReal value, square, target, nearest, error;
+                MpReal value, normalized, error;
                 mpfr_set_zero(value.get(), 0);
-                if (chebyshevBasis) {
-                    for (std::size_t col = 0; col < terms; ++col) {
-                        MpReal basisValue, contribution;
-                        chebyshevValue(basisValue.get(), grid[point].get(), 2 * col + 1);
-                        mpfr_mul(contribution.get(), solution[col].get(),
-                                 basisValue.get(), MPFR_RNDN);
-                        mpfr_add(value.get(), value.get(), contribution.get(), MPFR_RNDN);
-                    }
-                } else {
-                    mpfr_mul(square.get(), grid[point].get(), grid[point].get(), MPFR_RNDN);
+                if (unitScale) mpfr_set(normalized.get(), grid[point].x.get(), MPFR_RNDN);
+                else mpfr_div(normalized.get(), grid[point].x.get(), variableScale, MPFR_RNDN);
+                if (legacyOddMonomial) {
+                    MpReal square;
+                    mpfr_mul(square.get(), normalized.get(), normalized.get(), MPFR_RNDN);
                     for (std::size_t col = terms; col-- > 0;) {
                         mpfr_mul(value.get(), value.get(), square.get(), MPFR_RNDN);
                         mpfr_add(value.get(), value.get(), solution[col].get(), MPFR_RNDN);
                     }
-                    mpfr_mul(value.get(), value.get(), grid[point].get(), MPFR_RNDN);
+                    mpfr_mul(value.get(), value.get(), normalized.get(), MPFR_RNDN);
+                } else for (std::size_t col = 0; col < terms; ++col) {
+                        MpReal basisValue, contribution;
+                        if (chebyshevBasis)
+                            chebyshevValue(basisValue.get(), normalized.get(), powers[col]);
+                        else
+                            mpfr_pow_ui(basisValue.get(), normalized.get(), powers[col], MPFR_RNDN);
+                        mpfr_mul(contribution.get(), solution[col].get(),
+                                 basisValue.get(), MPFR_RNDN);
+                        mpfr_add(value.get(), value.get(), contribution.get(), MPFR_RNDN);
                 }
-                mpfr_add_d(nearest.get(), grid[point].get(), 0.5, MPFR_RNDN);
-                mpfr_floor(nearest.get(), nearest.get());
-                mpfr_sub(target.get(), grid[point].get(), nearest.get(), MPFR_RNDN);
-                mpfr_sub(error.get(), value.get(), target.get(), MPFR_RNDN);
+                mpfr_sub(error.get(), value.get(), grid[point].target.get(), MPFR_RNDN);
                 const int errorSign = mpfr_sgn(error.get());
                 mpfr_abs(error.get(), error.get(), MPFR_RNDN);
                 if (mpfr_greater_p(error.get(), fallbackMaximum.get())) {
@@ -229,10 +239,40 @@ RemezResult remezOdd(const EvalModDomain& domain, std::size_t degree,
                 ? extrema[i] - previousExtrema[i] : previousExtrema[i] - extrema[i];
             exchangeStable = exchangeStable && movement <= exchangeTolerance;
         }
+        sampledMaximumError = mpfr_get_d(globalMaximum.get(), MPFR_RNDU);
         if (mpfr_number_p(previousMaximum.get()) && alternating && balanced && exchangeStable
             && mpfr_lessequal_p(difference.get(), tolerance.get())) { converged = true; break; }
         mpfr_set(previousMaximum.get(), globalMaximum.get(), MPFR_RNDN);
     }
+    MpReal sampledMaximum;
+    mpfr_set_zero(sampledMaximum.get(), 0);
+    for (const auto& point : grid) {
+        MpReal value, normalized, error;
+        mpfr_set_zero(value.get(), 0);
+        if (unitScale) mpfr_set(normalized.get(), point.x.get(), MPFR_RNDN);
+        else mpfr_div(normalized.get(), point.x.get(), variableScale, MPFR_RNDN);
+        if (legacyOddMonomial) {
+            MpReal square;
+            mpfr_mul(square.get(), normalized.get(), normalized.get(), MPFR_RNDN);
+            for (std::size_t col = terms; col-- > 0;) {
+                mpfr_mul(value.get(), value.get(), square.get(), MPFR_RNDN);
+                mpfr_add(value.get(), value.get(), solution[col].get(), MPFR_RNDN);
+            }
+            mpfr_mul(value.get(), value.get(), normalized.get(), MPFR_RNDN);
+        } else for (std::size_t col = 0; col < terms; ++col) {
+            MpReal basisValue, contribution;
+            if (chebyshevBasis)
+                chebyshevValue(basisValue.get(), normalized.get(), powers[col]);
+            else
+                mpfr_pow_ui(basisValue.get(), normalized.get(), powers[col], MPFR_RNDN);
+            mpfr_mul(contribution.get(), solution[col].get(), basisValue.get(), MPFR_RNDN);
+            mpfr_add(value.get(), value.get(), contribution.get(), MPFR_RNDN);
+        }
+        mpfr_sub(error.get(), value.get(), point.target.get(), MPFR_RNDN);
+        mpfr_abs(error.get(), error.get(), MPFR_RNDN);
+        mpfr_max(sampledMaximum.get(), sampledMaximum.get(), error.get(), MPFR_RNDN);
+    }
+    sampledMaximumError = mpfr_get_d(sampledMaximum.get(), MPFR_RNDU);
     EvalModPolynomial result;
     result.basis = chebyshevBasis ? PolynomialBasis::Chebyshev
                                   : PolynomialBasis::Monomial;
@@ -240,10 +280,37 @@ RemezResult remezOdd(const EvalModDomain& domain, std::size_t degree,
     for (std::size_t index = 0; index < terms; ++index) {
         char* text = nullptr;
         mpfr_asprintf(&text, "%.120Rg", solution[index].get());
-        result.decimalCoefficients[2 * index + 1] = text ? text : "0";
+        result.decimalCoefficients[powers[index]] = text ? text : "0";
         mpfr_free_str(text);
     }
-    return {std::move(result), converged};
+    return {std::move(result), converged, iterations, sampledMaximumError, std::move(extrema)};
+}
+
+RemezResult remezOdd(const EvalModDomain& domain, std::size_t degree,
+                     bool chebyshevBasis = false) {
+    std::vector<RemezGridPoint> grid;
+    MpReal rho;
+    if (mpfr_set_str(rho.get(), domain.normalizedResidualBoundDecimal.c_str(), 10, MPFR_RNDN) != 0)
+        throw std::invalid_argument("invalid Remez domain radius");
+    for (std::size_t integer = 0; integer <= domain.integerBound; ++integer) {
+        for (std::size_t sample = 0; sample < 2048; ++sample) {
+            MpReal residual, x, fraction, target, nearest;
+            mpfr_set_ui(fraction.get(), 2 * sample, MPFR_RNDN);
+            mpfr_div_ui(fraction.get(), fraction.get(), 2047, MPFR_RNDN);
+            mpfr_sub_ui(fraction.get(), fraction.get(), 1, MPFR_RNDN);
+            mpfr_mul(residual.get(), rho.get(), fraction.get(), MPFR_RNDN);
+            mpfr_add_ui(x.get(), residual.get(), integer, MPFR_RNDN);
+            if (mpfr_sgn(x.get()) < 0) continue;
+            mpfr_add_d(nearest.get(), x.get(), 0.5, MPFR_RNDN);
+            mpfr_floor(nearest.get(), nearest.get());
+            mpfr_sub(target.get(), x.get(), nearest.get(), MPFR_RNDN);
+            grid.emplace_back(std::move(x), std::move(target));
+        }
+    }
+    std::vector<std::size_t> powers;
+    for (std::size_t power = 1; power <= degree; power += 2) powers.push_back(power);
+    MpReal one; mpfr_set_ui(one.get(), 1, MPFR_RNDN);
+    return remezExchange(grid, powers, degree, chebyshevBasis, one.get(), 24);
 }
 
 std::vector<long double> multiplyPolynomial(const std::vector<long double>& left,
@@ -384,39 +451,7 @@ std::optional<double> identityMultiplyScale(double branchScale, double targetSca
 
 
 std::string exactTerminatingDecimal(const mpq_class& input) {
-    mpq_class value = input;
-    value.canonicalize();
-    ExactInteger denominator = value.get_den();
-    std::size_t twos = 0, fives = 0;
-    while (mpz_divisible_ui_p(denominator.get_mpz_t(), 2)) {
-        denominator /= 2; ++twos;
-    }
-    while (mpz_divisible_ui_p(denominator.get_mpz_t(), 5)) {
-        denominator /= 5; ++fives;
-    }
-    if (denominator != 1)
-        throw std::invalid_argument("Chebyshev decimal conversion is not terminating");
-    const std::size_t digits = std::max(twos, fives);
-    ExactInteger scaled = value.get_num();
-    if (digits > twos) {
-        ExactInteger power;
-        mpz_ui_pow_ui(power.get_mpz_t(), 2, static_cast<unsigned long>(digits - twos));
-        scaled *= power;
-    }
-    if (digits > fives) {
-        ExactInteger power;
-        mpz_ui_pow_ui(power.get_mpz_t(), 5, static_cast<unsigned long>(digits - fives));
-        scaled *= power;
-    }
-    const bool negative = scaled < 0;
-    std::string text = (negative ? -scaled : scaled).get_str();
-    if (digits == 0) return negative ? "-" + text : text;
-    if (text.size() <= digits)
-        text.insert(0, digits + 1 - text.size(), '0');
-    text.insert(text.size() - digits, 1, '.');
-    while (text.size() > 1 && text.back() == '0') text.pop_back();
-    if (!text.empty() && text.back() == '.') text.pop_back();
-    return negative ? "-" + text : text;
+    return exactRationalTerminatingDecimal(input);
 }
 
 ExactInteger roundRationalAwayFromZero(const ExactInteger& numerator,
@@ -774,6 +809,75 @@ EvalModPolynomial convertScaledChebyshevToMonomial(
 
 EvalModPolynomial convertChebyshevToMonomial(const EvalModPolynomial& polynomial) {
     return convertScaledChebyshevToMonomial(polynomial, "1");
+}
+
+MultiIntervalRemezResult generateMultiIntervalRemez(
+    const MultiIntervalRemezRequest& request) {
+    if (request.intervals.empty() || request.degree == 0 || request.degree > 256
+        || (request.basis != PolynomialBasis::Monomial
+            && request.basis != PolynomialBasis::Chebyshev)
+        || request.samplesPerInterval < 2 || request.maximumIterations == 0
+        || request.maximumIterations > 24)
+        throw std::invalid_argument("invalid target-agnostic Remez request");
+    const auto exactScale = parseExactDecimal(request.variableScaleDecimal);
+    if (exactScale <= 0) throw std::invalid_argument("invalid Remez variable scale");
+    std::vector<std::array<mpq_class, 3>> exactIntervals;
+    std::vector<RemezGridPoint> grid;
+    for (const auto& interval : request.intervals) {
+        const mpq_class left = parseExactDecimal(interval.leftDecimal);
+        const mpq_class right = parseExactDecimal(interval.rightDecimal);
+        const mpq_class target = parseExactDecimal(interval.targetDecimal);
+        if (left > right || (!exactIntervals.empty() && left <= exactIntervals.back()[1]))
+            throw std::invalid_argument("Remez intervals must be ordered and disjoint");
+        exactIntervals.push_back({left, right, target});
+        for (std::size_t sample = 0; sample < request.samplesPerInterval; ++sample) {
+            const mpq_class fraction(sample, request.samplesPerInterval - 1);
+            const mpq_class xExact = left + (right - left) * fraction;
+            MpReal x, value;
+            mpfr_set_q(x.get(), xExact.get_mpq_t(), MPFR_RNDN);
+            mpfr_set_q(value.get(), target.get_mpq_t(), MPFR_RNDN);
+            grid.emplace_back(std::move(x), std::move(value));
+        }
+    }
+    if (grid.size() < request.degree + 2)
+        throw std::invalid_argument("Remez grid has fewer points than unknowns");
+    std::vector<std::size_t> powers(request.degree + 1);
+    for (std::size_t power = 0; power <= request.degree; ++power) powers[power] = power;
+    MpReal scale;
+    mpfr_set_q(scale.get(), exactScale.get_mpq_t(), MPFR_RNDN);
+    auto core = remezExchange(grid, powers, request.degree,
+        request.basis == PolynomialBasis::Chebyshev, scale.get(), request.maximumIterations);
+    EvalModPolynomial polynomial = std::move(core.polynomial);
+    if (request.basis == PolynomialBasis::Chebyshev)
+        polynomial = convertScaledChebyshevToMonomial(
+            polynomial, request.variableScaleDecimal);
+    else if (exactScale != 1) {
+        mpq_class divisor = 1;
+        for (std::size_t power = 0; power < polynomial.decimalCoefficients.size(); ++power) {
+            mpq_class coefficient = parseExactDecimal(
+                polynomial.decimalCoefficients[power]) / divisor;
+            coefficient.canonicalize();
+            polynomial.decimalCoefficients[power] = exactTerminatingDecimal(coefficient);
+            divisor *= exactScale;
+        }
+    }
+    MultiIntervalRemezResult result;
+    result.polynomial = std::move(polynomial);
+    result.converged = core.converged;
+    result.exchangeIterations = core.iterations;
+    result.sampledMaximumError = core.sampledMaximumError;
+    result.exchangePointsInsideDomain = true;
+    for (const auto index : core.extrema) {
+        char* text = nullptr;
+        mpfr_asprintf(&text, "%.120Rg", grid[index].x.get());
+        result.exchangePointsDecimal.push_back(text ? text : "0");
+        mpfr_free_str(text);
+        const auto point = parseExactDecimal(result.exchangePointsDecimal.back());
+        const bool inside = std::any_of(exactIntervals.begin(), exactIntervals.end(),
+            [&](const auto& interval) { return point >= interval[0] && point <= interval[1]; });
+        result.exchangePointsInsideDomain = result.exchangePointsInsideDomain && inside;
+    }
+    return result;
 }
 
 CompiledEvalModCircuit compileEvalModPolynomial(const EvalModPolynomial& polynomial,

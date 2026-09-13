@@ -1,5 +1,9 @@
 # K=64 binary-digit bounded synthesis follow-up
 
+> Historical cosine-bridge diagnostic from the earlier base. The direct
+> target-agnostic Remez follow-up and current strict feasibility gate are in
+> [evalround_k64_remez_synthesis.md](evalround_k64_remez_synthesis.md).
+
 Base revision: `fc6576edc6c3659a6b23e910ea8be939a8aab60f`.
 This is the narrow PR-2/PR-3 feasibility follow-up. It does not change
 `K=h_b=64`, the full `Bootstrapper` path, security parameters, tolerances, the
