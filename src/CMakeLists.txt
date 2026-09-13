@@ -56,6 +56,7 @@ if(M2424_ENABLE_EVALMOD_ANALYSIS)
         planning/sparse_bootstrap.cpp
         planning/bootstrap_planner.cpp
         planning/evalround_execution.cpp
+        planning/evalround_synthesis.cpp
         planning/evalmod_cost_model.cpp
         planning/evalmod_feasibility.cpp
         planning/evalmod_synthesis.cpp

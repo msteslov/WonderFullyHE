@@ -33,6 +33,12 @@ struct EvalModIntervalCertificate {
 /// executable monomial polynomial. Decimal inputs are transformed as rationals.
 EvalModPolynomial convertChebyshevToMonomial(const EvalModPolynomial& polynomial);
 
+/// As above, but substitutes x/scale for the Chebyshev variable before exact
+/// rational conversion. Both the coefficients and scale are parsed as exact
+/// decimals; no binary floating-point coefficient is introduced here.
+EvalModPolynomial convertScaledChebyshevToMonomial(
+    const EvalModPolynomial& polynomial, const std::string& scaleDecimal);
+
 /// MPFR grid diagnostic; это не interval certificate.
 EvalModGridDiagnostic diagnoseEvalModPolynomialOnGrid(const EvalModPolynomial& polynomial,
                                                       const EvalModDomain& domain,

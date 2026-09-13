@@ -25,7 +25,7 @@ int main(){try {
     check(candidate.extraction.polynomials[1].polynomial.decimalCoefficients==std::vector<std::string>({"0","0.5","0.5"}),"b1 exact shared polynomial representation");
     auto compile=[&](const EvalRoundCandidate& c,const EvalRoundProblem& domain){return EvalRoundExecutionCompiler::compile(a,input,planEvalRoundCandidate(domain,c),options);};
     auto good=compile(candidate,p);check(good.certification().status==S::Certified,good.certification().provenance.c_str());
-    for(auto mutation:{0,1,2,3,4,5,6}) {
+    for(auto mutation:{0,1,2,3,4,5,6,7,8,9}) {
         auto bad=candidate;auto& poly=bad.extraction.polynomials[0];
         if(mutation==0)poly.polynomial.decimalCoefficients.clear();
         if(mutation==1)poly.polynomial.decimalCoefficients[0]="Unknown";
@@ -34,6 +34,9 @@ int main(){try {
         if(mutation==4)poly.certifiedRho=std::nextafter(p.rho,1.);
         if(mutation==5)poly.proof=EvalRoundPolynomialProof::GridDiagnostic;
         if(mutation==6)poly.polynomial.decimalCoefficients[0]="1.01";
+        if(mutation==7)poly.digitIndex=1;
+        if(mutation==8)poly.radix=EvalRoundRadix::BalancedTernary;
+        if(mutation==9)poly.target=EvalRoundDigitTarget::TernaryRoot;
         check(compile(bad,p).certification().status!=S::Certified,"Unknown/stale/grid polynomial evidence rejected");
     }
     EvalRoundProblem general{64,1./128,1e-4,4};
@@ -78,10 +81,14 @@ int main(){try {
         }
     }
     auto verified=compile(external,p);check(verified.certification().status==S::Certified,verified.certification().provenance.c_str());
+    auto missing=external;missing.extraction.polynomials.pop_back();
+    check(compile(missing,p).certification().status!=S::Certified,"Missing one polynomial rejects the extractor");
     auto grid=external;grid.extraction.polynomials[0].proof=EvalRoundPolynomialProof::GridDiagnostic;
     check(compile(grid,p).certification().status!=S::Certified,"Grid cannot replace interval evidence");
     auto under=external;under.extraction.polynomials[0].approximationError=B(0);
     check(compile(under,p).certification().status!=S::Certified,"Interval bound is recomputed, not trusted");
+    auto changed=external;changed.extraction.polynomials[0].polynomial.decimalCoefficients[0]="10";
+    check(compile(changed,p).certification().status!=S::Certified,"Modified exact coefficient invalidates or recomputes the certificate");
     double worst=0;
     for(int I=-1;I<=1;++I)for(double offset:{-p.rho,0.,p.rho}){
         const double value=I+offset;auto encrypted=a.encrypt(a.encode({value}));

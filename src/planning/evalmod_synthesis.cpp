@@ -733,14 +733,17 @@ std::string jsonEscape(const std::string& value) {
 
 } // namespace
 
-EvalModPolynomial convertChebyshevToMonomial(const EvalModPolynomial& polynomial) {
+EvalModPolynomial convertScaledChebyshevToMonomial(
+    const EvalModPolynomial& polynomial, const std::string& scaleDecimal) {
     if (polynomial.basis != PolynomialBasis::Chebyshev
         || polynomial.decimalCoefficients.empty())
         throw std::invalid_argument("expected non-empty Chebyshev polynomial");
+    const auto scale = parseExactDecimal(scaleDecimal);
+    if (scale <= 0) throw std::invalid_argument("Chebyshev variable scale must be positive");
     using RationalPolynomial = std::vector<mpq_class>;
     RationalPolynomial result(polynomial.decimalCoefficients.size(), mpq_class(0));
     RationalPolynomial previous{mpq_class(1)};
-    RationalPolynomial current{mpq_class(0), mpq_class(1)};
+    RationalPolynomial current{mpq_class(0), mpq_class(1) / scale};
     for (std::size_t degree = 0; degree < polynomial.decimalCoefficients.size(); ++degree) {
         const auto coefficient = parseExactDecimal(polynomial.decimalCoefficients[degree]);
         const auto& basis = degree == 0 ? previous : current;
@@ -750,7 +753,7 @@ EvalModPolynomial convertChebyshevToMonomial(const EvalModPolynomial& polynomial
         if (degree == 0) continue;
         RationalPolynomial next(current.size() + 1, mpq_class(0));
         for (std::size_t power = 0; power < current.size(); ++power)
-            next[power + 1] += 2 * current[power];
+            next[power + 1] += 2 * current[power] / scale;
         for (std::size_t power = 0; power < previous.size(); ++power)
             next[power] -= previous[power];
         previous = std::move(current);
@@ -767,6 +770,10 @@ EvalModPolynomial convertChebyshevToMonomial(const EvalModPolynomial& polynomial
            && converted.decimalCoefficients.back() == "0")
         converted.decimalCoefficients.pop_back();
     return converted;
+}
+
+EvalModPolynomial convertChebyshevToMonomial(const EvalModPolynomial& polynomial) {
+    return convertScaledChebyshevToMonomial(polynomial, "1");
 }
 
 CompiledEvalModCircuit compileEvalModPolynomial(const EvalModPolynomial& polynomial,
