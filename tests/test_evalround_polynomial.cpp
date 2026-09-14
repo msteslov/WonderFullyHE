@@ -2,6 +2,7 @@
 #include "m2424/experimental/evalmod_analysis/evalround_reference.hpp"
 #include "m2424/experimental/evalmod_analysis/exact_decimal.hpp"
 #include "bootstrap_fixture.hpp"
+#include "../src/math/evalround_interval_internal.hpp"
 #include "../src/planning/evalround_polynomial_internal.hpp"
 #include "../src/core/certified_arithmetic_internal.hpp"
 #include <iostream>
@@ -15,12 +16,38 @@ using S=BootstrapCertificationStatus;
 void check(bool b,const char* why){if(!b)throw std::runtime_error(why);}
 BootstrapBound B(double x){return {x,BootstrapBoundKind::Deterministic,"Test analytical bound",{}};}
 int main(){try {
+    auto exactValue=[](const std::vector<mpq_class>& coefficients,const mpq_class& x){
+        mpq_class value=0;for(auto it=coefficients.rbegin();it!=coefficients.rend();++it)value=value*x+*it;
+        value.canonicalize();return value;
+    };
+    auto checkShift=[&](const EvalModPolynomial& polynomial,std::int64_t center,const std::vector<mpq_class>& ys){
+        std::vector<mpq_class> original;for(const auto& text:polynomial.decimalCoefficients)original.push_back(parseExactDecimal(text));
+        const auto shifted=detail::shiftPolynomialToIntegerCenterExact(polynomial,center);
+        for(const auto& y:ys)check(exactValue(original,mpq_class(static_cast<long>(center))+y)==exactValue(shifted,y),
+            "Exact centered coefficients preserve the same polynomial");
+    };
+    const std::vector<mpq_class> rationalOffsets{mpq_class(-3,8),mpq_class(0),mpq_class(7,16)};
+    for(const auto& polynomial:std::vector<EvalModPolynomial>{
+            {PolynomialBasis::Monomial,{"0.125"}},
+            {PolynomialBasis::Monomial,{"-0.5","1.25"}},
+            {PolynomialBasis::Monomial,{"0.25","-0.75","1.5"}},
+            {PolynomialBasis::Monomial,{"-1","0.5","0.125","-0.25"}}}) {
+        checkShift(polynomial,-3,rationalOffsets);checkShift(polynomial,2,rationalOffsets);
+    }
+    EvalModPolynomial sparse{PolynomialBasis::Monomial,std::vector<std::string>(129,"0")};
+    sparse.decimalCoefficients[0]="0.25";sparse.decimalCoefficients[3]="-0.5";
+    sparse.decimalCoefficients[64]="0.125";sparse.decimalCoefficients[128]="-0.03125";
+    checkShift(sparse,-2,rationalOffsets);checkShift(sparse,3,rationalOffsets);
+
     auto a=test::BootstrapFixture::create({16,std::vector<int>(10,50),std::ldexp(1.,49),8});
     a.generateKeys(std::vector<int>{0},true);
     auto input=a.encrypt(a.encode({0.}));
     EvalRoundExecutionOptions options;options.inputSemanticError=B(1e-8);
     EvalRoundProblem p{1,1./128,1e-4,4};
     auto candidate=makeEvalRoundReferenceCandidate(p,EvalRoundRadix::Binary,EvalRoundExtractionMethod::BinaryQuadraticK1);
+    const mpq_class exactRho(p.rho);
+    for(const auto& polynomial:candidate.extraction.polynomials)
+        for(const auto center:{-1,0,1})checkShift(polynomial.polynomial,center,{-exactRho,mpq_class(0),exactRho});
     check(candidate.extraction.polynomials[0].polynomial.decimalCoefficients==std::vector<std::string>({"1","0","-1"}),"b0 exact shared polynomial representation");
     check(candidate.extraction.polynomials[1].polynomial.decimalCoefficients==std::vector<std::string>({"0","0.5","0.5"}),"b1 exact shared polynomial representation");
     auto compile=[&](const EvalRoundCandidate& c,const EvalRoundProblem& domain){return EvalRoundExecutionCompiler::compile(a,input,planEvalRoundCandidate(domain,c),options);};
@@ -72,6 +99,10 @@ int main(){try {
     auto external=candidate;external.extraction.method=EvalRoundExtractionMethod::ExternalPolynomial;
     for(std::size_t j=0;j<2;++j){
         auto poly=certifyEvalRoundDigitPolynomial(p,j,candidate.extraction.polynomials[j].polynomial,64);
+        check(poly.approximationError.upperBound<=poly.directXApproximationError.upperBound
+              && poly.centeredApproximationError.upperBound>=0
+              && poly.intervalProofPrecisionBits==384,
+              "Centered proof cannot weaken the previous direct-x K1 bound");
         external.extraction.polynomials[j]=poly;external.digits[j].extractionError=poly.approximationError;
         for(int I=-1;I<=1;++I)for(double offset:{-p.rho,0.,p.rho}){
             const mpq_class x=mpq_class(I)+mpq_class(offset);
@@ -89,6 +120,10 @@ int main(){try {
     check(compile(under,p).certification().status!=S::Certified,"Interval bound is recomputed, not trusted");
     auto changed=external;changed.extraction.polynomials[0].polynomial.decimalCoefficients[0]="10";
     check(compile(changed,p).certification().status!=S::Certified,"Modified exact coefficient invalidates or recomputes the certificate");
+    auto incomplete=external;incomplete.extraction.polynomials[0].intervalSubdivisions=1;
+    check(compile(incomplete,p).certification().status!=S::Certified,"Incomplete interval partition cannot certify");
+    auto staleCentered=external;staleCentered.extraction.polynomials[0].centeredApproximationError=B(0);
+    check(compile(staleCentered,p).certification().status!=S::Certified,"Stale centered bound cannot certify");
     double worst=0;
     for(int I=-1;I<=1;++I)for(double offset:{-p.rho,0.,p.rho}){
         const double value=I+offset;auto encrypted=a.encrypt(a.encode({value}));

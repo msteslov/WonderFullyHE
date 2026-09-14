@@ -59,7 +59,15 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
                         throw Failure{Status::ExtractionNotCertified,"Changed polynomial coefficients invalidate the identity proof"};
                 verified=exact.digits[j].extractionError;
             } else if(p.proof==EvalRoundPolynomialProof::OutwardInterval) {
-                verified=certifyEvalRoundDigitPolynomial(reference.problem,j,p.polynomial,p.intervalSubdivisions).approximationError;
+                const auto recomputed=certifyEvalRoundDigitPolynomial(
+                    reference.problem,j,p.polynomial,p.intervalSubdivisions);
+                if(p.intervalProofPrecisionBits!=recomputed.intervalProofPrecisionBits
+                   ||p.selectedIntervalProofMethod!=recomputed.selectedIntervalProofMethod
+                   ||!known(p.directXApproximationError)||!known(p.centeredApproximationError)
+                   ||p.directXApproximationError.upperBound<recomputed.directXApproximationError.upperBound
+                   ||p.centeredApproximationError.upperBound<recomputed.centeredApproximationError.upperBound)
+                    throw Failure{Status::ExtractionNotCertified,"Stale/incomplete direct-x or centered whole-domain proof metadata"};
+                verified=recomputed.approximationError;
             } else throw Failure{Status::ExtractionNotCertified,"Unknown/grid-only polynomial evidence is not a whole-domain certificate"};
             if(p.approximationError.upperBound<verified.upperBound)
                 throw Failure{Status::ExtractionNotCertified,"Claimed polynomial approximation understates verified whole-domain error"};

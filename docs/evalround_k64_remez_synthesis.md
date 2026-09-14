@@ -1,5 +1,9 @@
 # K=64 direct multi-interval Remez follow-up
 
+> Historical direct-x certificate results. The same unchanged candidates are
+> recertified with exact centered shifts in
+> [evalround_k64_centered_certificate.md](evalround_k64_centered_certificate.md).
+
 Base revision: `2873ddff786ef53300afc3726bbb98360725fd04`.
 This is the narrow PR-2/PR-3 follow-up requested after the bounded Chebyshev
 diagnostic. It does not change `K=h_b=64`, security parameters, tolerances, the

@@ -182,6 +182,14 @@ exchange points и sampled maximum являются только диагнос�
 по-прежнему выдаёт отдельный outward interval verifier. Legacy `remezOdd` сохраняет
 прежние odd powers, target `x-round(x)`, grid и iteration bound.
 
+Для exact-decimal EvalRound-полинома whole-domain verifier сохраняет независимый
+direct-x Horner bound и дополнительно для каждого integer center точно вычисляет
+Taylor shift `p(I+y)` в `mpq_class`. После вычитания exact target новый Horner
+bound строится 384-bit outward MPFR arithmetic на полном замкнутом разбиении
+`y in [-rho,rho]`. Сертификат использует минимум только этих двух строгих bounds
+и записывает выбранный proof method; compiler пересчитывает оба bounds и их
+metadata. Grid diagnostic в этот минимум не входит.
+
 Operation counts, depth, level consumption и peak liveness выводятся из узлов DAG.
 `ModSwitch`, `AlignScale` и `AddPlain` представлены отдельными узлами и входят в
 стоимостную модель, а не вставляются backend-исполнителем скрыто.

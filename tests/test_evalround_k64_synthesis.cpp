@@ -1,4 +1,5 @@
 #include "m2424/experimental/evalmod_analysis/evalround_synthesis.hpp"
+#include "bootstrap_fixture.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -61,12 +62,18 @@ int main() { try {
                   "certificate is bound to digit and K");
             check(std::memcmp(&proof.certifiedRho, &problem.rho, sizeof(double)) == 0,
                   "certificate is bound to the actual rho bits");
+            check(record.directXRigorousIntervalError==proof.directXApproximationError.upperBound
+                  &&record.centeredRigorousIntervalError==proof.centeredApproximationError.upperBound
+                  &&record.rigorousIntervalError==std::min(record.directXRigorousIntervalError,
+                                                           record.centeredRigorousIntervalError)
+                  &&record.selectedIntervalProofMethod==proof.selectedIntervalProofMethod,
+                  "record keeps both independent bounds and selects only their rigorous minimum");
         }
     }
     for (const auto& digits : remezAttempted) for (const bool attempted : digits)
         check(attempted, "all eight digits and four degrees are attempted by Remez");
-    check(sawConvergedRemez && !search.extractorCertified,
-          "Remez convergence alone cannot certify the extractor");
+    check(sawConvergedRemez,
+          "bounded search retains Remez convergence as diagnostic metadata");
     for (std::size_t digit = 0; digit < 8; ++digit) {
         const auto& selected = search.records[*search.selectedRecordByDigit[digit]];
         for (const auto& record : search.records)
@@ -77,10 +84,42 @@ int main() { try {
     }
     auto candidate = makeEvalRoundBinaryPolynomialCandidate(search);
     if (search.allDigitsCertified) {
-        check(!search.allCleanerInputDomainsSatisfied && !search.extractorCertified,
-              "finite outward bounds do not imply a cleaner-feasible extractor");
-        check(!candidate.extraction.verified && candidate.extraction.polynomials.empty(),
-              "cleaner-domain failure prevents candidate construction and planner input");
+        check(search.allCleanerInputDomainsSatisfied && search.extractorCertified,
+              "centered whole-domain bounds put all selected digits inside a<=1");
+        check(candidate.extraction.verified && candidate.extraction.polynomials.size()==8,
+              "cleaner-feasible search constructs the complete binary candidate");
+        std::optional<EvalRoundPlan> shallowestPlan;
+        const std::vector<std::vector<std::size_t>> expectedRounds{
+            {0,8,3,4,4,3,2,0},{0,9,4,5,5,4,3,0},{0,9,4,5,5,5,4,1}};
+        std::size_t budgetIndex=0;
+        for (const double budget : {1e-2, 1e-4, 1e-6}) {
+            auto diagnostic=problem;diagnostic.requiredIntegerError=budget;
+            const auto plan=planEvalRoundCandidate(diagnostic,candidate);
+            check(plan.status==EvalRoundPlanStatus::Certified,
+                  "unchanged cleaner/reconstruction planner reaches every diagnostic budget");
+            check(plan.integerErrorUpper<=budget&&plan.digits.size()==8,
+                  "planner reports a complete bounded reconstruction schedule");
+            for(std::size_t digit=0;digit<8;++digit)
+                check(plan.digits[digit].cleaningIterations==expectedRounds[budgetIndex][digit],
+                      "unchanged planner retains the minimum certified cleaning schedule");
+            if(!shallowestPlan)shallowestPlan=plan;
+            ++budgetIndex;
+        }
+        auto adapter=test::BootstrapFixture::create(
+            {16,std::vector<int>(48,50),std::ldexp(1.,49),8});
+        adapter.generateKeys(std::vector<int>{0},true);
+        const auto input=adapter.encrypt(adapter.encode({0.}));
+        EvalRoundExecutionOptions options;
+        options.inputSemanticError={1e-12,BootstrapBoundKind::Deterministic,
+            "analysis-only backend feasibility input bound",{}};
+        const auto compiled=EvalRoundExecutionCompiler::compile(
+            adapter,input,*shallowestPlan,options);
+        std::cout<<"backend_status="<<static_cast<int>(compiled.certification().status)
+                 <<" nodes="<<compiled.nodes().size()
+                 <<" blocker="<<compiled.certification().provenance<<'\n';
+        check(compiled.certification().status==BootstrapCertificationStatus::RequiredBoundUnavailable
+              &&compiled.certification().provenance=="Arithmetic bound overflow",
+              "enough-level analysis context reaches the unchanged arithmetic-bound blocker");
     } else {
         check(!candidate.extraction.verified && candidate.extraction.polynomials.empty()
                 && search.status.find("not a global impossibility") != std::string::npos,

@@ -12,6 +12,12 @@ const char* familyName(EvalModApproximationFamily family) {
         ? "multi_interval_minimax" : "multi_interval_chebyshev";
 }
 
+const char* proofName(EvalRoundIntervalProofMethod method) {
+    return method == EvalRoundIntervalProofMethod::CenteredShiftHorner
+        ? "centered_shift" : method == EvalRoundIntervalProofMethod::DirectXHorner
+            ? "direct_x" : "unknown";
+}
+
 int main() {
     // Exact binary64 value emitted by test_sparse_coeff_to_slot for the
     // unchanged N=16384, seven-60-bit-prime sparse certificate.
@@ -35,7 +41,10 @@ int main() {
             << " degree=" << best->requestedDegree
             << " generated=" << best->generatorConverged
             << " grid=" << best->gridMaximumError
+            << " direct_x=" << best->directXRigorousIntervalError
+            << " centered=" << best->centeredRigorousIntervalError
             << " rigorous=" << best->rigorousIntervalError
+            << " selected_proof=" << proofName(best->selectedIntervalProofMethod)
             << " max_coefficient=" << best->maximumCoefficientMagnitude
             << " cleaner_a_le_1=" << best->cleanerInputDomainSatisfied;
         else std::cout << " no_finite_interval_candidate";
@@ -50,18 +59,37 @@ int main() {
                   << " iterations=" << record.exchangeIterations
                   << " exchange_inside_domain=" << record.exchangePointsInsideDomain
                   << " grid=" << record.gridMaximumError
+                  << " direct_x=" << record.directXRigorousIntervalError
+                  << " centered=" << record.centeredRigorousIntervalError
                   << " rigorous=" << record.rigorousIntervalError
+                  << " direct_over_centered="
+                  << record.directXRigorousIntervalError/record.centeredRigorousIntervalError
+                  << " selected_proof=" << proofName(record.selectedIntervalProofMethod)
                   << " max_coefficient=" << record.maximumCoefficientMagnitude
                   << " cleaner_a_le_1=" << record.cleanerInputDomainSatisfied << '\n';
     }
-    std::cout << "cleaning_planner=not_attempted; prerequisite_all_a_le_1="
-              << result.allCleanerInputDomainsSatisfied << '\n';
-    std::cout << "selected_precleaning_weighted_bounds=";
-    for (std::size_t digit = 0; digit < 8; ++digit) {
-        const auto& selected = result.records[*result.selectedRecordByDigit[digit]];
-        std::cout << std::ldexp(selected.rigorousIntervalError,
-                                static_cast<int>(digit)) << ',';
+    const auto candidate = makeEvalRoundBinaryPolynomialCandidate(result);
+    bool mathematicalPlanCertified = false;
+    for (const double budget : {1e-2, 1e-4, 1e-6}) {
+        auto diagnostic = problem; diagnostic.requiredIntegerError = budget;
+        const auto plan = planEvalRoundCandidate(diagnostic, candidate);
+        mathematicalPlanCertified = mathematicalPlanCertified
+            || plan.status == EvalRoundPlanStatus::Certified;
+        std::cout << "cleaning budget=" << budget
+                  << " status=" << static_cast<int>(plan.status)
+                  << " rejection=" << static_cast<int>(plan.rejection)
+                  << " rounds=";
+        for (const auto& digit : plan.digits) std::cout << digit.cleaningIterations << ',';
+        std::cout << " trajectories=";
+        for (std::size_t digit = 0; digit < plan.digits.size(); ++digit) {
+            std::cout << digit << ':';
+            for (const auto error : plan.digits[digit].errorAfterRounds)
+                std::cout << error << '/';
+            std::cout << " weighted=" << plan.digits[digit].weightedReconstructionError << ';';
+        }
+        std::cout << " final_E_I=" << plan.integerErrorUpper << '\n';
     }
-    std::cout << '\n';
-    std::cout << "ciphertext_compile=not_attempted; first_blocker=CleaningDomainViolation; no ciphertext depth claim\n";
+    std::cout << "ciphertext_compile="
+              << (mathematicalPlanCertified ? "mathematically_permitted; see analysis test for backend gate" : "not_attempted")
+              << "; mathematical_plan_certified=" << mathematicalPlanCertified << '\n';
 }

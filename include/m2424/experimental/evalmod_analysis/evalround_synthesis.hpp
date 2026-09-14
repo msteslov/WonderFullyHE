@@ -23,7 +23,10 @@ struct EvalRoundDigitSearchRecord {
     std::size_t exchangeIterations{};
     bool exchangePointsInsideDomain{};
     double gridMaximumError{std::numeric_limits<double>::infinity()};
+    double directXRigorousIntervalError{std::numeric_limits<double>::infinity()};
+    double centeredRigorousIntervalError{std::numeric_limits<double>::infinity()};
     double rigorousIntervalError{std::numeric_limits<double>::infinity()};
+    EvalRoundIntervalProofMethod selectedIntervalProofMethod{EvalRoundIntervalProofMethod::Unknown};
     double maximumCoefficientMagnitude{};
     bool cleanerInputDomainSatisfied{};
     std::string provenance;

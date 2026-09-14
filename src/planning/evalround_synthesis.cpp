@@ -161,7 +161,10 @@ EvalRoundBinaryDigitSearchResult searchEvalRoundBinaryDigitPolynomials(
                     record.exchangeIterations = remez.exchangeIterations;
                     record.exchangePointsInsideDomain = remez.exchangePointsInsideDomain;
                     record.gridMaximumError = remez.sampledMaximumError;
+                    record.directXRigorousIntervalError = certificate.directXApproximationError.upperBound;
+                    record.centeredRigorousIntervalError = certificate.centeredApproximationError.upperBound;
                     record.rigorousIntervalError = certificate.approximationError.upperBound;
+                    record.selectedIntervalProofMethod = certificate.selectedIntervalProofMethod;
                     record.maximumCoefficientMagnitude = maximumCoefficient(remez.polynomial);
                     record.cleanerInputDomainSatisfied = std::isfinite(record.rigorousIntervalError)
                         && record.rigorousIntervalError <= 1;
@@ -187,7 +190,10 @@ EvalRoundBinaryDigitSearchResult searchEvalRoundBinaryDigitPolynomials(
                 record.generatorConverged = true;
                 record.exchangeIterations = 0;
                 record.exchangePointsInsideDomain = false;
+                record.directXRigorousIntervalError = certificate.directXApproximationError.upperBound;
+                record.centeredRigorousIntervalError = certificate.centeredApproximationError.upperBound;
                 record.rigorousIntervalError = certificate.approximationError.upperBound;
+                record.selectedIntervalProofMethod = certificate.selectedIntervalProofMethod;
                 record.maximumCoefficientMagnitude = maximumCoefficient(monomial);
                 record.cleanerInputDomainSatisfied = std::isfinite(record.rigorousIntervalError)
                     && record.rigorousIntervalError <= 1;
