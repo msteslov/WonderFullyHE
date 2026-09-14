@@ -47,6 +47,23 @@ struct EvalRoundExecutionNode {
     std::string centeredHeadroomProvenance;
     EvalRoundEvaluationKey requiredKey{EvalRoundEvaluationKey::None};
 };
+struct EvalRoundExecutionDigitDiagnostics {
+    BootstrapBound approximationError;
+    EvalRoundExactBound backendExtractionError;
+    EvalRoundExactBound initialCleanerError;
+    std::vector<EvalRoundExactBound> cleanerLocalErrors;
+    std::vector<EvalRoundExactBound> cleanerErrorAfterRounds; // index zero is a_0
+    EvalRoundExactBound reconstructionLocalError;
+    std::size_t chebyshevNodeCount{};
+};
+struct EvalRoundExecutionDiagnostics {
+    std::vector<EvalRoundExecutionDigitDiagnostics> digits;
+    std::size_t constructedNodes{};
+    std::size_t ciphertextMultiplications{},relinearizations{},rescales{},modSwitches{};
+    std::size_t plaintextMultiplications{},criticalMultiplicativeDepth{},criticalPathLevelConsumption{};
+    std::optional<double> minimumRuntimeScale,maximumRuntimeScale;
+    std::string minimumCenteredHeadroomNumerator;
+};
 class EvalRoundExecutionPlan {
 public:
     EvalRoundExecutionPlan();
@@ -55,6 +72,9 @@ public:
     const EvalRoundPlan& mathematicalPlan() const;
     double integerErrorUpper() const;
     std::size_t outputNode() const;
+    // Available on fail-closed results as far as compilation reached. Nodes
+    // themselves remain unpublished unless the complete plan is Certified.
+    const EvalRoundExecutionDiagnostics& diagnostics() const;
 private:
     struct Data;
     std::shared_ptr<const Data> data_;

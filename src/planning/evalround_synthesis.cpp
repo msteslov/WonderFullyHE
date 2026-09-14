@@ -156,6 +156,9 @@ EvalRoundBinaryDigitSearchResult searchEvalRoundBinaryDigitPolynomials(
                     const auto remez = generateMultiIntervalRemez(request);
                     auto certificate = certifyEvalRoundDigitPolynomial(
                         problem, digit, remez.polynomial, config.intervalSubdivisions);
+                    certificate.executionRepresentation = EvalRoundPolynomialExecutionRepresentation{
+                        remez.executionPolynomial,remez.executionVariableScaleDecimal,
+                        "Exact rational scaled-Chebyshev conversion equals the canonical certified monomial polynomial"};
                     record.generatorStatus = EvalRoundDigitGeneratorStatus::Generated;
                     record.generatorConverged = remez.converged;
                     record.exchangeIterations = remez.exchangeIterations;
@@ -186,6 +189,9 @@ EvalRoundBinaryDigitSearchResult searchEvalRoundBinaryDigitPolynomials(
                 const auto monomial = convertScaledChebyshevToMonomial(chebyshev, "64");
                 auto certificate = certifyEvalRoundDigitPolynomial(
                     problem, digit, monomial, config.intervalSubdivisions);
+                certificate.executionRepresentation = EvalRoundPolynomialExecutionRepresentation{
+                    chebyshev,"64",
+                    "Exact rational scaled-Chebyshev conversion equals the canonical certified monomial polynomial"};
                 record.generatorStatus = EvalRoundDigitGeneratorStatus::Generated;
                 record.generatorConverged = true;
                 record.exchangeIterations = 0;

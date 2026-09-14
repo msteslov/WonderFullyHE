@@ -75,6 +75,25 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
                     throw Failure{Status::ExtractionNotCertified,"Stale/incomplete direct-x or centered whole-domain proof metadata"};
                 verified=recomputed.approximationError;
             } else throw Failure{Status::ExtractionNotCertified,"Unknown/grid-only polynomial evidence is not a whole-domain certificate"};
+            if(p.executionRepresentation) {
+                const auto& execution=*p.executionRepresentation;
+                if(execution.polynomial.basis!=PolynomialBasis::Chebyshev
+                   ||execution.variableScaleDecimal.empty()
+                   ||execution.exactEquivalenceProvenance.empty())
+                    throw Failure{Status::ExtractionNotCertified,
+                        "Incomplete scaled-Chebyshev execution representation metadata"};
+                EvalModPolynomial converted;
+                try {
+                    converted=convertScaledChebyshevToMonomial(
+                        execution.polynomial,execution.variableScaleDecimal);
+                } catch(const std::exception& error) {
+                    throw Failure{Status::ExtractionNotCertified,
+                        "Invalid scaled-Chebyshev execution representation: "+std::string(error.what())};
+                }
+                if(!exactPolynomialEqual(converted,p.polynomial))
+                    throw Failure{Status::ExtractionNotCertified,
+                        "Scaled-Chebyshev execution representation is not exactly equivalent to canonical certified polynomial"};
+            }
             if(p.approximationError.upperBound<verified.upperBound)
                 throw Failure{Status::ExtractionNotCertified,"Claimed polynomial approximation understates verified whole-domain error"};
             candidate.digits[j].extractionError=p.approximationError;
@@ -93,14 +112,55 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
         auto sum=b.add(Op::Add,{start,conjugate},"real projection");
         auto x=b.scalar(sum,mpq_class(1,2),2,"real projection");
         PolynomialCompiler polynomials(b,x);
+        std::optional<std::size_t> normalized;
+        std::unique_ptr<ScaledChebyshevCompiler> chebyshev;
+        if(std::any_of(candidate.extraction.polynomials.begin(),candidate.extraction.polynomials.end(),
+            [](const auto& polynomial){return polynomial.executionRepresentation.has_value();})) {
+            normalized=b.scalar(x,mpq_class(1,64),64,"Chebyshev normalized t=x/64");
+            const mpq_class radius=(mpq_class(integer(reference.problem.K))+q(reference.problem.rho))/64;
+            chebyshev=std::make_unique<ScaledChebyshevCompiler>(b,*normalized,radius);
+        }
         std::vector<std::size_t> extracted;
-        for(std::size_t j=0;j<count;++j)extracted.push_back(polynomials.compile(candidate.extraction.polynomials[j].polynomial,"extraction digit "+std::to_string(j)));
+        for(std::size_t j=0;j<count;++j) {
+            const auto& polynomial=candidate.extraction.polynomials[j];
+            const auto stage="extraction digit "+std::to_string(j);
+            if(polynomial.executionRepresentation)
+                extracted.push_back(chebyshev->compile(
+                    polynomial.executionRepresentation->polynomial,stage));
+            else extracted.push_back(polynomials.compile(polynomial.polynomial,stage));
+        }
+        data->diagnostics.digits.resize(count);
+        for(std::size_t digit=0;digit<count;++digit) {
+            auto& diagnostic=data->diagnostics.digits[digit];
+            diagnostic.approximationError=candidate.digits[digit].extractionError;
+            std::vector<bool> dependency(b.nodes.size());
+            std::function<void(std::size_t)> visit=[&](std::size_t node) {
+                if(dependency[node])return;
+                dependency[node]=true;
+                for(const auto inputNode:b.nodes[node].inputs)visit(inputNode);
+            };
+            visit(extracted[digit]);
+            for(std::size_t node=0;node<dependency.size();++node)
+                if(dependency[node]&&b.nodes[node].stage.find("Chebyshev")!=std::string::npos)
+                    ++diagnostic.chebyshevNodeCount;
+        }
         std::vector<DigitPath> paths(count);
-        bool levelLimited=false;
+        std::optional<Failure> firstBackendLimit;
         for(std::size_t digit=0;digit<count;++digit) {
             const auto extraction=extracted[digit];
+            const bool stableRepresentation=
+                candidate.extraction.polynomials[digit].executionRepresentation.has_value();
             mpq_class refError(candidate.digits[digit].extractionError.upperBound);
+            b.tightenMagnitude(extraction,1+refError);
+            if(stableRepresentation)b.compactSemanticError(extraction,
+                "384-bit exact dyadic outward bound for compiled extraction semantic error");
             mpq_class error=refError+b.states[extraction].E;
+            auto& diagnostic=data->diagnostics.digits[digit];
+            diagnostic.backendExtractionError=exactBound(b.states[extraction].E,
+                "Actual scaled-Chebyshev ciphertext DAG semantic error relative to canonical p_j");
+            diagnostic.initialCleanerError=exactBound(error,
+                "a_0=E_approx+E_backend, with E_approx counted exactly once");
+            diagnostic.cleanerErrorAfterRounds.push_back(diagnostic.initialCleanerError);
             if(error>1) throw Failure{Status::ErrorBudgetExceeded,
                 "Extraction digit "+std::to_string(digit)+" exact arithmetic error exceeds cleaner domain"
                 +(b.firstUnprojectableBound?"; first finite exact bound above binary64: "+*b.firstUnprojectableBound:"")};
@@ -111,29 +171,75 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
                 "Whole-domain digit polynomial approximation plus compiled input/projection/polynomial arithmetic",{}};
             candidate.digits[digit].cleaningLocalErrors.clear();
             paths[digit].outputs.push_back(extraction); paths[digit].errors.push_back(error);
-            b.tightenMagnitude(extraction,1+refError);
             for(std::size_t round=0;round<reference.problem.maxCleaningRoundsPerDigit && error<=1;++round) {
                 const auto saved=b.nodes.size();
                 try {
                     const auto previous=paths[digit].outputs.back();
-                    auto out=b.cleaner(previous,"cleaning digit "+std::to_string(digit)+" round "+std::to_string(round));
+                    auto out=b.cleaner(previous,"cleaning digit "+std::to_string(digit)+" round "+std::to_string(round),
+                        candidate.extraction.polynomials[digit].executionRepresentation.has_value());
                     // Replay this block with zero *incoming arithmetic* error and
                     // magnitude of the actual incoming digit, not the exact target.
                     auto local=b.localBlock(previous,out,1+error);
-                    const mpq_class next=5*error*error+local;
+                    const mpq_class next=stableRepresentation
+                        ?dyadicUpper(5*error*error+local):5*error*error+local;
                     if(!projectUp(local)) throw Failure{Status::ErrorBudgetExceeded,
                         "Cleaning digit "+std::to_string(digit)+" round "+std::to_string(round)+" exact local error exceeds planner budget representation"};
                     candidate.digits[digit].cleaningLocalErrors.push_back(bound(local,"All arithmetic nodes of baseline f2(a)=a^2(3-2a), at |a|<=1+incoming digit error"));
+                    diagnostic.cleanerLocalErrors.push_back(exactBound(local,
+                        "Actual baseline f2 ciphertext block local arithmetic error"));
                     error=next;
-                    refError=5*refError*refError;
+                    refError=stableRepresentation
+                        ?dyadicUpper(5*refError*refError):5*refError*refError;
                     b.tightenMagnitude(out,1+refError);
+                    if(stableRepresentation)b.compactSemanticError(out,
+                        "384-bit exact dyadic outward bound after binary cleaner arithmetic");
+                    diagnostic.cleanerErrorAfterRounds.push_back(exactBound(error,
+                        "Exact a_next<=5*a^2+B_cln recurrence"));
                     paths[digit].outputs.push_back(out); paths[digit].errors.push_back(error);
                 } catch(const Failure& f) {
                     b.nodes.resize(saved); b.states.resize(saved); b.rounded.resize(saved);
                     if(f.status!=Status::InsufficientLevels && f.status!=Status::HeadroomViolation && f.status!=Status::ScaleScheduleInfeasible) throw;
-                    levelLimited=true; break;
+                    if(!firstBackendLimit)firstBackendLimit=f;
+                    break;
                 }
             }
+        }
+        {
+            auto& diagnostic=data->diagnostics;
+            diagnostic.constructedNodes=b.nodes.size();
+            std::vector<std::size_t> multiplyDepth(b.nodes.size());
+            std::optional<mpz_class> minimumHeadroom;
+            for(std::size_t node=0;node<b.nodes.size();++node) {
+                const auto& trace=b.nodes[node];
+                std::size_t depth=0;
+                for(const auto inputNode:trace.inputs)
+                    depth=std::max(depth,multiplyDepth[inputNode]);
+                if(trace.operation==Op::Multiply)++depth;
+                multiplyDepth[node]=depth;
+                diagnostic.criticalMultiplicativeDepth=std::max(
+                    diagnostic.criticalMultiplicativeDepth,depth);
+                diagnostic.criticalPathLevelConsumption=std::max(
+                    diagnostic.criticalPathLevelConsumption,b.states[node].level);
+                const double scale=b.states[node].scale;
+                diagnostic.minimumRuntimeScale=diagnostic.minimumRuntimeScale
+                    ?std::min(*diagnostic.minimumRuntimeScale,scale):scale;
+                diagnostic.maximumRuntimeScale=diagnostic.maximumRuntimeScale
+                    ?std::max(*diagnostic.maximumRuntimeScale,scale):scale;
+                if(!trace.centeredHeadroomNumerator.empty()) {
+                    const mpz_class headroom(trace.centeredHeadroomNumerator);
+                    if(!minimumHeadroom||headroom<*minimumHeadroom)minimumHeadroom=headroom;
+                }
+                switch(trace.operation) {
+                case Op::Multiply:++diagnostic.ciphertextMultiplications;break;
+                case Op::Relinearize:++diagnostic.relinearizations;break;
+                case Op::Rescale:++diagnostic.rescales;break;
+                case Op::ModSwitch:++diagnostic.modSwitches;break;
+                case Op::MultiplyPlain:++diagnostic.plaintextMultiplications;break;
+                default:break;
+                }
+            }
+            if(minimumHeadroom)
+                diagnostic.minimumCenteredHeadroomNumerator=minimumHeadroom->get_str();
         }
         // Arithmetic alignment uses plaintext 1 and 2 at the other branch's
         // actual dyadic scale. The products have identical binary64 bits.
@@ -158,15 +264,51 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
         }
         } else {
             // Uniform arithmetic reservation across reachable cleaning choices.
-            // Reuse Builder for exact scalar/scale error, never a grid estimate.
+            // Replay only the exact scalar/add state transitions.  Copying the
+            // entire Builder (including every published GMP certificate) for
+            // every Cartesian choice made K64 reconstruction super-linear in
+            // memory and time without changing this bound.
+            const auto multiplyPlainState=[](State input,const mpq_class& k,
+                                              double constantScale) {
+                const double outputScale=input.scale*constantScale;
+                if(!std::isfinite(outputScale)||outputScale<=0)
+                    throw Failure{Status::ScaleScheduleInfeasible,
+                        "Reconstruction reservation scale overflow/underflow"};
+                const mpz_class encoded=roundq(k*q(constantScale));
+                const mpq_class delta=absq(mpq_class(encoded)/q(constantScale)-k);
+                const mpq_class magnitude=input.M*absq(k);
+                mpq_class error=input.E*absq(k)+(input.M+input.E)*delta;
+                error+=absq(q(input.scale)*q(constantScale)/q(outputScale)-1)
+                    *(magnitude+error);
+                input.scale=outputScale; input.M=magnitude; input.E=error;
+                return input;
+            };
             std::size_t combinations=1;for(const auto& p:paths) { if(combinations>65536/p.outputs.size())throw Failure{Status::ScaleScheduleInfeasible,"Reconstruction search exceeds baseline work limit"};combinations*=p.outputs.size(); }
             for(std::size_t choice=0;choice<combinations;++choice) {
-                auto temporary=b;std::vector<std::size_t> roots;auto code=choice;
-                for(std::size_t d=0;d<count;++d) {const auto r=code%paths[d].outputs.size();code/=paths[d].outputs.size();auto root=paths[d].outputs[r];roots.push_back(root);temporary.states[root].M=1+paths[d].errors[r];temporary.states[root].E=0;}
+                std::vector<State> roots; roots.reserve(count); auto code=choice;
+                for(std::size_t d=0;d<count;++d) {
+                    const auto r=code%paths[d].outputs.size(); code/=paths[d].outputs.size();
+                    auto state=b.states[paths[d].outputs[r]];
+                    state.M=1+paths[d].errors[r]; state.E=0;
+                    roots.push_back(std::move(state));
+                }
                 auto total=roots[0];
-                for(std::size_t d=1;d<count;++d) {auto next=roots[d];if(temporary.states[total].level<temporary.states[next].level)total=temporary.alignLevel(total,next,"reconstruction reserve");if(temporary.states[next].level<temporary.states[total].level)next=temporary.alignLevel(next,total,"reconstruction reserve");const auto a=temporary.states[total].scale,c=temporary.states[next].scale;total=temporary.scalar(total,1,c,"reconstruction reserve");next=temporary.scalar(next,mpq_class(mpz_class(1)<<d),a,"reconstruction reserve");total=temporary.add(Op::Add,{total,next},"reconstruction reserve");}
-                total=temporary.plus(total,-mpq_class(integer(reference.problem.K)),"reconstruction reserve shift");
-                if(temporary.states[total].E>rec[0])rec[0]=temporary.states[total].E;
+                for(std::size_t d=1;d<count;++d) {
+                    auto next=roots[d];
+                    total.level=next.level=std::max(total.level,next.level);
+                    const double a=total.scale,c=next.scale;
+                    total=multiplyPlainState(total,1,c);
+                    next=multiplyPlainState(next,mpq_class(mpz_class(1)<<d),a);
+                    if(bits(total.scale)!=bits(next.scale))
+                        throw Failure{Status::ScaleScheduleInfeasible,
+                            "Reconstruction reservation addition scale mismatch"};
+                    total.M+=next.M; total.E+=next.E;
+                }
+                const mpq_class shift=-mpq_class(integer(reference.problem.K));
+                const mpq_class delta=absq(
+                    mpq_class(roundq(shift*q(total.scale)))/q(total.scale)-shift);
+                total.M+=absq(shift); total.E+=delta;
+                if(total.E>rec[0])rec[0]=total.E;
             }
         }
         for(std::size_t d=0;d<count;++d) {
@@ -174,10 +316,14 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
                 "Exact reconstruction arithmetic error exceeds planner budget representation"};
             candidate.digits[d].reconstructionLocalError=bound(rec[d],
                 "Uniform exact scalar alignment/weight encoding, scale representation and constant-shift bound over available cleaning counts");
+            data->diagnostics.digits[d].reconstructionLocalError=exactBound(rec[d],
+                "Uniform exact reconstruction-local bound over available cleaning choices");
         }
         auto selected=planEvalRoundCandidate(reference.problem,candidate);
-        if(selected.status!=EvalRoundPlanStatus::Certified) throw Failure{levelLimited?Status::InsufficientLevels:Status::ErrorBudgetExceeded,
-            "No certified backend cleaning schedule within levels/scales and requiredIntegerError: "+selected.provenance};
+        if(selected.status!=EvalRoundPlanStatus::Certified) throw Failure{
+            firstBackendLimit?firstBackendLimit->status:Status::ErrorBudgetExceeded,
+            "No certified backend cleaning schedule within levels/scales and requiredIntegerError: "+selected.provenance
+            +(firstBackendLimit?"; first concrete backend limit: "+firstBackendLimit->why:"")};
         auto output=paths[0].outputs[selected.digits[0].cleaningIterations];
         for(std::size_t d=1;d<count;++d) {
             auto next=paths[d].outputs[selected.digits[d].cleaningIterations];

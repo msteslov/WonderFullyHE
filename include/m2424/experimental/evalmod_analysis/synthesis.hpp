@@ -135,6 +135,9 @@ struct MultiIntervalRemezRequest {
 
 struct MultiIntervalRemezResult {
     EvalModPolynomial polynomial;
+    /// Original exact basis polynomial before any scaled-basis conversion.
+    EvalModPolynomial executionPolynomial;
+    std::string executionVariableScaleDecimal;
     bool converged{};
     std::size_t exchangeIterations{};
     double sampledMaximumError{std::numeric_limits<double>::infinity()};

@@ -1,12 +1,15 @@
 #include "m2424/experimental/evalmod_analysis/evalround_synthesis.hpp"
 #include "bootstrap_fixture.hpp"
 #include "../src/planning/certified_arithmetic_internal.hpp"
+#include "../src/planning/evalround_polynomial_internal.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <iomanip>
 #include <limits>
 #include <stdexcept>
 
@@ -78,6 +81,30 @@ int main() { try {
           "bounded search retains Remez convergence as diagnostic metadata");
     for (std::size_t digit = 0; digit < 8; ++digit) {
         const auto& selected = search.records[*search.selectedRecordByDigit[digit]];
+        const std::array<EvalModApproximationFamily,8> expectedFamilies{
+            EvalModApproximationFamily::MultiIntervalChebyshev,
+            EvalModApproximationFamily::MultiIntervalChebyshev,
+            EvalModApproximationFamily::MultiIntervalChebyshev,
+            EvalModApproximationFamily::MultiIntervalChebyshev,
+            EvalModApproximationFamily::MultiIntervalChebyshev,
+            EvalModApproximationFamily::MultiIntervalChebyshev,
+            EvalModApproximationFamily::MultiIntervalChebyshev,
+            EvalModApproximationFamily::MultiIntervalMinimax};
+        const std::array<std::size_t,8> expectedDegrees{256,128,256,256,256,256,192,256};
+        check(selected.family==expectedFamilies[digit]
+              &&selected.requestedDegree==expectedDegrees[digit],
+              "selected K64 families and degrees remain unchanged");
+        check(selected.certificate&&selected.certificate->executionRepresentation,
+              "every selected K64 polynomial retains an execution representation");
+        const auto& execution=*selected.certificate->executionRepresentation;
+        check(execution.polynomial.basis==PolynomialBasis::Chebyshev
+              &&execution.variableScaleDecimal=="64"
+              &&!execution.exactEquivalenceProvenance.empty(),
+              "selected execution metadata is scaled Chebyshev with exact-equivalence provenance");
+        check(arithmetic::exactPolynomialEqual(
+                  convertScaledChebyshevToMonomial(execution.polynomial,"64"),
+                  selected.certificate->polynomial),
+              "all eight selected execution polynomials are exactly equivalent to canonical p_j");
         for (const auto& record : search.records)
             if (record.digitIndex == digit && record.certificate
                 && std::isfinite(record.rigorousIntervalError))
@@ -148,18 +175,60 @@ int main() { try {
               "exact product propagation matches M=4 and E=41/100 without binary64 recurrence");
         const auto compiled=EvalRoundExecutionCompiler::compile(
             adapter,input,*shallowestPlan,options);
+        std::cout<<std::setprecision(17);
         std::cout<<"backend_status="<<static_cast<int>(compiled.certification().status)
                  <<" nodes="<<compiled.nodes().size()
                  <<" blocker="<<compiled.certification().provenance<<'\n';
-        check(compiled.certification().status==BootstrapCertificationStatus::ErrorBudgetExceeded
+        check(compiled.certification().status==BootstrapCertificationStatus::HeadroomViolation
               &&compiled.certification().provenance.find(
-                  "Extraction digit 0 exact arithmetic error exceeds cleaner domain")!=std::string::npos
+                  "No certified backend cleaning schedule")!=std::string::npos
+              &&compiled.certification().provenance.find(
+                  "first concrete backend limit")!=std::string::npos
               &&compiled.certification().provenance.find(
                   "Exact polynomial common denominator has no finite binary64 plaintext scale")==std::string::npos
               &&compiled.certification().provenance.find(
-                  "EvalRound polynomial power node 39: ideal magnitude")!=std::string::npos,
-              "finite coefficient scales remove the denominator blocker and reach exact ErrorBudgetExceeded");
+                  "Extraction digit 0 exact arithmetic error exceeds cleaner domain")==std::string::npos,
+              "scaled-Chebyshev execution passes extraction and reaches the later concrete headroom gate");
         check(compiled.nodes().empty(),"non-Certified K64 compilation never publishes an executable DAG");
+        const auto& diagnostic=compiled.diagnostics();
+        check(diagnostic.digits.size()==8&&diagnostic.constructedNodes>0
+              &&diagnostic.ciphertextMultiplications>0
+              &&diagnostic.ciphertextMultiplications==diagnostic.relinearizations
+              &&diagnostic.rescales>=diagnostic.ciphertextMultiplications
+              &&diagnostic.criticalMultiplicativeDepth<256
+              &&diagnostic.minimumRuntimeScale&&diagnostic.maximumRuntimeScale
+              &&!diagnostic.minimumCenteredHeadroomNumerator.empty()
+              &&mpz_class(diagnostic.minimumCenteredHeadroomNumerator)>0,
+              "fail-closed K64 result retains exact resource diagnostics up to its first gate");
+        for(std::size_t digit=0;digit<diagnostic.digits.size();++digit) {
+            const auto& trace=diagnostic.digits[digit];
+            check(trace.approximationError.upperBound
+                      ==candidate.digits[digit].extractionError.upperBound
+                  &&trace.backendExtractionError.outwardBinary64
+                  &&trace.initialCleanerError.outwardBinary64
+                  &&*trace.initialCleanerError.outwardBinary64<=1
+                  &&!trace.cleanerLocalErrors.empty()
+                  &&trace.cleanerErrorAfterRounds.size()
+                      ==trace.cleanerLocalErrors.size()+1
+                  &&trace.chebyshevNodeCount>0,
+                  "every K64 digit passes exact a_0<=1 and reaches real cleaner arithmetic");
+            std::cout<<"digit="<<digit
+                     <<" E_approx="<<trace.approximationError.upperBound
+                     <<" E_backend="<<*trace.backendExtractionError.outwardBinary64
+                     <<" a0="<<*trace.initialCleanerError.outwardBinary64
+                     <<" cleaner_rounds_reached="<<trace.cleanerLocalErrors.size()
+                     <<" chebyshev_nodes="<<trace.chebyshevNodeCount<<'\n';
+        }
+        std::cout<<"constructed_nodes="<<diagnostic.constructedNodes
+                 <<" ctct="<<diagnostic.ciphertextMultiplications
+                 <<" relin="<<diagnostic.relinearizations
+                 <<" rescale="<<diagnostic.rescales
+                 <<" modswitch="<<diagnostic.modSwitches
+                 <<" mulplain="<<diagnostic.plaintextMultiplications
+                 <<" depth="<<diagnostic.criticalMultiplicativeDepth
+                 <<" levels="<<diagnostic.criticalPathLevelConsumption
+                 <<" scale_min="<<*diagnostic.minimumRuntimeScale
+                 <<" scale_max="<<*diagnostic.maximumRuntimeScale<<'\n';
         for(std::size_t digit=0;digit<candidate.extraction.polynomials.size();++digit) {
             check(candidate.extraction.polynomials[digit].polynomial.decimalCoefficients
                       ==exactCoefficients[digit]

@@ -46,6 +46,85 @@ int main(){try {
     auto input=a.encrypt(a.encode({0.}));
     EvalRoundExecutionOptions options;options.inputSemanticError=B(1e-8);
     {
+        const EvalModPolynomial q0{PolynomialBasis::Chebyshev,{"-2047","0","-2048"}};
+        const EvalModPolynomial p0{PolynomialBasis::Monomial,{"1","0","-1"}};
+        check(arithmetic::exactPolynomialEqual(
+                  convertScaledChebyshevToMonomial(q0,"64"),p0),
+              "scaled Chebyshev conversion is exactly equal as a rational polynomial");
+        auto chebAdapter=test::BootstrapFixture::create(
+            {16,std::vector<int>(48,50),std::ldexp(1.,49),8});
+        chebAdapter.generateKeys(std::vector<int>{0},true);
+        const auto chebInput=chebAdapter.encrypt(chebAdapter.encode({0.}));
+        arithmetic::Builder chebBuilder(chebAdapter,chebInput,
+                                        options.evaluationKeyNoiseCoefficientSupport);
+        const mpq_class R(65,64),sample(3,4);
+        const auto tNode=chebBuilder.input(chebAdapter.scale(chebInput),R,0);
+        arithmetic::ScaledChebyshevCompiler chebyshev(chebBuilder,tNode,R);
+        const auto t2=chebyshev.compileBasis(2);
+        const auto t3=chebyshev.compileBasis(3);
+        const auto t8=chebyshev.compileBasis(8);
+        const auto t255=chebyshev.compileBasis(255);
+        const auto t256=chebyshev.compileBasis(256);
+        auto idealAt=[&](std::size_t output,const mpq_class& value) {
+            std::vector<mpq_class> ideal(chebBuilder.nodes.size());
+            for(std::size_t node=0;node<=output;++node) {
+                const auto& operation=chebBuilder.nodes[node];
+                if(operation.operation==EvalRoundOperation::Input)ideal[node]=value;
+                else {
+                    ideal[node]=ideal[operation.inputs[0]];
+                    switch(operation.operation) {
+                    case EvalRoundOperation::Multiply:
+                        ideal[node]*=ideal[operation.inputs[1]];break;
+                    case EvalRoundOperation::Add:
+                        ideal[node]+=ideal[operation.inputs[1]];break;
+                    case EvalRoundOperation::Subtract:
+                        ideal[node]-=ideal[operation.inputs[1]];break;
+                    case EvalRoundOperation::MultiplyPlain:
+                        ideal[node]*=mpq_class(mpz_class(operation.constantNumerator),
+                                              mpz_class(operation.constantDenominator));break;
+                    case EvalRoundOperation::AddPlain:
+                        ideal[node]+=mpq_class(mpz_class(operation.constantNumerator),
+                                              mpz_class(operation.constantDenominator));break;
+                    default:break;
+                    }
+                }
+            }
+            return ideal[output];
+        };
+        auto referenceT=[](std::size_t degree,const mpq_class& value) {
+            if(degree==0)return mpq_class(1);
+            mpq_class previous=1,current=value;
+            for(std::size_t k=1;k<degree;++k) {
+                mpq_class next=2*value*current-previous;
+                previous=std::move(current);current=std::move(next);
+            }
+            return current;
+        };
+        check(idealAt(t2,sample)==2*sample*sample-1,"T_2 fast-doubling identity is exact");
+        check(idealAt(t3,sample)==4*sample*sample*sample-3*sample,
+              "T_3 fast-doubling identity is exact");
+        check(idealAt(t8,sample)==referenceT(8,sample),"T_8 fast-doubling identity is exact");
+        check(idealAt(t255,sample)==referenceT(255,sample)
+              &&idealAt(t256,sample)==referenceT(256,sample),
+              "T_255 and T_256 DAGs equal the independent exact recurrence");
+        std::vector<std::size_t> depth(chebBuilder.nodes.size());
+        for(std::size_t node=0;node<chebBuilder.nodes.size();++node) {
+            for(const auto in:chebBuilder.nodes[node].inputs)
+                depth[node]=std::max(depth[node],depth[in]);
+            if(chebBuilder.nodes[node].operation==EvalRoundOperation::Multiply)++depth[node];
+        }
+        check(depth[t255]<=8&&depth[t256]<=8,
+              "fast-doubling T_255/T_256 multiplication depth is logarithmic");
+        for(const auto degree:{std::size_t(2),std::size_t(3),std::size_t(8),
+                               std::size_t(255),std::size_t(256)}) {
+            const auto bound=chebyshev.exactMagnitudeBound(degree);
+            check(bound==referenceT(degree,R)
+                  &&abs(referenceT(degree,R))<=bound
+                  &&abs(referenceT(degree,-R))<=bound,
+                  "exact T_k(R) recurrence covers both domain endpoints");
+        }
+    }
+    {
         const std::string repeating="0."+std::string(399,'3')+"7";
         const mpq_class coefficient=parseExactDecimal(repeating);
         check(!arithmetic::projectUp(mpq_class(coefficient.get_den())),
@@ -120,6 +199,31 @@ int main(){try {
     check(candidate.extraction.polynomials[1].polynomial.decimalCoefficients==std::vector<std::string>({"0","0.5","0.5"}),"b1 exact shared polynomial representation");
     auto compile=[&](const EvalRoundCandidate& c,const EvalRoundProblem& domain){return EvalRoundExecutionCompiler::compile(a,input,planEvalRoundCandidate(domain,c),options);};
     auto good=compile(candidate,p);check(good.certification().status==S::Certified,good.certification().provenance.c_str());
+    check(good.nodes().size()==54,"K1 exact common-denominator monomial path remains 54 nodes");
+    for(const auto& node:good.nodes())
+        check(node.stage.find("Chebyshev")==std::string::npos
+              &&node.stage.find("normalizeScale")==std::string::npos,
+              "K1 does not enter Chebyshev execution or metadata scale normalization");
+    {
+        auto changedExecution=candidate;
+        auto& polynomial=changedExecution.extraction.polynomials[0];
+        polynomial.executionRepresentation=EvalRoundPolynomialExecutionRepresentation{
+            {PolynomialBasis::Chebyshev,{"-2047","0","-2048"}},"64",
+            "test exact rational conversion"};
+        polynomial.executionRepresentation->polynomial.decimalCoefficients[0]="-2046";
+        const auto rejected=compile(changedExecution,p);
+        check(rejected.certification().status==S::ExtractionNotCertified
+              &&rejected.nodes().empty()
+              &&rejected.certification().provenance.find("not exactly equivalent")!=std::string::npos,
+              "a modified Chebyshev coefficient is rejected before ciphertext arithmetic");
+        polynomial.executionRepresentation->polynomial.decimalCoefficients[0]="-2047";
+        polynomial.executionRepresentation->variableScaleDecimal="32";
+        const auto wrongScale=compile(changedExecution,p);
+        check(wrongScale.certification().status==S::ExtractionNotCertified
+              &&wrongScale.nodes().empty()
+              &&wrongScale.certification().provenance.find("not exactly equivalent")!=std::string::npos,
+              "a wrong scaled-Chebyshev variable scale is rejected before ciphertext arithmetic");
+    }
     for(auto mutation:{0,1,2,3,4,5,6,7,8,9}) {
         auto bad=candidate;auto& poly=bad.extraction.polynomials[0];
         if(mutation==0)poly.polynomial.decimalCoefficients.clear();
@@ -219,4 +323,5 @@ int main(){try {
     }
     std::cout<<std::setprecision(14)<<"generic interval K1 certified="<<verified.integerErrorUpper()<<" observed="<<worst<<" nodes="<<verified.nodes().size()<<"\n";
     std::cout<<"PASS polynomial candidates, interval target proof, generic execution and K64 negative contracts\n";
-}catch(const std::exception& e){std::cerr<<e.what()<<"\n";return 1;}}
+}catch(const arithmetic::Failure& e){std::cerr<<e.why<<"\n";return 1;}
+ catch(const std::exception& e){std::cerr<<e.what()<<"\n";return 1;}}

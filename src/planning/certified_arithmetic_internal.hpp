@@ -8,6 +8,7 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <utility>
 namespace m2424::experimental::arithmetic {
 
 using Op=EvalRoundOperation;
@@ -24,6 +25,11 @@ inline mpz_class roundq(mpq_class x) {
     const bool neg=x<0; if(neg) x=-x;
     mpz_class r=ceilq(x-mpq_class(1,2)); // ties toward zero is also <= 1/2
     return neg ? -r:r;
+}
+inline mpq_class dyadicUpper(const mpq_class& x,std::size_t precisionBits=384) {
+    if(x<0)throw Failure{Status::InvalidInput,"Negative arithmetic bound"};
+    const mpz_class denominator=mpz_class(1)<<precisionBits;
+    return mpq_class(ceilq(x*denominator),denominator);
 }
 inline std::optional<double> projectUp(const mpq_class& x) {
     if(x<0) throw Failure{Status::InvalidInput,"Negative arithmetic bound"};
@@ -75,15 +81,42 @@ struct Builder {
         for(auto i=primes.begin();i!=primes.end()-level;++i) Q*=integer(*i);
         return Q;
     }
-    double scheduleScalarScale(std::size_t a,const mpq_class& k,const std::string& stage) const {
-        const auto& input=states.at(a);
-        const auto Q=activeModulus(input.level);
-        const auto minimumPrime=*std::min_element(primes.begin(),primes.end()-input.level);
+    double baselineDyadicScale(std::size_t level) const {
+        const auto minimumPrime=*std::min_element(primes.begin(),primes.end()-level);
         int exponent=0;
         std::frexp(static_cast<double>(minimumPrime),&exponent);
         --exponent;
         while(exponent>=std::numeric_limits<double>::min_exponent-1
               &&q(std::ldexp(1.,exponent))>=mpq_class(integer(minimumPrime))) --exponent;
+        if(exponent<std::numeric_limits<double>::min_exponent-1)
+            throw Failure{Status::ScaleScheduleInfeasible,"No positive normal dyadic scale below active primes"};
+        return std::ldexp(1.,exponent);
+    }
+    bool scalarScaleFeasible(std::size_t a,const mpq_class& k,double S) const {
+        const auto& input=states.at(a);
+        const auto Q=activeModulus(input.level);
+        const double outputScale=input.scale*S;
+        if(!std::isfinite(S)||S<=0||!std::isfinite(outputScale)||outputScale<=0
+           ||q(outputScale)>=mpq_class(Q))return false;
+        const mpz_class encoded=roundq(k*q(S));
+        if(absq(mpq_class(encoded))*2>=mpq_class(Q))return false;
+        const mpq_class delta=absq(mpq_class(encoded)/q(S)-k);
+        const mpq_class M=input.M*absq(k);
+        mpq_class E=input.E*absq(k)+(input.M+input.E)*delta;
+        E+=absq(q(input.scale)*q(S)/q(outputScale)-1)*(M+E);
+        return Q-2*ceilq(q(outputScale)*(M+E))>0;
+    }
+    double scheduleScalarScaleForOutput(std::size_t a,const mpq_class& k,double outputScale,
+                                        const std::string& stage) const {
+        const double S=outputScale/states.at(a).scale;
+        if(std::isfinite(S)&&S>0&&states.at(a).scale*S==outputScale
+           &&scalarScaleFeasible(a,k,S))return S;
+        return scheduleScalarScale(a,k,stage);
+    }
+    double scheduleScalarScale(std::size_t a,const mpq_class& k,const std::string& stage) const {
+        const auto& input=states.at(a);
+        const auto Q=activeModulus(input.level);
+        int exponent=std::ilogb(baselineDyadicScale(input.level));
         Status lastStatus=Status::ScaleScheduleInfeasible;
         std::string lastWhy="no finite positive candidate";
         constexpr std::size_t maximumCandidates=2048;
@@ -243,7 +276,8 @@ struct Builder {
             s.level=states.at(inputs[1]).level;
             if(s.level<a.level) throw Failure{Status::ScaleScheduleInfeasible,"Modulus raising prohibited"};
         }
-        if(!std::isfinite(s.scale) || s.scale<=0) throw Failure{Status::ScaleScheduleInfeasible,"Scale overflow/underflow"};
+        if(!std::isfinite(s.scale) || s.scale<=0)
+            throw Failure{Status::ScaleScheduleInfeasible,n.stage+": output scale overflow/underflow"};
         n.activePrimes.assign(primes.begin(),primes.end()-s.level);
         n.chainIndex=initialIndex-s.level;
         for(auto i:inputs) n.inputScales.push_back(exact(q(states[i].scale),states[i].scale));
@@ -251,7 +285,7 @@ struct Builder {
         // SEAL requires scale < modulus (also before relinearize/rescale).
         const mpz_class Q=activeModulus(s.level);
         if(q(s.scale)>=mpq_class(Q) || absq(mpq_class(encoded))*2>=mpq_class(Q))
-            throw Failure{Status::HeadroomViolation,"Scale or plaintext exceeds active modulus"};
+            throw Failure{Status::HeadroomViolation,n.stage+": scale or plaintext exceeds active modulus"};
         const auto i=nodes.size(); nodes.push_back(n); states.push_back(s); rounded.push_back(encoded);
         publish(i,calculate(i,states)); return i;
     }
@@ -271,28 +305,89 @@ struct Builder {
     std::size_t alignLevel(std::size_t a,std::size_t b,const std::string& stage) {
         return states[a].level==states[b].level ? a : add(Op::ModSwitch,{a,b},stage);
     }
-    std::size_t cleaner(std::size_t a,const std::string& stage) {
+    std::pair<std::size_t,std::size_t> alignForAdd(std::size_t a,std::size_t c,
+                                                   const std::string& stage) {
+        if(states[a].level<states[c].level)a=alignLevel(a,c,stage);
+        if(states[c].level<states[a].level)c=alignLevel(c,a,stage);
+        const double sa=states[a].scale,sc=states[c].scale;
+        if(bits(sa)!=bits(sc)) {
+            const double multiplier=sc*sc==sa?sc:sa/sc;
+            if(std::isfinite(multiplier)&&multiplier>0&&sc*multiplier==sa)
+                c=scalar(c,1,multiplier,stage);
+            else {
+                a=scalar(a,1,sc,stage);
+                c=scalar(c,1,sa,stage);
+            }
+        }
+        return {a,c};
+    }
+    std::pair<std::size_t,std::size_t> alignForAddByProduct(std::size_t a,std::size_t c,
+                                                            const std::string& stage) {
+        if(states[a].level<states[c].level)a=alignLevel(a,c,stage);
+        if(states[c].level<states[a].level)c=alignLevel(c,a,stage);
+        if(bits(states[a].scale)!=bits(states[c].scale)) {
+            const double sa=states[a].scale,sc=states[c].scale;
+            a=scalar(a,1,sc,stage);
+            c=scalar(c,1,sa,stage);
+        }
+        return {a,c};
+    }
+    std::size_t stabilizeScale(std::size_t node,const std::string& stage) {
+        double target=baselineDyadicScale(states[node].level);
+        while(states[node].scale>=target*target) {
+            node=add(Op::Rescale,{node},stage+" scale stabilization");
+            target=baselineDyadicScale(states[node].level);
+        }
+        if(states[node].scale<target) {
+            const double ratio=target/states[node].scale;
+            const int exponent=static_cast<int>(std::ceil(std::log2(ratio)));
+            if(exponent>0)
+                node=scalar(node,1,std::ldexp(1.,exponent),stage+" scale stabilization");
+        }
+        return node;
+    }
+    std::size_t cleaner(std::size_t a,const std::string& stage,bool stabilizeInput=false) {
         // Baseline: a*a -> relinearize -> rescale, then *(3-2a) ->
         // relinearize -> rescale. No deferred/thrifty tensor evaluation.
+        if(stabilizeInput)a=stabilizeScale(a,stage+" input");
         auto square=reduce(mul(a,a,stage),stage);
         auto linear=plus(scalar(a,-2,1,stage),3,stage);
         linear=alignLevel(linear,square,stage);
         return reduce(mul(square,linear,stage),stage);
     }
     mpq_class localBlock(std::size_t first,std::size_t last,const mpq_class& inputMagnitude) const {
-        auto s=states; s[first].M=inputMagnitude; s[first].E=0;
+        // Cleaner blocks only refer to their input or to an earlier node in the
+        // same block.  Do not copy every previously published exact state: K64
+        // carries large rational certificates and that quadratic copying cost
+        // otherwise dominates compilation.
+        std::vector<State> s(last+1);
+        s[first]=states[first]; s[first].M=inputMagnitude; s[first].E=0;
         for(auto i=first+1;i<=last;++i) s[i]=calculate(i,s).state;
         return s[last].E;
     }
-    void tightenMagnitude(std::size_t node,const mpq_class& magnitude) {
+    void tightenMagnitude(std::size_t node,const mpq_class& magnitude,
+                          const std::string& provenance="binary digit recurrence bounds exact polynomial ideal magnitude") {
         states[node].M=magnitude;
-        const std::string why="v9 binary digit recurrence bounds exact polynomial ideal magnitude";
+        const std::string& why=provenance;
         nodes[node].exactIdealMagnitude=exactBound(magnitude,why);
         nodes[node].idealMagnitude=bound(magnitude,why);
         mpz_class Q=1; for(auto prime:nodes[node].activePrimes) Q*=integer(prime);
         const mpz_class margin=Q-2*ceilq(q(states[node].scale)*(states[node].M+states[node].E));
         if(margin<=0) throw Failure{Status::HeadroomViolation,"Digit boundary headroom"};
         nodes[node].centeredHeadroomNumerator=margin.get_str();
+    }
+    void compactSemanticError(std::size_t node,const std::string& provenance) {
+        const auto compact=dyadicUpper(states[node].E);
+        states[node].E=compact;
+        nodes[node].exactSemanticError=exactBound(compact,provenance);
+        nodes[node].semanticError=bound(compact,provenance);
+        const mpz_class margin=activeModulus(states[node].level)
+            -2*ceilq(q(states[node].scale)*(states[node].M+compact));
+        if(margin<=0)throw Failure{Status::HeadroomViolation,
+            nodes[node].stage+": compact exact semantic bound has no centered headroom"};
+        nodes[node].centeredHeadroomNumerator=margin.get_str();
+        nodes[node].centeredHeadroomProvenance=provenance
+            +"; exact Q/2-ceil(runtimeScale*(M+E))";
     }
 };
 

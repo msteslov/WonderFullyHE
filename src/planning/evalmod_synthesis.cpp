@@ -847,6 +847,7 @@ MultiIntervalRemezResult generateMultiIntervalRemez(
     mpfr_set_q(scale.get(), exactScale.get_mpq_t(), MPFR_RNDN);
     auto core = remezExchange(grid, powers, request.degree,
         request.basis == PolynomialBasis::Chebyshev, scale.get(), request.maximumIterations);
+    EvalModPolynomial executionPolynomial = core.polynomial;
     EvalModPolynomial polynomial = std::move(core.polynomial);
     if (request.basis == PolynomialBasis::Chebyshev)
         polynomial = convertScaledChebyshevToMonomial(
@@ -863,6 +864,8 @@ MultiIntervalRemezResult generateMultiIntervalRemez(
     }
     MultiIntervalRemezResult result;
     result.polynomial = std::move(polynomial);
+    result.executionPolynomial = std::move(executionPolynomial);
+    result.executionVariableScaleDecimal = request.variableScaleDecimal;
     result.converged = core.converged;
     result.exchangeIterations = core.iterations;
     result.sampledMaximumError = core.sampledMaximumError;
