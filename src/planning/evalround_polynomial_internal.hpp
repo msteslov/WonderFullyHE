@@ -44,7 +44,13 @@ public:
             sum=b.add(Op::Add,{a,term},stage);
         }
         auto out=*sum;
-        if(denominator!=1)out=b.scalar(out,mpq_class(1,denominator),up(mpq_class(denominator)),stage);
+        if(denominator!=1) {
+            const auto denominatorScale=projectUp(mpq_class(denominator));
+            if(!denominatorScale) throw Failure{Status::ScaleScheduleInfeasible,
+                "Exact polynomial common denominator has no finite binary64 plaintext scale"
+                +(b.firstUnprojectableBound?"; first finite exact node bound above binary64: "+*b.firstUnprojectableBound:"")};
+            out=b.scalar(out,mpq_class(1,denominator),*denominatorScale,stage);
+        }
         if(c.size()>2)out=b.reduce(out,stage);
         if(c[0]!=0)out=b.plus(out,c[0],stage);
         return out;

@@ -4,6 +4,8 @@
 #include <gmpxx.h>
 #include <cmath>
 #include <cstring>
+#include <limits>
+#include <optional>
 #include <stdexcept>
 namespace m2424::experimental::arithmetic {
 
@@ -22,15 +24,26 @@ inline mpz_class roundq(mpq_class x) {
     mpz_class r=ceilq(x-mpq_class(1,2)); // ties toward zero is also <= 1/2
     return neg ? -r:r;
 }
-inline double up(const mpq_class& x) {
+inline std::optional<double> projectUp(const mpq_class& x) {
+    if(x<0) throw Failure{Status::InvalidInput,"Negative arithmetic bound"};
     double d=x.get_d();
-    if(!std::isfinite(d)) throw Failure{Status::RequiredBoundUnavailable,"Arithmetic bound overflow"};
+    if(!std::isfinite(d)) return std::nullopt;
     if(q(d)<x) d=std::nextafter(d,INFINITY);
+    if(!std::isfinite(d)) return std::nullopt;
     return d;
 }
 inline std::uint64_t bits(double x) { std::uint64_t b; std::memcpy(&b,&x,sizeof b); return b; }
 inline EvalRoundExactScale exact(const mpq_class& x,double runtime) { return {x.get_num().get_str(),x.get_den().get_str(),bits(runtime)}; }
-inline BootstrapBound bound(const mpq_class& x,const std::string& why) { return {up(x),BootstrapBoundKind::Deterministic,why,{}}; }
+inline EvalRoundExactBound exactBound(const mpq_class& x,const std::string& why) {
+    if(x<0) throw Failure{Status::InvalidInput,"Negative exact arithmetic bound"};
+    return {x.get_num().get_str(),x.get_den().get_str(),
+        BootstrapBoundKind::Deterministic,why,projectUp(x)};
+}
+inline BootstrapBound bound(const mpq_class& x,const std::string& why) {
+    const auto projected=projectUp(x);
+    return {projected.value_or(std::numeric_limits<double>::infinity()),
+        BootstrapBoundKind::Deterministic,why,{}};
+}
 inline bool known(const BootstrapBound& b) { return b.kind==BootstrapBoundKind::Deterministic && std::isfinite(b.upperBound) && b.upperBound>=0 && !b.provenance.empty() && b.failureEventIds.empty(); }
 struct State { double scale{}; std::size_t level{},components{2}; mpq_class M,E; };
 struct Calculation { State state; mpq_class propagated,local,encoding,representation; };
@@ -44,6 +57,7 @@ struct Builder {
     mpq_class keyNoise;
     std::string operationLabel;
     std::string keyProvenance;
+    std::optional<std::string> firstUnprojectableBound;
     Builder(const SealAdapter& a,const Cipher& c,const BootstrapBound& noise,std::string label="EvalRound"):
         primes(a.coeffModulusValues(c)),special(a.specialKeyModulusValue()),
         degree(2*a.slotCount()),initialIndex(a.chainIndex(c)),keyNoise(q(noise.upperBound)),
@@ -90,31 +104,57 @@ struct Builder {
         const mpq_class ratio=arithmetic/outScale;
         c.representation=absq(ratio-1)*(M+E+local);
         c.propagated=E; c.local=local+c.representation;
-        c.state.M=q(up(M)); c.state.E=q(up(E+c.local));
+        c.state.M=M; c.state.E=E+c.local;
         return c;
     }
     void publish(std::size_t i,const Calculation& c) {
         auto& n=nodes[i]; states[i]=c.state; n.ciphertextComponents=c.state.components;
         const std::string prefix=operationLabel+" "+n.stage+" node "+std::to_string(i)+": ";
-        n.idealMagnitude=bound(c.state.M,prefix+"triangle/product norms; v9 digit magnitude at stage boundaries");
-        n.propagatedSemanticError=bound(c.propagated,prefix+"semantic error propagation through exact polynomial");
-        n.localArithmeticError=bound(c.local,prefix+"exact scalar encoding, finite-support key switching, component divide-round, exact scale ratio");
-        if(n.requiredKey!=EvalRoundEvaluationKey::None) n.localArithmeticError.provenance+="; "+keyProvenance;
-        if(n.operation==Op::Rescale) n.localArithmeticError.provenance+="; N="+std::to_string(degree)+"; secret coefficient support=1; components="+std::to_string(c.state.components);
-        n.semanticError=bound(c.state.E,prefix+"propagated plus local arithmetic error");
-        n.constantEncodingError=bound(c.encoding,prefix+"exact rational |roundedInteger/encodingScale-constant|");
-        n.scaleRepresentationError=bound(c.representation,prefix+"exact rational scale ratio against binary64 metadata");
+        const std::string magnitudeWhy=prefix+"triangle/product norms; v9 digit magnitude at stage boundaries";
+        const std::string propagatedWhy=prefix+"semantic error propagation through exact polynomial";
+        std::string localWhy=prefix+"exact scalar encoding, finite-support key switching, component divide-round, exact scale ratio";
+        if(n.requiredKey!=EvalRoundEvaluationKey::None) localWhy+="; "+keyProvenance;
+        if(n.operation==Op::Rescale) localWhy+="; N="+std::to_string(degree)+"; secret coefficient support=1; components="+std::to_string(c.state.components);
+        const std::string semanticWhy=prefix+"propagated plus local arithmetic error";
+        const std::string encodingWhy=prefix+"exact rational |roundedInteger/encodingScale-constant|";
+        const std::string representationWhy=prefix+"exact rational scale ratio against binary64 metadata";
+        n.exactIdealMagnitude=exactBound(c.state.M,magnitudeWhy);
+        n.exactPropagatedSemanticError=exactBound(c.propagated,propagatedWhy);
+        n.exactLocalArithmeticError=exactBound(c.local,localWhy);
+        n.exactSemanticError=exactBound(c.state.E,semanticWhy);
+        n.exactConstantEncodingError=exactBound(c.encoding,encodingWhy);
+        n.exactScaleRepresentationError=exactBound(c.representation,representationWhy);
+        if(!firstUnprojectableBound) {
+            if(!n.exactIdealMagnitude.outwardBinary64)
+                firstUnprojectableBound=prefix+"ideal magnitude";
+            else if(!n.exactPropagatedSemanticError.outwardBinary64)
+                firstUnprojectableBound=prefix+"propagated semantic error";
+            else if(!n.exactLocalArithmeticError.outwardBinary64)
+                firstUnprojectableBound=prefix+"local arithmetic error";
+            else if(!n.exactSemanticError.outwardBinary64)
+                firstUnprojectableBound=prefix+"semantic error";
+            else if(!n.exactConstantEncodingError.outwardBinary64)
+                firstUnprojectableBound=prefix+"constant encoding error";
+            else if(!n.exactScaleRepresentationError.outwardBinary64)
+                firstUnprojectableBound=prefix+"scale representation error";
+        }
+        n.idealMagnitude=bound(c.state.M,magnitudeWhy);
+        n.propagatedSemanticError=bound(c.propagated,propagatedWhy);
+        n.localArithmeticError=bound(c.local,localWhy);
+        n.semanticError=bound(c.state.E,semanticWhy);
+        n.constantEncodingError=bound(c.encoding,encodingWhy);
+        n.scaleRepresentationError=bound(c.representation,representationWhy);
         mpz_class Q=1; for(auto prime:n.activePrimes) Q*=integer(prime);
         mpz_class margin=Q-2*ceilq(q(c.state.scale)*(c.state.M+c.state.E));
         if(margin<=0) throw Failure{Status::HeadroomViolation,prefix+"centered no-wrap proof unavailable"};
         n.centeredHeadroomNumerator=margin.get_str();
         n.centeredHeadroomProvenance=prefix+"exact Q/2-ceil(runtimeScale*(M+E)); inverse canonical embedding coefficient norm <= slot sup norm";
     }
-    std::size_t input(double scale,double M,double E,std::size_t level=0) {
+    std::size_t input(double scale,mpq_class M,mpq_class E,std::size_t level=0) {
         EvalRoundExecutionNode n; n.operation=Op::Input; n.stage="input";
         n.chainIndex=initialIndex-level; n.activePrimes.assign(primes.begin(),primes.end()-level);
         n.outputScale=n.arithmeticScale=exact(q(scale),scale);
-        const auto i=nodes.size(); nodes.push_back(n); states.push_back({scale,level,2,q(M),q(E)}); rounded.emplace_back(0);
+        const auto i=nodes.size(); nodes.push_back(n); states.push_back({scale,level,2,std::move(M),std::move(E)}); rounded.emplace_back(0);
         publish(i,calculate(i,states)); return i;
     }
     std::size_t add(Op op,std::vector<std::size_t> inputs,std::string stage,mpq_class constant=0,double constantScale=1) {
@@ -180,14 +220,16 @@ struct Builder {
         linear=alignLevel(linear,square,stage);
         return reduce(mul(square,linear,stage),stage);
     }
-    double localBlock(std::size_t first,std::size_t last,double inputMagnitude) const {
-        auto s=states; s[first].M=q(inputMagnitude); s[first].E=0;
+    mpq_class localBlock(std::size_t first,std::size_t last,const mpq_class& inputMagnitude) const {
+        auto s=states; s[first].M=inputMagnitude; s[first].E=0;
         for(auto i=first+1;i<=last;++i) s[i]=calculate(i,s).state;
-        return up(s[last].E);
+        return s[last].E;
     }
-    void tightenMagnitude(std::size_t node,double magnitude) {
-        states[node].M=q(magnitude);
-        nodes[node].idealMagnitude=bound(q(magnitude),"v9 binary digit recurrence bounds exact polynomial ideal magnitude");
+    void tightenMagnitude(std::size_t node,const mpq_class& magnitude) {
+        states[node].M=magnitude;
+        const std::string why="v9 binary digit recurrence bounds exact polynomial ideal magnitude";
+        nodes[node].exactIdealMagnitude=exactBound(magnitude,why);
+        nodes[node].idealMagnitude=bound(magnitude,why);
         mpz_class Q=1; for(auto prime:nodes[node].activePrimes) Q*=integer(prime);
         const mpz_class margin=Q-2*ceilq(q(states[node].scale)*(states[node].M+states[node].E));
         if(margin<=0) throw Failure{Status::HeadroomViolation,"Digit boundary headroom"};

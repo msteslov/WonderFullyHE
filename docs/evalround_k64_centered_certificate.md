@@ -1,5 +1,9 @@
 # K=64 exact centered-certificate follow-up
 
+> The mathematical results remain current. Its former arithmetic-bound
+> representation blocker is resolved and the next backend gate is documented
+> in [evalround_exact_arithmetic_bounds.md](evalround_exact_arithmetic_bounds.md).
+
 Base revision: `8c8033c77682cd81d05025408d98d959ab018621`.
 The hard mathematical contract for this follow-up is the repository-designated
 v9 EvalRound model plus `codex_bootstrap_implementation_spec_v1.md`. No v10
@@ -134,14 +138,11 @@ test context deliberately provides 48 50-bit coefficient primes at `N=16`,
 scale `2^49`, and both relinearization and conjugation keys. Security is
 disabled only for this test fixture; the production chain is untouched.
 
-Compilation stops with `RequiredBoundUnavailable: Arithmetic bound overflow`.
-This occurs before an immutable reachable DAG is produced (`nodes=0`), despite
-the deliberately ample level count. Therefore extraction nodes/depth, cleaning
-depth, critical-path levels, rescale count, reconstruction operations, scale
-range, and headroom are not available and are not claimed. The exact first
-remaining blocker is the existing compiler arithmetic-bound representation,
-not the centered polynomial certificate, cleaner domain, planner budget, or
-available analysis levels.
+At base `20494f1`, compilation stopped with
+`RequiredBoundUnavailable: Arithmetic bound overflow`. The exact-bound follow-up
+identified that symptom and the next genuine feasibility blocker; see
+[`evalround_exact_arithmetic_bounds.md`](evalround_exact_arithmetic_bounds.md)
+for the current result and its reproducible evidence.
 
 ## Regression coverage
 

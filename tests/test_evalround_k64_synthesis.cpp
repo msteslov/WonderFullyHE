@@ -1,11 +1,13 @@
 #include "m2424/experimental/evalmod_analysis/evalround_synthesis.hpp"
 #include "bootstrap_fixture.hpp"
+#include "../src/planning/certified_arithmetic_internal.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 using namespace m2424;
@@ -112,14 +114,43 @@ int main() { try {
         EvalRoundExecutionOptions options;
         options.inputSemanticError={1e-12,BootstrapBoundKind::Deterministic,
             "analysis-only backend feasibility input bound",{}};
+        const mpq_class huge(mpz_class(1)<<1100);
+        arithmetic::Builder exactBuilder(adapter,input,options.evaluationKeyNoiseCoefficientSupport);
+        const auto hugeNode=exactBuilder.input(1,huge,0);
+        const auto& hugeTrace=exactBuilder.nodes[hugeNode];
+        check(hugeTrace.exactIdealMagnitude.kind==BootstrapBoundKind::Deterministic
+              &&!hugeTrace.exactIdealMagnitude.outwardBinary64
+              &&hugeTrace.idealMagnitude.kind==BootstrapBoundKind::Deterministic
+              &&std::isinf(hugeTrace.idealMagnitude.upperBound)
+              &&mpq_class(mpz_class(hugeTrace.exactIdealMagnitude.numerator),
+                          mpz_class(hugeTrace.exactIdealMagnitude.denominator))==huge
+              &&mpz_class(hugeTrace.centeredHeadroomNumerator)>0,
+              "finite exact bound above DBL_MAX stays known, unclamped, nonzero, and can pass exact headroom");
+        bool exactHeadroomRejected=false;
+        try {
+            arithmetic::Builder insufficient(adapter,input,options.evaluationKeyNoiseCoefficientSupport);
+            insufficient.input(1,mpq_class(mpz_class(1)<<2500),0);
+        } catch(const arithmetic::Failure& failure) {
+            exactHeadroomRejected=failure.status==BootstrapCertificationStatus::HeadroomViolation;
+        }
+        check(exactHeadroomRejected,
+              "finite exact bound above DBL_MAX fails through exact HeadroomViolation when Q is insufficient");
+        arithmetic::Builder hand(adapter,input,options.evaluationKeyNoiseCoefficientSupport);
+        const auto handInput=hand.input(2,mpq_class(2),mpq_class(1,10));
+        const auto handProduct=hand.mul(handInput,handInput,"hand exact propagation");
+        check(hand.states[handProduct].M==4&&hand.states[handProduct].E==mpq_class(41,100),
+              "exact product propagation matches M=4 and E=41/100 without binary64 recurrence");
         const auto compiled=EvalRoundExecutionCompiler::compile(
             adapter,input,*shallowestPlan,options);
         std::cout<<"backend_status="<<static_cast<int>(compiled.certification().status)
                  <<" nodes="<<compiled.nodes().size()
                  <<" blocker="<<compiled.certification().provenance<<'\n';
-        check(compiled.certification().status==BootstrapCertificationStatus::RequiredBoundUnavailable
-              &&compiled.certification().provenance=="Arithmetic bound overflow",
-              "enough-level analysis context reaches the unchanged arithmetic-bound blocker");
+        check(compiled.certification().status==BootstrapCertificationStatus::ScaleScheduleInfeasible
+              &&compiled.certification().provenance.find(
+                  "Exact polynomial common denominator has no finite binary64 plaintext scale")!=std::string::npos
+              &&compiled.certification().provenance.find(
+                  "EvalRound polynomial power node 39: ideal magnitude")!=std::string::npos,
+              "enough-level analysis context reaches the concrete plaintext-scale blocker");
     } else {
         check(!candidate.extraction.verified && candidate.extraction.polynomials.empty()
                 && search.status.find("not a global impossibility") != std::string::npos,

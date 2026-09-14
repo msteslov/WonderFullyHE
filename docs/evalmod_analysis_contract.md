@@ -190,6 +190,16 @@ bound строится 384-bit outward MPFR arithmetic на полном зам�
 и записывает выбранный proof method; compiler пересчитывает оба bounds и их
 metadata. Grid diagnostic в этот минимум не входит.
 
+В PR-3 arithmetic builder величины `M`, `E`, propagated/local error, encoding
+error и scale-representation error сохраняются как exact nonnegative
+`mpq_class`. Node trace публикует их через `EvalRoundExactBound` с exact
+numerator/denominator, provenance и optional outward binary64 projection.
+Отсутствие finite projection не превращает конечную exact bound в `Unknown` и
+не мешает exact gate `Q/2-ceil(scale*(M+E))`. Binary64 conversion выполняется
+только на настоящей границе legacy planner/runtime scale; непредставимый
+plaintext scale получает `ScaleScheduleInfeasible`, а не
+`RequiredBoundUnavailable`.
+
 Operation counts, depth, level consumption и peak liveness выводятся из узлов DAG.
 `ModSwitch`, `AlignScale` и `AddPlain` представлены отдельными узлами и входят в
 стоимостную модель, а не вставляются backend-исполнителем скрыто.

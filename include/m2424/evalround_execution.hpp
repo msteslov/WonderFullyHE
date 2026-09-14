@@ -2,6 +2,7 @@
 #include "m2424/evalround.hpp"
 #include <functional>
 #include <memory>
+#include <optional>
 
 namespace m2424 {
 namespace experimental { class EvalRoundExecutionCompiler; }
@@ -12,6 +13,13 @@ enum class EvalRoundEvaluationKey { None, Relinearization, Conjugation };
 struct EvalRoundExactScale {
     std::string numerator, denominator; // exact positive rational, decimal integers
     std::uint64_t binary64Bits{};
+};
+struct EvalRoundExactBound {
+    std::string numerator, denominator;
+    BootstrapBoundKind kind{BootstrapBoundKind::Unknown};
+    std::string provenance;
+    // Present only when an outward binary64 projection is finite.
+    std::optional<double> outwardBinary64;
 };
 struct EvalRoundExecutionNode {
     EvalRoundOperation operation{};
@@ -28,6 +36,9 @@ struct EvalRoundExecutionNode {
     double constantScale{};
     BootstrapBound idealMagnitude, propagatedSemanticError, localArithmeticError, semanticError;
     BootstrapBound constantEncodingError, scaleRepresentationError;
+    EvalRoundExactBound exactIdealMagnitude, exactPropagatedSemanticError;
+    EvalRoundExactBound exactLocalArithmeticError, exactSemanticError;
+    EvalRoundExactBound exactConstantEncodingError, exactScaleRepresentationError;
     // Exact lower margin Q/2 - ceil(scale*(idealMagnitude+semanticError)).
     std::string centeredHeadroomNumerator; // denominator 2
     std::string centeredHeadroomProvenance;

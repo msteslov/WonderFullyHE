@@ -14,7 +14,13 @@
 namespace m2424::experimental {
 using namespace arithmetic;
 namespace {
-struct DigitPath { std::vector<std::size_t> outputs; std::vector<double> errors; };
+struct DigitPath { std::vector<std::size_t> outputs; std::vector<mpq_class> errors; };
+double finiteStageBound(const mpq_class& value,BootstrapCertificationStatus failure,
+                        const std::string& why) {
+    const auto projected=projectUp(value);
+    if(!projected) throw Failure{failure,why};
+    return *projected;
+}
 }
 BootstrapBound evalRoundBackendKeyNoiseSupport() { return finiteSupportBackendKeyNoise(); }
 
@@ -78,7 +84,9 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
         if(planEvalRoundCandidate(reference.problem,candidate).status!=EvalRoundPlanStatus::Certified)
             throw Failure{Status::ExtractionNotCertified,"The actual polynomial candidate does not satisfy the mathematical extraction contract"};
         Builder b(adapter,input,options.evaluationKeyNoiseCoefficientSupport);
-        const auto start=b.input(adapter.scale(input),up(integer(reference.problem.K)+q(reference.problem.rho)),options.inputSemanticError.upperBound);
+        const auto start=b.input(adapter.scale(input),
+            mpq_class(integer(reference.problem.K))+q(reference.problem.rho),
+            q(options.inputSemanticError.upperBound));
         b.nodes[start].semanticError.provenance=options.inputSemanticError.provenance;
         b.nodes[start].propagatedSemanticError.provenance=options.inputSemanticError.provenance;
         auto conjugate=b.add(Op::Conjugate,{start},"real projection");
@@ -91,12 +99,19 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
         bool levelLimited=false;
         for(std::size_t digit=0;digit<count;++digit) {
             const auto extraction=extracted[digit];
-            double refError=candidate.digits[digit].extractionError.upperBound;
-            double error=up(q(refError)+b.states[extraction].E);
-            candidate.digits[digit].extractionError=bound(q(error),"Whole-domain digit polynomial approximation plus compiled input/projection/polynomial arithmetic");
+            mpq_class refError(candidate.digits[digit].extractionError.upperBound);
+            mpq_class error=refError+b.states[extraction].E;
+            if(error>1) throw Failure{Status::ErrorBudgetExceeded,
+                "Extraction digit "+std::to_string(digit)+" exact arithmetic error exceeds cleaner domain"
+                +(b.firstUnprojectableBound?"; first finite exact bound above binary64: "+*b.firstUnprojectableBound:"")};
+            candidate.digits[digit].extractionError={
+                finiteStageBound(error,Status::ErrorBudgetExceeded,
+                    "Extraction digit error exceeds finite planner representation"),
+                BootstrapBoundKind::Deterministic,
+                "Whole-domain digit polynomial approximation plus compiled input/projection/polynomial arithmetic",{}};
             candidate.digits[digit].cleaningLocalErrors.clear();
             paths[digit].outputs.push_back(extraction); paths[digit].errors.push_back(error);
-            b.tightenMagnitude(extraction,up(1+q(refError)));
+            b.tightenMagnitude(extraction,1+refError);
             for(std::size_t round=0;round<reference.problem.maxCleaningRoundsPerDigit && error<=1;++round) {
                 const auto saved=b.nodes.size();
                 try {
@@ -104,11 +119,14 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
                     auto out=b.cleaner(previous,"cleaning digit "+std::to_string(digit)+" round "+std::to_string(round));
                     // Replay this block with zero *incoming arithmetic* error and
                     // magnitude of the actual incoming digit, not the exact target.
-                    auto local=b.localBlock(previous,out,up(1+q(error)));
-                    candidate.digits[digit].cleaningLocalErrors.push_back(bound(q(local),"All arithmetic nodes of baseline f2(a)=a^2(3-2a), at |a|<=1+incoming digit error"));
-                    error=evalRoundCleaningErrorUpper(EvalRoundRadix::Binary,error,local);
-                    refError=evalRoundCleaningErrorUpper(EvalRoundRadix::Binary,refError,0);
-                    b.tightenMagnitude(out,up(1+q(refError)));
+                    auto local=b.localBlock(previous,out,1+error);
+                    const mpq_class next=5*error*error+local;
+                    if(!projectUp(local)) throw Failure{Status::ErrorBudgetExceeded,
+                        "Cleaning digit "+std::to_string(digit)+" round "+std::to_string(round)+" exact local error exceeds planner budget representation"};
+                    candidate.digits[digit].cleaningLocalErrors.push_back(bound(local,"All arithmetic nodes of baseline f2(a)=a^2(3-2a), at |a|<=1+incoming digit error"));
+                    error=next;
+                    refError=5*refError*refError;
+                    b.tightenMagnitude(out,1+refError);
                     paths[digit].outputs.push_back(out); paths[digit].errors.push_back(error);
                 } catch(const Failure& f) {
                     b.nodes.resize(saved); b.states.resize(saved); b.rounded.resize(saved);
@@ -131,8 +149,8 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
             for(std::size_t d=0;d<2;++d) {
                 const double cs=d?a:c; const mpq_class weight=d?2:1;
                 const mpq_class delta=absq(mpq_class(roundq(weight*q(cs)))/q(cs)-weight);
-                const double e=paths[d].errors[d?j:i];
-                mpq_class local=(1+q(e))*(delta+absq(ratio-1)*(weight+delta));
+                const mpq_class e=paths[d].errors[d?j:i];
+                mpq_class local=(1+e)*(delta+absq(ratio-1)*(weight+delta));
                 if(d==0) local+=absq(mpq_class(roundq(-mpq_class(integer(reference.problem.K))*q(out)))/q(out)+integer(reference.problem.K));
                 local/=weight;
                 if(local>rec[d]) rec[d]=local;
@@ -144,15 +162,19 @@ EvalRoundExecutionPlan EvalRoundExecutionCompiler::compile(SealAdapter& adapter,
             std::size_t combinations=1;for(const auto& p:paths) { if(combinations>65536/p.outputs.size())throw Failure{Status::ScaleScheduleInfeasible,"Reconstruction search exceeds baseline work limit"};combinations*=p.outputs.size(); }
             for(std::size_t choice=0;choice<combinations;++choice) {
                 auto temporary=b;std::vector<std::size_t> roots;auto code=choice;
-                for(std::size_t d=0;d<count;++d) {const auto r=code%paths[d].outputs.size();code/=paths[d].outputs.size();auto root=paths[d].outputs[r];roots.push_back(root);temporary.states[root].M=q(up(1+q(paths[d].errors[r])));temporary.states[root].E=0;}
+                for(std::size_t d=0;d<count;++d) {const auto r=code%paths[d].outputs.size();code/=paths[d].outputs.size();auto root=paths[d].outputs[r];roots.push_back(root);temporary.states[root].M=1+paths[d].errors[r];temporary.states[root].E=0;}
                 auto total=roots[0];
                 for(std::size_t d=1;d<count;++d) {auto next=roots[d];if(temporary.states[total].level<temporary.states[next].level)total=temporary.alignLevel(total,next,"reconstruction reserve");if(temporary.states[next].level<temporary.states[total].level)next=temporary.alignLevel(next,total,"reconstruction reserve");const auto a=temporary.states[total].scale,c=temporary.states[next].scale;total=temporary.scalar(total,1,c,"reconstruction reserve");next=temporary.scalar(next,mpq_class(mpz_class(1)<<d),a,"reconstruction reserve");total=temporary.add(Op::Add,{total,next},"reconstruction reserve");}
                 total=temporary.plus(total,-mpq_class(integer(reference.problem.K)),"reconstruction reserve shift");
                 if(temporary.states[total].E>rec[0])rec[0]=temporary.states[total].E;
             }
         }
-        for(std::size_t d=0;d<count;++d) candidate.digits[d].reconstructionLocalError=bound(rec[d],
-            "Uniform exact scalar alignment/weight encoding, scale representation and constant-shift bound over available cleaning counts");
+        for(std::size_t d=0;d<count;++d) {
+            if(!projectUp(rec[d])) throw Failure{Status::ErrorBudgetExceeded,
+                "Exact reconstruction arithmetic error exceeds planner budget representation"};
+            candidate.digits[d].reconstructionLocalError=bound(rec[d],
+                "Uniform exact scalar alignment/weight encoding, scale representation and constant-shift bound over available cleaning counts");
+        }
         auto selected=planEvalRoundCandidate(reference.problem,candidate);
         if(selected.status!=EvalRoundPlanStatus::Certified) throw Failure{levelLimited?Status::InsufficientLevels:Status::ErrorBudgetExceeded,
             "No certified backend cleaning schedule within levels/scales and requiredIntegerError: "+selected.provenance};
