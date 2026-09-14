@@ -2,6 +2,7 @@
 #include "m2424/evalround.hpp"
 #include <functional>
 #include <memory>
+#include <optional>
 
 namespace m2424 {
 namespace experimental { class EvalRoundExecutionCompiler; }
@@ -12,6 +13,13 @@ enum class EvalRoundEvaluationKey { None, Relinearization, Conjugation };
 struct EvalRoundExactScale {
     std::string numerator, denominator; // exact positive rational, decimal integers
     std::uint64_t binary64Bits{};
+};
+struct EvalRoundExactBound {
+    std::string numerator, denominator;
+    BootstrapBoundKind kind{BootstrapBoundKind::Unknown};
+    std::string provenance;
+    // Present only when an outward binary64 projection is finite.
+    std::optional<double> outwardBinary64;
 };
 struct EvalRoundExecutionNode {
     EvalRoundOperation operation{};
@@ -26,12 +34,35 @@ struct EvalRoundExecutionNode {
     // Constants are exact rationals; their encoding error is included below.
     std::string constantNumerator, constantDenominator;
     double constantScale{};
+    EvalRoundExactScale constantEncodingScale;
+    std::string encodedConstantInteger;
+    std::string representedConstantNumerator, representedConstantDenominator;
     BootstrapBound idealMagnitude, propagatedSemanticError, localArithmeticError, semanticError;
     BootstrapBound constantEncodingError, scaleRepresentationError;
+    EvalRoundExactBound exactIdealMagnitude, exactPropagatedSemanticError;
+    EvalRoundExactBound exactLocalArithmeticError, exactSemanticError;
+    EvalRoundExactBound exactConstantEncodingError, exactScaleRepresentationError;
     // Exact lower margin Q/2 - ceil(scale*(idealMagnitude+semanticError)).
     std::string centeredHeadroomNumerator; // denominator 2
     std::string centeredHeadroomProvenance;
     EvalRoundEvaluationKey requiredKey{EvalRoundEvaluationKey::None};
+};
+struct EvalRoundExecutionDigitDiagnostics {
+    BootstrapBound approximationError;
+    EvalRoundExactBound backendExtractionError;
+    EvalRoundExactBound initialCleanerError;
+    std::vector<EvalRoundExactBound> cleanerLocalErrors;
+    std::vector<EvalRoundExactBound> cleanerErrorAfterRounds; // index zero is a_0
+    EvalRoundExactBound reconstructionLocalError;
+    std::size_t chebyshevNodeCount{};
+};
+struct EvalRoundExecutionDiagnostics {
+    std::vector<EvalRoundExecutionDigitDiagnostics> digits;
+    std::size_t constructedNodes{};
+    std::size_t ciphertextMultiplications{},relinearizations{},rescales{},modSwitches{};
+    std::size_t plaintextMultiplications{},criticalMultiplicativeDepth{},criticalPathLevelConsumption{};
+    std::optional<double> minimumRuntimeScale,maximumRuntimeScale;
+    std::string minimumCenteredHeadroomNumerator;
 };
 class EvalRoundExecutionPlan {
 public:
@@ -41,6 +72,9 @@ public:
     const EvalRoundPlan& mathematicalPlan() const;
     double integerErrorUpper() const;
     std::size_t outputNode() const;
+    // Available on fail-closed results as far as compilation reached. Nodes
+    // themselves remain unpublished unless the complete plan is Certified.
+    const EvalRoundExecutionDiagnostics& diagnostics() const;
 private:
     struct Data;
     std::shared_ptr<const Data> data_;

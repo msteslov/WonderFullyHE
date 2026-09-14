@@ -13,6 +13,15 @@ int main() {
         12, 40, 1.0, {1.0, 0.2, 0.05, 0.2, 0.1, 4096}, 1.0, 0.0, 0.0
     };
     const auto result = em::synthesizeEvalMod(problem);
+    const std::vector<std::string> legacyMinimaxDegree7{
+        "0",
+        "1.03447202915827401141707975810194074488031129880916063001941870186516407027558727051202643643335524708437075397709625271",
+        "0",
+        "-4.6479708777400547923284864248833555748928050269589311047285543368192648364435630280210550830764519976318154012950000225",
+        "0",
+        "5.65851536065689995494325520393226229804297986884636346318623679019613186536120286014424583552141171217246171683786643404",
+        "0",
+        "-2.04480201788678518566484181134751907791733543142137504773780789029282793851071532971646109777578896627714106566882914036"};
     auto strictProblem = problem;
     strictProblem.targetAbsoluteError = 1e-10;
     const auto strict = em::synthesizeEvalMod(strictProblem);
@@ -85,6 +94,7 @@ int main() {
             == em::EvalModApproximationFamily::MultiIntervalLeastSquaresPrototype;
     const bool ok = result.domain.integerBound == 1 && result.candidates.size() >= 11
         && result.provisionalSelection.has_value()
+        && result.candidates[2].polynomial.decimalCoefficients == legacyMinimaxDegree7
         && result.candidates[0].compiledCircuit.cost.degree == 9
         && result.candidates[1].compiledCircuit.cost.degree == 15
         && !result.candidates[0].scaleSchedule.empty()

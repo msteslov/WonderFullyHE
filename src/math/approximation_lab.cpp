@@ -3,6 +3,7 @@
 #include <mpfr.h>
 #include "m2424/experimental/evalmod_analysis/evalround_execution.hpp"
 #include "m2424/experimental/evalmod_analysis/exact_decimal.hpp"
+#include "evalround_interval_internal.hpp"
 
 #include <algorithm>
 #include <array>
@@ -89,7 +90,37 @@ double magnitudeUp(const Real& real, const Real& imag) {
     return mpfr_get_d(magnitude.get(), MPFR_RNDU);
 }
 
+std::vector<mpq_class> shiftExactCoefficients(
+    const std::vector<mpq_class>& coefficients, std::int64_t center) {
+    std::vector<mpq_class> shifted{coefficients.back()};
+    const mpq_class exactCenter(static_cast<long>(center));
+    for (std::size_t index = coefficients.size() - 1; index-- > 0;) {
+        std::vector<mpq_class> next(shifted.size() + 1);
+        for (std::size_t power = 0; power < shifted.size(); ++power) {
+            next[power] += exactCenter * shifted[power];
+            next[power + 1] += shifted[power];
+        }
+        next[0] += coefficients[index];
+        shifted = std::move(next);
+    }
+    for (auto& coefficient : shifted) coefficient.canonicalize();
+    return shifted;
+}
+
 } // namespace
+
+std::vector<mpq_class> detail::shiftPolynomialToIntegerCenterExact(
+    const EvalModPolynomial& polynomial, std::int64_t center) {
+    if (polynomial.basis != PolynomialBasis::Monomial
+        || polynomial.decimalCoefficients.empty()
+        || polynomial.decimalCoefficients.size() > 257)
+        throw std::invalid_argument("invalid exact polynomial shift input");
+    std::vector<mpq_class> coefficients;
+    coefficients.reserve(polynomial.decimalCoefficients.size());
+    for (const auto& text : polynomial.decimalCoefficients)
+        coefficients.push_back(parseExactDecimal(text));
+    return shiftExactCoefficients(coefficients, center);
+}
 
 EvalModGridDiagnostic diagnoseEvalModPolynomialOnGrid(const EvalModPolynomial& polynomial,
                                                       const EvalModDomain& domain,
@@ -295,21 +326,35 @@ EvalRoundDigitPolynomial certifyEvalRoundDigitPolynomial(const EvalRoundProblem&
        polynomial.basis!=PolynomialBasis::Monomial||polynomial.decimalCoefficients.empty()||polynomial.decimalCoefficients.size()>257)
         throw std::invalid_argument("Invalid binary digit interval proof domain/polynomial/work limit");
     constexpr mpfr_prec_t precision=384;
+    std::vector<mpq_class> exactCoefficients;
     std::vector<Interval> coefficients;
     for(const auto& text:polynomial.decimalCoefficients) {
-        const auto exact=parseExactDecimal(text); coefficients.emplace_back(precision);
-        mpfr_set_q(coefficients.back().lo.get(),exact.get_mpq_t(),MPFR_RNDD);
-        mpfr_set_q(coefficients.back().hi.get(),exact.get_mpq_t(),MPFR_RNDU);
+        exactCoefficients.push_back(parseExactDecimal(text)); coefficients.emplace_back(precision);
+        mpfr_set_q(coefficients.back().lo.get(),exactCoefficients.back().get_mpq_t(),MPFR_RNDD);
+        mpfr_set_q(coefficients.back().hi.get(),exactCoefficients.back().get_mpq_t(),MPFR_RNDU);
     }
-    Real maximum(precision),absolute(precision); mpfr_set_zero(maximum.get(),0);
+    const mpq_class exactRho(problem.rho);
+    Real directMaximum(precision),centeredMaximum(precision),absolute(precision);
+    mpfr_set_zero(directMaximum.get(),0);mpfr_set_zero(centeredMaximum.get(),0);
     for(std::int64_t I=-std::int64_t(problem.K);I<=std::int64_t(problem.K);++I) {
         const auto target=evalRoundIntegerDigits(I,problem.K,EvalRoundRadix::Binary)[digit];
+        auto shifted=shiftExactCoefficients(exactCoefficients,I);
+        shifted[0]-=target;shifted[0].canonicalize();
+        std::vector<Interval> shiftedIntervals;
+        shiftedIntervals.reserve(shifted.size());
+        for(const auto& exact:shifted) {
+            shiftedIntervals.emplace_back(precision);
+            mpfr_set_q(shiftedIntervals.back().lo.get(),exact.get_mpq_t(),MPFR_RNDD);
+            mpfr_set_q(shiftedIntervals.back().hi.get(),exact.get_mpq_t(),MPFR_RNDU);
+        }
         for(std::size_t cell=0;cell<subdivisions;++cell) {
             // Exact dyadic rho and complete closed cells; no point/grid inference.
             mpq_class leftFraction(2*cell,subdivisions),rightFraction(2*(cell+1),subdivisions);
             leftFraction.canonicalize();rightFraction.canonicalize();
-            const mpq_class lo=mpq_class(static_cast<long>(I))+mpq_class(problem.rho)*(leftFraction-1);
-            const mpq_class hi=mpq_class(static_cast<long>(I))+mpq_class(problem.rho)*(rightFraction-1);
+            const mpq_class yLo=exactRho*(leftFraction-1);
+            const mpq_class yHi=exactRho*(rightFraction-1);
+            const mpq_class lo=mpq_class(static_cast<long>(I))+yLo;
+            const mpq_class hi=mpq_class(static_cast<long>(I))+yHi;
             Interval x(precision),value(precision),product(precision);
             mpfr_set_q(x.lo.get(),lo.get_mpq_t(),MPFR_RNDD);mpfr_set_q(x.hi.get(),hi.get_mpq_t(),MPFR_RNDU);
             mpfr_set_zero(value.lo.get(),0);mpfr_set_zero(value.hi.get(),0);
@@ -321,15 +366,36 @@ EvalRoundDigitPolynomial certifyEvalRoundDigitPolynomial(const EvalRoundProblem&
             mpfr_sub_si(value.lo.get(),value.lo.get(),target,MPFR_RNDD);
             mpfr_sub_si(value.hi.get(),value.hi.get(),target,MPFR_RNDU);
             for(auto endpoint:{value.lo.get(),value.hi.get()}) {
-                mpfr_abs(absolute.get(),endpoint,MPFR_RNDU);mpfr_max(maximum.get(),maximum.get(),absolute.get(),MPFR_RNDU);
+                mpfr_abs(absolute.get(),endpoint,MPFR_RNDU);mpfr_max(directMaximum.get(),directMaximum.get(),absolute.get(),MPFR_RNDU);
+            }
+            Interval y(precision),centeredValue(precision),centeredProduct(precision);
+            mpfr_set_q(y.lo.get(),yLo.get_mpq_t(),MPFR_RNDD);mpfr_set_q(y.hi.get(),yHi.get_mpq_t(),MPFR_RNDU);
+            mpfr_set_zero(centeredValue.lo.get(),0);mpfr_set_zero(centeredValue.hi.get(),0);
+            for(std::size_t k=shiftedIntervals.size();k-->0;) {
+                multiplyInterval(centeredValue,y,centeredProduct);
+                mpfr_add(centeredValue.lo.get(),centeredProduct.lo.get(),shiftedIntervals[k].lo.get(),MPFR_RNDD);
+                mpfr_add(centeredValue.hi.get(),centeredProduct.hi.get(),shiftedIntervals[k].hi.get(),MPFR_RNDU);
+            }
+            for(auto endpoint:{centeredValue.lo.get(),centeredValue.hi.get()}) {
+                mpfr_abs(absolute.get(),endpoint,MPFR_RNDU);mpfr_max(centeredMaximum.get(),centeredMaximum.get(),absolute.get(),MPFR_RNDU);
             }
         }
     }
     EvalRoundDigitPolynomial out;out.digitIndex=digit;out.polynomial=polynomial;
-    out.certifiedK=problem.K;out.certifiedRho=problem.rho;out.verified=true;
+    out.certifiedK=problem.K;out.certifiedRho=problem.rho;
     out.proof=EvalRoundPolynomialProof::OutwardInterval;out.intervalSubdivisions=subdivisions;
-    out.provenance="384-bit outward MPFR Horner on every complete closed cell of D_K,rho, subtracting bit_j(I+K); no grid or EvalMod target bound";
-    out.approximationError={mpfr_get_d(maximum.get(),MPFR_RNDU),BootstrapBoundKind::Deterministic,out.provenance,{}};
+    out.intervalProofPrecisionBits=precision;
+    const std::string directProvenance="384-bit outward MPFR direct-x Horner on every complete closed subcell of D_K,rho";
+    const std::string centeredProvenance="exact rational Taylor shift x=I+y followed by 384-bit outward MPFR Horner on a complete closed partition of [-rho,+rho]";
+    out.directXApproximationError={mpfr_get_d(directMaximum.get(),MPFR_RNDU),BootstrapBoundKind::Deterministic,directProvenance,{}};
+    out.centeredApproximationError={mpfr_get_d(centeredMaximum.get(),MPFR_RNDU),BootstrapBoundKind::Deterministic,centeredProvenance,{}};
+    const bool useCentered=mpfr_less_p(centeredMaximum.get(),directMaximum.get());
+    out.selectedIntervalProofMethod=useCentered?EvalRoundIntervalProofMethod::CenteredShiftHorner:EvalRoundIntervalProofMethod::DirectXHorner;
+    out.provenance=std::string("minimum of two independent whole-domain bounds for the same exact polynomial and bit_j(I+K): ")
+        +(useCentered?centeredProvenance:directProvenance)+"; grid excluded";
+    out.approximationError=useCentered?out.centeredApproximationError:out.directXApproximationError;
+    out.approximationError.provenance=out.provenance;
+    out.verified=mpfr_number_p(directMaximum.get())&&mpfr_number_p(centeredMaximum.get());
     return out;
 }
 
