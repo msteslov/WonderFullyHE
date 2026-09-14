@@ -34,6 +34,9 @@ struct EvalRoundExecutionNode {
     // Constants are exact rationals; their encoding error is included below.
     std::string constantNumerator, constantDenominator;
     double constantScale{};
+    EvalRoundExactScale constantEncodingScale;
+    std::string encodedConstantInteger;
+    std::string representedConstantNumerator, representedConstantDenominator;
     BootstrapBound idealMagnitude, propagatedSemanticError, localArithmeticError, semanticError;
     BootstrapBound constantEncodingError, scaleRepresentationError;
     EvalRoundExactBound exactIdealMagnitude, exactPropagatedSemanticError;

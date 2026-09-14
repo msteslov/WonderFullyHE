@@ -75,7 +75,7 @@ A known oversized value therefore produces `ErrorBudgetExceeded` rather than
 `RequiredBoundUnavailable`. Genuinely absent upstream or key-switch evidence
 continues to produce `RequiredBoundUnavailable`.
 
-## K=64 backend result
+## K=64 backend result at commit 6e3d184
 
 The unchanged centered certificates select the same polynomials and the
 shallowest mathematical plan remains Certified:
@@ -107,6 +107,10 @@ levels, rescale count, minimum reachable-DAG headroom, output scale range, and
 backend-certified `E_I` are unavailable and are not claimed. The 48-prime
 fixture establishes that ordinary level shortage is not the preceding gate.
 Execution/decryption is therefore not permitted for K=64.
+
+The subsequent finite-coefficient-scale follow-up removes this denominator
+representation blocker and reaches the next exact backend gate. See
+[`evalround_finite_coefficient_scales.md`](evalround_finite_coefficient_scales.md).
 
 ## K=1 regression
 

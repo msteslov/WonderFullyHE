@@ -2,6 +2,7 @@
 #include "m2424/evalround_execution.hpp"
 #include "m2424/experimental/evalmod_analysis/finite_support_arithmetic.hpp"
 #include <gmpxx.h>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -68,6 +69,59 @@ struct Builder {
     mpq_class keySwitch(std::size_t level,double scale) const {
         const std::vector<std::uint64_t> active(primes.begin(),primes.end()-level);
         return finiteSupportKeyNoise(degree,keyNoise,active,special,q(scale))+divideRound(2,scale);
+    }
+    mpz_class activeModulus(std::size_t level) const {
+        mpz_class Q=1;
+        for(auto i=primes.begin();i!=primes.end()-level;++i) Q*=integer(*i);
+        return Q;
+    }
+    double scheduleScalarScale(std::size_t a,const mpq_class& k,const std::string& stage) const {
+        const auto& input=states.at(a);
+        const auto Q=activeModulus(input.level);
+        const auto minimumPrime=*std::min_element(primes.begin(),primes.end()-input.level);
+        int exponent=0;
+        std::frexp(static_cast<double>(minimumPrime),&exponent);
+        --exponent;
+        while(exponent>=std::numeric_limits<double>::min_exponent-1
+              &&q(std::ldexp(1.,exponent))>=mpq_class(integer(minimumPrime))) --exponent;
+        Status lastStatus=Status::ScaleScheduleInfeasible;
+        std::string lastWhy="no finite positive candidate";
+        constexpr std::size_t maximumCandidates=2048;
+        std::size_t attempted=0;
+        for(;exponent>=std::numeric_limits<double>::min_exponent-1
+              &&attempted<maximumCandidates;--exponent,++attempted) {
+            const double S=std::ldexp(1.,exponent);
+            const double outputScale=input.scale*S;
+            if(!std::isfinite(S)||S<=0||!std::isfinite(outputScale)||outputScale<=0) {
+                lastStatus=Status::ScaleScheduleInfeasible;
+                lastWhy="non-finite coefficient or output scale";
+                continue;
+            }
+            if(q(outputScale)>=mpq_class(Q)) {
+                lastStatus=Status::ScaleScheduleInfeasible;
+                lastWhy="output scale is not below the exact active modulus";
+                continue;
+            }
+            const mpz_class encoded=roundq(k*q(S));
+            if(absq(mpq_class(encoded))*2>=mpq_class(Q)) {
+                lastStatus=Status::HeadroomViolation;
+                lastWhy="encoded coefficient integer does not fit the exact active modulus";
+                continue;
+            }
+            const mpq_class delta=absq(mpq_class(encoded)/q(S)-k);
+            const mpq_class M=input.M*absq(k);
+            mpq_class E=input.E*absq(k)+(input.M+input.E)*delta;
+            const mpq_class representation=absq(q(input.scale)*q(S)/q(outputScale)-1)*(M+E);
+            E+=representation;
+            if(Q-2*ceilq(q(outputScale)*(M+E))<=0) {
+                lastStatus=Status::HeadroomViolation;
+                lastWhy="non-positive exact centered headroom after coefficient multiplication";
+                continue;
+            }
+            return S;
+        }
+        throw Failure{lastStatus,stage+": no finite dyadic coefficient scale after bounded search ("
+            +std::to_string(attempted)+" candidates); "+lastWhy};
     }
     Calculation calculate(std::size_t index,const std::vector<State>& s) const {
         const auto& n=nodes[index];
@@ -173,6 +227,11 @@ struct Builder {
             if(op==Op::AddPlain) constantScale=a.scale;
             n.constantNumerator=constant.get_num().get_str(); n.constantDenominator=constant.get_den().get_str(); n.constantScale=constantScale;
             encoded=roundq(constant*q(constantScale));
+            const mpq_class represented=mpq_class(encoded)/q(constantScale);
+            n.constantEncodingScale=exact(q(constantScale),constantScale);
+            n.encodedConstantInteger=encoded.get_str();
+            n.representedConstantNumerator=represented.get_num().get_str();
+            n.representedConstantDenominator=represented.get_den().get_str();
             if(op==Op::MultiplyPlain) { s.scale=a.scale*constantScale; arithmetic=q(a.scale)*q(constantScale); }
         } else if(op==Op::Rescale) {
             if(a.level+1>=primes.size()) throw Failure{Status::InsufficientLevels,"No prime remains for rescale"};
@@ -190,7 +249,7 @@ struct Builder {
         for(auto i:inputs) n.inputScales.push_back(exact(q(states[i].scale),states[i].scale));
         n.outputScale=exact(q(s.scale),s.scale); n.arithmeticScale=exact(arithmetic,s.scale);
         // SEAL requires scale < modulus (also before relinearize/rescale).
-        mpz_class Q=1; for(auto p:n.activePrimes) Q*=integer(p);
+        const mpz_class Q=activeModulus(s.level);
         if(q(s.scale)>=mpq_class(Q) || absq(mpq_class(encoded))*2>=mpq_class(Q))
             throw Failure{Status::HeadroomViolation,"Scale or plaintext exceeds active modulus"};
         const auto i=nodes.size(); nodes.push_back(n); states.push_back(s); rounded.push_back(encoded);

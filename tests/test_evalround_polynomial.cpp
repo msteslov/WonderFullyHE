@@ -5,8 +5,10 @@
 #include "../src/math/evalround_interval_internal.hpp"
 #include "../src/planning/evalround_polynomial_internal.hpp"
 #include "../src/core/certified_arithmetic_internal.hpp"
+#include <algorithm>
 #include <iostream>
 #include <iomanip>
+#include <limits>
 #include <stdexcept>
 #include <cmath>
 #include <cstring>
@@ -43,6 +45,72 @@ int main(){try {
     a.generateKeys(std::vector<int>{0},true);
     auto input=a.encrypt(a.encode({0.}));
     EvalRoundExecutionOptions options;options.inputSemanticError=B(1e-8);
+    {
+        const std::string repeating="0."+std::string(399,'3')+"7";
+        const mpq_class coefficient=parseExactDecimal(repeating);
+        check(!arithmetic::projectUp(mpq_class(coefficient.get_den())),
+              "test coefficient denominator exceeds finite binary64 scale range");
+        arithmetic::Builder fallback(a,input,options.evaluationKeyNoiseCoefficientSupport);
+        const auto fallbackInput=fallback.input(a.scale(input),1,options.inputSemanticError.upperBound);
+        arithmetic::PolynomialCompiler compiler(fallback,fallbackInput);
+        const auto output=compiler.compile({PolynomialBasis::Monomial,{"0",repeating}},
+                                           "finite-scale fallback diagnostic");
+        const auto& node=fallback.nodes[output];
+        check(node.operation==EvalRoundOperation::MultiplyPlain
+              &&node.stage.find("finite coefficient 1")!=std::string::npos,
+              "denominator above binary64 enters direct finite-scale coefficient fallback");
+        const mpq_class scale(mpz_class(node.constantEncodingScale.numerator),
+                              mpz_class(node.constantEncodingScale.denominator));
+        const mpz_class encoded(node.encodedConstantInteger);
+        const mpq_class represented(mpz_class(node.representedConstantNumerator),
+                                    mpz_class(node.representedConstantDenominator));
+        const mpq_class delta(mpz_class(node.exactConstantEncodingError.numerator),
+                              mpz_class(node.exactConstantEncodingError.denominator));
+        check(std::isfinite(node.constantScale)&&node.constantScale>0
+              &&scale==mpq_class(node.constantScale)
+              &&scale<mpq_class(mpz_class(std::to_string(
+                    *std::min_element(node.activePrimes.begin(),node.activePrimes.end()))))
+              &&encoded==arithmetic::roundq(coefficient*scale),
+              "fallback uses actual active primes, a finite exact dyadic scale and n=round(c*S)");
+        check(represented==mpq_class(encoded)/scale
+              &&delta==abs(represented-coefficient)&&delta>0
+              &&mpz_class(node.centeredHeadroomNumerator)>0,
+              "fallback trace retains exact n/S and charges exact |n/S-c|");
+        const mpq_class incomingError(options.inputSemanticError.upperBound);
+        const mpq_class representation(
+            mpz_class(node.exactScaleRepresentationError.numerator),
+            mpz_class(node.exactScaleRepresentationError.denominator));
+        check(fallback.states[output].E
+                  ==incomingError*abs(coefficient)+(1+incomingError)*delta+representation,
+              "exact coefficient delta enters the MultiplyPlain semantic-error recurrence");
+
+        const std::string tiny="0."+std::string(399,'0')+"1";
+        arithmetic::Builder zeroRounded(a,input,options.evaluationKeyNoiseCoefficientSupport);
+        const auto zeroInput=zeroRounded.input(a.scale(input),1,0);
+        arithmetic::PolynomialCompiler zeroCompiler(zeroRounded,zeroInput);
+        const auto zeroOutput=zeroCompiler.compile({PolynomialBasis::Monomial,{"0",tiny}},
+                                                   "zero-rounded fallback diagnostic");
+        const auto& zeroNode=zeroRounded.nodes[zeroOutput];
+        check(zeroNode.encodedConstantInteger=="0"
+              &&mpq_class(mpz_class(zeroNode.exactConstantEncodingError.numerator),
+                           mpz_class(zeroNode.exactConstantEncodingError.denominator))
+                    ==abs(parseExactDecimal(tiny))
+              &&zeroRounded.states[zeroOutput].E>0,
+              "zero-rounded coefficient remains an explicit node and charges its full error");
+
+        bool excessiveScaleRejected=false;
+        try {
+            arithmetic::Builder excessive(a,input,options.evaluationKeyNoiseCoefficientSupport);
+            const auto excessiveInput=excessive.input(a.scale(input),1,0);
+            excessive.scalar(excessiveInput,1,std::numeric_limits<double>::max(),
+                             "excessive coefficient scale diagnostic");
+        } catch(const arithmetic::Failure& failure) {
+            excessiveScaleRejected=failure.status==S::ScaleScheduleInfeasible
+                ||failure.status==S::HeadroomViolation;
+        }
+        check(excessiveScaleRejected,
+              "too-large plaintext scale fails a concrete scale/headroom gate");
+    }
     EvalRoundProblem p{1,1./128,1e-4,4};
     auto candidate=makeEvalRoundReferenceCandidate(p,EvalRoundRadix::Binary,EvalRoundExtractionMethod::BinaryQuadraticK1);
     const mpq_class exactRho(p.rho);

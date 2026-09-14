@@ -50,8 +50,11 @@ The independent K=1 reference formula remains available as an oracle.
 
 ## Generic DAG and propagation
 
-The compiler constructs powers recursively, scales integer coefficient
-numerators, sums monomial terms and applies their exact common denominator.
+The compiler constructs powers recursively. It retains the exact common-
+denominator path when that path has valid finite runtime scales. Otherwise it
+encodes each unchanged rational coefficient directly at a bounded finite
+dyadic scale and charges exact `|round(c*S)/S-c|`; see
+[`evalround_finite_coefficient_scales.md`](evalround_finite_coefficient_scales.md).
 Constants use Builder's exact RNS encoding. Modulus alignment and scale
 alignment use real ModSwitch/MultiplyPlain operations. The fast compatible
 scale case retains the old K=1 runtime schedule; a binary64 scale is never

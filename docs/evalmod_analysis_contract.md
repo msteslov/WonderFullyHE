@@ -196,9 +196,11 @@ error и scale-representation error сохраняются как exact nonnegat
 numerator/denominator, provenance и optional outward binary64 projection.
 Отсутствие finite projection не превращает конечную exact bound в `Unknown` и
 не мешает exact gate `Q/2-ceil(scale*(M+E))`. Binary64 conversion выполняется
-только на настоящей границе legacy planner/runtime scale; непредставимый
-plaintext scale получает `ScaleScheduleInfeasible`, а не
-`RequiredBoundUnavailable`.
+только на настоящей границе legacy planner/runtime scale. Если exact common
+denominator нельзя представить допустимым runtime scale, EvalRound compiler
+переходит к bounded dyadic encoding каждого exact коэффициента и включает
+`|round(c*S)/S-c|` в local error; отсутствие finite projection proof-bound по-
+прежнему не превращается в `RequiredBoundUnavailable`.
 
 Operation counts, depth, level consumption и peak liveness выводятся из узлов DAG.
 `ModSwitch`, `AlignScale` и `AddPlain` представлены отдельными узлами и входят в

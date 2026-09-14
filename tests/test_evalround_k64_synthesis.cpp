@@ -114,6 +114,12 @@ int main() { try {
         EvalRoundExecutionOptions options;
         options.inputSemanticError={1e-12,BootstrapBoundKind::Deterministic,
             "analysis-only backend feasibility input bound",{}};
+        std::vector<std::vector<std::string>> exactCoefficients;
+        std::vector<double> centeredCertificates;
+        for(const auto& polynomial:candidate.extraction.polynomials) {
+            exactCoefficients.push_back(polynomial.polynomial.decimalCoefficients);
+            centeredCertificates.push_back(polynomial.centeredApproximationError.upperBound);
+        }
         const mpq_class huge(mpz_class(1)<<1100);
         arithmetic::Builder exactBuilder(adapter,input,options.evaluationKeyNoiseCoefficientSupport);
         const auto hugeNode=exactBuilder.input(1,huge,0);
@@ -145,12 +151,22 @@ int main() { try {
         std::cout<<"backend_status="<<static_cast<int>(compiled.certification().status)
                  <<" nodes="<<compiled.nodes().size()
                  <<" blocker="<<compiled.certification().provenance<<'\n';
-        check(compiled.certification().status==BootstrapCertificationStatus::ScaleScheduleInfeasible
+        check(compiled.certification().status==BootstrapCertificationStatus::ErrorBudgetExceeded
               &&compiled.certification().provenance.find(
-                  "Exact polynomial common denominator has no finite binary64 plaintext scale")!=std::string::npos
+                  "Extraction digit 0 exact arithmetic error exceeds cleaner domain")!=std::string::npos
+              &&compiled.certification().provenance.find(
+                  "Exact polynomial common denominator has no finite binary64 plaintext scale")==std::string::npos
               &&compiled.certification().provenance.find(
                   "EvalRound polynomial power node 39: ideal magnitude")!=std::string::npos,
-              "enough-level analysis context reaches the concrete plaintext-scale blocker");
+              "finite coefficient scales remove the denominator blocker and reach exact ErrorBudgetExceeded");
+        check(compiled.nodes().empty(),"non-Certified K64 compilation never publishes an executable DAG");
+        for(std::size_t digit=0;digit<candidate.extraction.polynomials.size();++digit) {
+            check(candidate.extraction.polynomials[digit].polynomial.decimalCoefficients
+                      ==exactCoefficients[digit]
+                  &&candidate.extraction.polynomials[digit].centeredApproximationError.upperBound
+                      ==centeredCertificates[digit],
+                  "K64 exact polynomial strings and centered certificates remain unchanged");
+        }
     } else {
         check(!candidate.extraction.verified && candidate.extraction.polynomials.empty()
                 && search.status.find("not a global impossibility") != std::string::npos,
