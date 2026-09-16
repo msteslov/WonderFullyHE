@@ -2,6 +2,7 @@
 #include "bootstrap_fixture.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <stdexcept>
@@ -10,6 +11,7 @@
 namespace {
 
 using namespace m2424;
+using Clock = std::chrono::steady_clock;
 
 BootstrapBound deterministicBound(double value, const char* provenance) {
     return {value, BootstrapBoundKind::Deterministic, provenance, {}};
@@ -21,6 +23,10 @@ double maxAbs(const std::vector<double>& values) {
         result = std::max(result, std::abs(value));
     }
     return result;
+}
+
+double elapsedMs(Clock::time_point start, Clock::time_point finish) {
+    return std::chrono::duration<double, std::milli>(finish - start).count();
 }
 
 Cipher sumFirstSlots(SealAdapter& adapter, const Cipher& input, std::size_t count) {
@@ -101,13 +107,19 @@ int main() {
             "Explicit K=1 research-fixture assumption; never production evidence"
         };
 
+        const auto prepareStart = Clock::now();
         const auto plan = bootstrap.prepare(adapter, input, request);
+        const auto prepareFinish = Clock::now();
+
         if (plan.executionReadiness().status != BootstrapCertificationStatus::Certified) {
             throw std::runtime_error(
                 plan.executionReadiness().gate + ": " + plan.executionReadiness().provenance);
         }
 
+        const auto bootstrapStart = Clock::now();
         const auto refreshed = bootstrap.apply(adapter, input, plan);
+        const auto bootstrapFinish = Clock::now();
+
         if (!refreshed.output) {
             throw std::runtime_error(
                 "Bootstrap produced no output: " + refreshed.trace.result.gate + ": "
@@ -117,6 +129,8 @@ int main() {
         // Continue the financial computation *after* refresh. One plaintext-vector
         // multiplication applies EAD*LGD*stress factors. A power-of-two plaintext
         // scale gives enough precision while consuming only one remaining level.
+        const auto financialStart = Clock::now();
+
         std::vector<std::complex<double>> weightsComplex;
         weightsComplex.reserve(lossWeights.size());
         for (double value : lossWeights) {
@@ -130,6 +144,8 @@ int main() {
         weighted = adapter.rescaleToNext(weighted);
 
         auto totalCipher = sumFirstSlots(adapter, weighted, loans);
+        const auto financialFinish = Clock::now();
+
         const auto decoded = adapter.decode(adapter.decrypt(totalCipher));
         const double expectedLossEncrypted = decoded.front();
 
@@ -147,6 +163,9 @@ int main() {
         std::printf("mode=research_fixture_k1\n");
         std::printf("security_bits=%d\n", adapter.securityLevelBits());
         std::printf("loans=%zu\n", loans);
+        std::printf("prepare_ms=%.6f\n", elapsedMs(prepareStart, prepareFinish));
+        std::printf("bootstrap_ms=%.6f\n", elapsedMs(bootstrapStart, bootstrapFinish));
+        std::printf("financial_stage_ms=%.6f\n", elapsedMs(financialStart, financialFinish));
         std::printf("bootstrap_global_status=%d\n", static_cast<int>(refreshed.trace.result.status));
         std::printf("bootstrap_first_global_gate=%s\n", refreshed.trace.result.gate.c_str());
         std::printf("bootstrap_certified_error=%.12e\n",
