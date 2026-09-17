@@ -1,0 +1,28 @@
+name: Financial bootstrap experiment
+
+on:
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  verify-financial-experiment:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install analysis dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgmp-dev libmpfr-dev pkg-config
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DM2424_ENABLE_EVALMOD_ANALYSIS=ON
+
+      - name: Build financial experiment
+        run: cmake --build build --target experiment_credit_risk_bootstrap -j"$(nproc)"
+
+      - name: Run financial experiment
+        run: ./build/bin/experiment_credit_risk_bootstrap
