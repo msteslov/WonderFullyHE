@@ -21,13 +21,19 @@ jobs:
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DM2424_ENABLE_EVALMOD_ANALYSIS=ON
 
-      - name: Build financial experiment
-        run: cmake --build build --target experiment_credit_risk_bootstrap -j"$(nproc)"
+      - name: Build financial experiments
+        run: cmake --build build --target experiment_credit_risk_ckks experiment_credit_risk_bootstrap -j"$(nproc)"
 
-      - name: Run financial experiment repeatedly
+      - name: Run secure CKKS experiment repeatedly
         run: |
-          : > financial_runs.log
           for i in $(seq 1 20); do
-            echo "RUN=$i" | tee -a financial_runs.log
-            ./build/bin/experiment_credit_risk_bootstrap | tee -a financial_runs.log
+            echo "SECURE_RUN=$i"
+            ./build/bin/experiment_credit_risk_ckks
+          done
+
+      - name: Run bootstrap experiment repeatedly
+        run: |
+          for i in $(seq 1 20); do
+            echo "BOOTSTRAP_RUN=$i"
+            ./build/bin/experiment_credit_risk_bootstrap
           done
