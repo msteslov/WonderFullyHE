@@ -24,5 +24,10 @@ jobs:
       - name: Build financial experiment
         run: cmake --build build --target experiment_credit_risk_bootstrap -j"$(nproc)"
 
-      - name: Run financial experiment
-        run: ./build/bin/experiment_credit_risk_bootstrap
+      - name: Run financial experiment repeatedly
+        run: |
+          : > financial_runs.log
+          for i in $(seq 1 20); do
+            echo "RUN=$i" | tee -a financial_runs.log
+            ./build/bin/experiment_credit_risk_bootstrap | tee -a financial_runs.log
+          done
