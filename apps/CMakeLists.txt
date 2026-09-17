@@ -29,6 +29,10 @@ foreach(target IN LISTS M2424_STABLE_APPS)
     m2424_add_app(${target})
 endforeach()
 
+if(BUILD_TESTING)
+    m2424_add_app(experiment_credit_risk_ckks)
+endif()
+
 if(M2424_ENABLE_EVALMOD_ANALYSIS)
     add_executable(report_evalmod_synthesis report_evalmod_synthesis.cpp)
     target_compile_features(report_evalmod_synthesis PRIVATE cxx_std_17)
