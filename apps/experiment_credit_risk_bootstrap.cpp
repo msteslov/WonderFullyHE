@@ -42,6 +42,7 @@ int main() {
         constexpr std::size_t N = 16;
         constexpr std::size_t loans = N / 2;
         constexpr double inputNormalization = 4096.0;
+        constexpr double publicWeightScale = std::ldexp(1.0, 20);
         const CkksProfile profile{N, std::vector<int>(15, 50), std::ldexp(1.0, 49), loans};
 
         auto adapter = test::BootstrapFixture::create(profile);
@@ -70,9 +71,13 @@ int main() {
         normalizedPd.reserve(loans);
         std::vector<double> normalizedLossWeights;
         normalizedLossWeights.reserve(loans);
+        std::vector<std::complex<double>> weightsComplex;
+        weightsComplex.reserve(loans);
         for (std::size_t i = 0; i < loans; ++i) {
             normalizedPd.emplace_back(pd[i] / inputNormalization, 0.0);
-            normalizedLossWeights.push_back(lossWeights[i] * inputNormalization);
+            const double normalizedWeight = lossWeights[i] * inputNormalization;
+            normalizedLossWeights.push_back(normalizedWeight);
+            weightsComplex.emplace_back(normalizedWeight, 0.0);
         }
 
         // Construct the same exact coefficient-domain fixture used by the passing
@@ -123,6 +128,21 @@ int main() {
         auto sourcePlain = adapter.modSwitchPlainTo(encoded, bottom);
         auto input = test::BootstrapFixture::input(adapter, sourcePlain);
 
+        // Baseline: the application step requires a rescale, but the source ciphertext
+        // is already at the last chain level. This check records whether the same
+        // financial continuation is executable without refreshing the ciphertext.
+        bool noBootstrapContinuation = false;
+        std::string noBootstrapFailure;
+        try {
+            auto baselinePlain = adapter.encodeComplexAtScaleFor(
+                weightsComplex, publicWeightScale, input);
+            auto baselineWeighted = adapter.multiplyPlain(input, baselinePlain);
+            baselineWeighted = adapter.rescaleToNext(baselineWeighted);
+            noBootstrapContinuation = true;
+        } catch (const std::exception& error) {
+            noBootstrapFailure = error.what();
+        }
+
         BootstrapRequest request;
         request.target.targetAbsoluteError = 1e-6;
         request.upstream.messageMagnitude = deterministicBound(
@@ -165,13 +185,6 @@ int main() {
         }
 
         const auto financialStart = Clock::now();
-        std::vector<std::complex<double>> weightsComplex;
-        weightsComplex.reserve(loans);
-        for (double value : normalizedLossWeights) {
-            weightsComplex.emplace_back(value, 0.0);
-        }
-
-        const double publicWeightScale = std::ldexp(1.0, 20);
         auto weightPlain = adapter.encodeComplexAtScaleFor(
             weightsComplex, publicWeightScale, *refreshed.output);
         auto weighted = adapter.multiplyPlain(*refreshed.output, weightPlain);
@@ -194,6 +207,10 @@ int main() {
         std::printf("source_encoding_max_error=%.12e\n", sourceEncodingError);
         std::printf("message_magnitude_bound=%.12e\n", messageMagnitude);
         std::printf("raised_magnitude_bound=%.12e\n", request.upstream.raisedMagnitude.upperBound);
+        std::printf("without_bootstrap_continuation=%s\n", noBootstrapContinuation ? "PASS" : "BLOCKED");
+        if (!noBootstrapFailure.empty()) {
+            std::printf("without_bootstrap_reason=%s\n", noBootstrapFailure.c_str());
+        }
         std::printf("prepare_ms=%.6f\n", elapsedMs(prepareStart, prepareFinish));
         std::printf("bootstrap_ms=%.6f\n", elapsedMs(bootstrapStart, bootstrapFinish));
         std::printf("financial_stage_ms=%.6f\n", elapsedMs(financialStart, financialFinish));
@@ -217,7 +234,8 @@ int main() {
         std::printf("expected_loss_abs_error=%.12e\n", absError);
         std::printf("expected_loss_relative_error=%.12e\n", relativeError);
 
-        const bool ok = sourceEncodingError <= 1e-12
+        const bool ok = !noBootstrapContinuation
+            && sourceEncodingError <= 1e-12
             && bootstrapObservedError <= request.target.targetAbsoluteError
             && std::isfinite(expectedLossEncrypted)
             && relativeError <= 1e-4;
