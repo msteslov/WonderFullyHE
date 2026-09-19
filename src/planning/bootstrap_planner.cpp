@@ -193,7 +193,7 @@ BootstrapPlan Bootstrapper::prepare(SealAdapter& a,const Cipher& input,const Boo
         for(const auto& digit:p->evalRound.mathematicalPlan().digits) trace.details["EvalRound.cleaning"]+=std::to_string(digit.cleaningIterations)+",";
         const auto& end=p->evalRound.nodes()[p->evalRound.outputNode()];
         Builder b(a,ctsState,experimental::finiteSupportBackendKeyNoise(),"Bootstrap combination");
-        auto hp=b.input(ctsScale,up(hpMagnitude),trace.bounds["E_HP"].upperBound);
+        auto hp=b.input(ctsScale,hpMagnitude,q(trace.bounds["E_HP"].upperBound));
         auto ii=b.input(runtime(end.outputScale.binary64Bits),1,p->evalRound.integerErrorUpper(),a.chainIndex(ctsState)-end.chainIndex);
         std::size_t rescaleCount=0;
         const auto prime=source.raisedPrimes.at(combinationChain+1);

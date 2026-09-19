@@ -115,6 +115,41 @@ enum class EvalModApproximationFamily {
     MinimaxInverseSine
 };
 
+/// One closed component of a real multi-interval approximation domain.
+/// Decimal endpoints and the constant target are parsed as exact rationals.
+struct MultiIntervalRemezInterval {
+    std::string leftDecimal;
+    std::string rightDecimal;
+    std::string targetDecimal;
+};
+
+struct MultiIntervalRemezRequest {
+    std::vector<MultiIntervalRemezInterval> intervals;
+    std::size_t degree{};
+    PolynomialBasis basis{PolynomialBasis::Chebyshev};
+    /// The basis variable is x/variableScale. Use 1 for the legacy EvalMod path.
+    std::string variableScaleDecimal{"1"};
+    std::size_t samplesPerInterval{8};
+    std::size_t maximumIterations{8};
+};
+
+struct MultiIntervalRemezResult {
+    EvalModPolynomial polynomial;
+    /// Original exact basis polynomial before any scaled-basis conversion.
+    EvalModPolynomial executionPolynomial;
+    std::string executionVariableScaleDecimal;
+    bool converged{};
+    std::size_t exchangeIterations{};
+    double sampledMaximumError{std::numeric_limits<double>::infinity()};
+    std::vector<std::string> exchangePointsDecimal;
+    bool exchangePointsInsideDomain{};
+};
+
+/// Candidate generation only. Neither convergence nor sampled error is a
+/// certificate; callers must use the relevant outward interval verifier.
+MultiIntervalRemezResult generateMultiIntervalRemez(
+    const MultiIntervalRemezRequest&);
+
 enum class EvalModCandidateStage {
     Generated, GridDiagnosed, IntervalCertified, CircuitCompiled, ScaleScheduled,
     BackendMeasured, BackendValidated

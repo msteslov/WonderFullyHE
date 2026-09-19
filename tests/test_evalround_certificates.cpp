@@ -1,4 +1,5 @@
 #include "m2424/experimental/evalmod_analysis/evalround_execution.hpp"
+#include "../src/planning/certified_arithmetic_internal.hpp"
 #include <cmath>
 #include "evalround_test_support.hpp"
 #include <cfenv>
@@ -6,6 +7,7 @@
 #include <cstdio>
 #include <stdexcept>
 #include <type_traits>
+#include <utility>
 using namespace m2424;
 using namespace m2424::experimental;
 namespace {
@@ -101,8 +103,42 @@ int main() {
                 const mpq_class after(mpz_class(n.arithmeticScale.numerator),mpz_class(n.arithmeticScale.denominator));
                 check(after==before/mpz_class(std::to_string(source.activePrimes.back())),"Exact scale division uses actual integer prime");
             }
+            if(n.operation==EvalRoundOperation::MultiplyPlain
+               ||n.operation==EvalRoundOperation::AddPlain) {
+                const mpq_class constant(mpz_class(n.constantNumerator),
+                                         mpz_class(n.constantDenominator));
+                const mpq_class scale(mpz_class(n.constantEncodingScale.numerator),
+                                      mpz_class(n.constantEncodingScale.denominator));
+                const mpz_class encoded(n.encodedConstantInteger);
+                const mpq_class represented(mpz_class(n.representedConstantNumerator),
+                                            mpz_class(n.representedConstantDenominator));
+                const mpq_class delta(mpz_class(n.exactConstantEncodingError.numerator),
+                                      mpz_class(n.exactConstantEncodingError.denominator));
+                check(scale==mpq_class(n.constantScale)
+                      &&encoded==arithmetic::roundq(constant*scale)
+                      &&represented==mpq_class(encoded)/scale
+                      &&delta==arithmetic::absq(represented-constant),
+                      "Plaintext trace retains exact scale, rounded integer, represented constant and delta");
+            }
             for(const auto* b:{&n.idealMagnitude,&n.semanticError,&n.localArithmeticError,&n.scaleRepresentationError})
                 check(b->kind!=BootstrapBoundKind::Unknown && !b->provenance.empty(),"Every required node bound known with provenance");
+            const std::pair<const EvalRoundExactBound*,const BootstrapBound*> exactBounds[]{
+                {&n.exactIdealMagnitude,&n.idealMagnitude},
+                {&n.exactPropagatedSemanticError,&n.propagatedSemanticError},
+                {&n.exactLocalArithmeticError,&n.localArithmeticError},
+                {&n.exactSemanticError,&n.semanticError},
+                {&n.exactConstantEncodingError,&n.constantEncodingError},
+                {&n.exactScaleRepresentationError,&n.scaleRepresentationError}};
+            for(const auto& [exactBound,legacyBound]:exactBounds) {
+                check(exactBound->kind==BootstrapBoundKind::Deterministic
+                      &&!exactBound->provenance.empty()&&exactBound->outwardBinary64
+                      &&*exactBound->outwardBinary64==legacyBound->upperBound,
+                      "K1 exact trace bound retains its compatible outward binary64 projection");
+                const mpq_class exactValue(mpz_class(exactBound->numerator),
+                                            mpz_class(exactBound->denominator));
+                check(mpq_class(*exactBound->outwardBinary64)>=exactValue,
+                      "K1 binary64 compatibility field is outward from the exact authority");
+            }
             if(n.operation==EvalRoundOperation::Conjugate || n.operation==EvalRoundOperation::Relinearize || n.operation==EvalRoundOperation::Rescale)
                 check(n.localArithmeticError.upperBound>0,"Real key switching/rescale local errors cannot be zero");
         }

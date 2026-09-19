@@ -8,6 +8,7 @@ struct EvalRoundExecutionPlan::Data {
     std::vector<EvalRoundExecutionNode> nodes;
     std::vector<Plain> constants;
     EvalRoundPlan mathematicalPlan;
+    EvalRoundExecutionDiagnostics diagnostics;
     std::size_t output{};
 };
 }

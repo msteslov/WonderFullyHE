@@ -14,6 +14,9 @@ const std::vector<EvalRoundExecutionNode>& EvalRoundExecutionPlan::nodes() const
 const EvalRoundPlan& EvalRoundExecutionPlan::mathematicalPlan() const { return data_->mathematicalPlan; }
 double EvalRoundExecutionPlan::integerErrorUpper() const { return data_->mathematicalPlan.integerErrorUpper; }
 std::size_t EvalRoundExecutionPlan::outputNode() const { return data_->output; }
+const EvalRoundExecutionDiagnostics& EvalRoundExecutionPlan::diagnostics() const {
+    return data_->diagnostics;
+}
 BootstrapContractResult preflightEvalRound(const SealAdapter& a, const Cipher& input, const EvalRoundExecutionPlan& p) {
     if(p.certification().status!=BootstrapCertificationStatus::Certified) return p.certification();
     if(std::fegetround()!=FE_TONEAREST) return fail(BootstrapCertificationStatus::ScaleScheduleInfeasible,"Binary64 schedule requires round-to-nearest");

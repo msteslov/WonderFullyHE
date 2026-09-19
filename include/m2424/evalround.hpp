@@ -31,7 +31,13 @@ struct EvalRoundCost {
     double reconstruction{};
 };
 enum class EvalRoundPolynomialProof { Unknown, GridDiagnostic, BinaryQuadraticIdentity, OutwardInterval };
+enum class EvalRoundIntervalProofMethod { Unknown, DirectXHorner, CenteredShiftHorner };
 enum class EvalRoundDigitTarget { BinaryOffsetDigit, TernaryRoot };
+struct EvalRoundPolynomialExecutionRepresentation {
+    experimental::EvalModPolynomial polynomial;
+    std::string variableScaleDecimal;
+    std::string exactEquivalenceProvenance;
+};
 struct EvalRoundDigitPolynomial {
     EvalRoundRadix radix{EvalRoundRadix::Binary};
     std::size_t digitIndex{};
@@ -40,11 +46,16 @@ struct EvalRoundDigitPolynomial {
     std::uint32_t certifiedK{};
     double certifiedRho{};
     BootstrapBound approximationError;
+    BootstrapBound directXApproximationError;
+    BootstrapBound centeredApproximationError;
     EvalRoundPolynomialProof proof{EvalRoundPolynomialProof::Unknown};
+    EvalRoundIntervalProofMethod selectedIntervalProofMethod{EvalRoundIntervalProofMethod::Unknown};
     bool verified{};
     std::string provenance;
     std::vector<std::string> failureEventIds;
     std::size_t intervalSubdivisions{64};
+    std::size_t intervalProofPrecisionBits{};
+    std::optional<EvalRoundPolynomialExecutionRepresentation> executionRepresentation;
 };
 struct EvalRoundExtractionDescription {
     EvalRoundExtractionMethod method{EvalRoundExtractionMethod::ExternalPolynomial};

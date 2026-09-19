@@ -173,6 +173,35 @@ Remez-кандидат допускается к сравнению только
 dense-grid maximum. Исключение одного кандидата превращается в
 `ApproximationNotConverged` и не прерывает synthesis.
 
+Экспериментальный `generateMultiIntervalRemez` переиспользует тот же MPFR-384
+exchange core для произвольной кусочно-постоянной цели на упорядоченном объединении
+замкнутых интервалов. Endpoints и target парсятся как exact decimal rationals;
+полная monomial/Chebyshev basis и нормировка переменной задаются request-ом.
+Генератор не добавляет точки в промежутки между интервалами. Его convergence,
+exchange points и sampled maximum являются только диагностикой: доказательство
+по-прежнему выдаёт отдельный outward interval verifier. Legacy `remezOdd` сохраняет
+прежние odd powers, target `x-round(x)`, grid и iteration bound.
+
+Для exact-decimal EvalRound-полинома whole-domain verifier сохраняет независимый
+direct-x Horner bound и дополнительно для каждого integer center точно вычисляет
+Taylor shift `p(I+y)` в `mpq_class`. После вычитания exact target новый Horner
+bound строится 384-bit outward MPFR arithmetic на полном замкнутом разбиении
+`y in [-rho,rho]`. Сертификат использует минимум только этих двух строгих bounds
+и записывает выбранный proof method; compiler пересчитывает оба bounds и их
+metadata. Grid diagnostic в этот минимум не входит.
+
+В PR-3 arithmetic builder величины `M`, `E`, propagated/local error, encoding
+error и scale-representation error сохраняются как exact nonnegative
+`mpq_class`. Node trace публикует их через `EvalRoundExactBound` с exact
+numerator/denominator, provenance и optional outward binary64 projection.
+Отсутствие finite projection не превращает конечную exact bound в `Unknown` и
+не мешает exact gate `Q/2-ceil(scale*(M+E))`. Binary64 conversion выполняется
+только на настоящей границе legacy planner/runtime scale. Если exact common
+denominator нельзя представить допустимым runtime scale, EvalRound compiler
+переходит к bounded dyadic encoding каждого exact коэффициента и включает
+`|round(c*S)/S-c|` в local error; отсутствие finite projection proof-bound по-
+прежнему не превращается в `RequiredBoundUnavailable`.
+
 Operation counts, depth, level consumption и peak liveness выводятся из узлов DAG.
 `ModSwitch`, `AlignScale` и `AddPlain` представлены отдельными узлами и входят в
 стоимостную модель, а не вставляются backend-исполнителем скрыто.
