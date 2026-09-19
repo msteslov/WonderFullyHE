@@ -44,7 +44,7 @@ if(M2424_ENABLE_EVALMOD_ANALYSIS)
     target_compile_features(test_evalround_k64_synthesis PRIVATE cxx_std_17)
     target_link_libraries(test_evalround_k64_synthesis PRIVATE m2424::evalmod_analysis)
     add_test(NAME test_evalround_k64_synthesis COMMAND test_evalround_k64_synthesis)
-    set_tests_properties(test_evalround_k64_synthesis PROPERTIES TIMEOUT 600)
+    set_tests_properties(test_evalround_k64_synthesis PROPERTIES TIMEOUT 1800)
     set_tests_properties(test_evalmod_synthesis test_evalmod_backend test_evalmod_certificates
                          PROPERTIES TIMEOUT 1800)
 endif()

@@ -284,6 +284,11 @@ int main(){try {
         }
     }
     auto verified=compile(external,p);check(verified.certification().status==S::Certified,verified.certification().provenance.c_str());
+    std::cout<<std::hexfloat<<"K1 locked certificate bits="
+             <<verified.integerErrorUpper()<<std::defaultfloat<<'\n';
+    check(verified.nodes().size()==54
+          &&verified.integerErrorUpper()==0x1.9dc9f4187ff64p-17,
+          "K1 outward-interval certificate tightening and 54-node DAG are locked");
     auto missing=external;missing.extraction.polynomials.pop_back();
     check(compile(missing,p).certification().status!=S::Certified,"Missing one polynomial rejects the extractor");
     auto grid=external;grid.extraction.polynomials[0].proof=EvalRoundPolynomialProof::GridDiagnostic;

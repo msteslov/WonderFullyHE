@@ -5,7 +5,10 @@
 #include <optional>
 
 namespace m2424 {
-namespace experimental { class EvalRoundExecutionCompiler; }
+namespace experimental {
+class EvalRoundExecutionCompiler;
+struct EvalRoundBinaryDigitSearchResult;
+}
 // Deliberately no metadata scale rewrite operation.
 enum class EvalRoundOperation { Input, Multiply, MultiplyPlain, Add, Subtract,
     AddPlain, Relinearize, Rescale, ModSwitch, Conjugate };
@@ -56,8 +59,41 @@ struct EvalRoundExecutionDigitDiagnostics {
     EvalRoundExactBound reconstructionLocalError;
     std::size_t chebyshevNodeCount{};
 };
+struct EvalRoundBoundedCandidateDiagnostics {
+    std::size_t digitIndex{};
+    std::string family;
+    std::size_t degree{};
+    BootstrapBound approximationError;
+    EvalRoundExactBound backendExtractionError;
+    EvalRoundExactBound initialCleanerError;
+    std::vector<EvalRoundExactBound> cleanerLocalErrors;
+    std::vector<EvalRoundExactBound> cleanerErrorAfterRounds;
+    std::vector<std::size_t> reachableOptionOutputNodes, reachableOptionLevels;
+    std::vector<double> reachableOptionScales;
+    std::vector<std::string> reachableOptionCenteredHeadroomNumerators;
+    std::size_t maximumReachableCleaningRounds{};
+    BootstrapCertificationStatus firstTrajectoryFailure{
+        BootstrapCertificationStatus::Certified};
+    std::string firstTrajectoryFailureProvenance;
+    std::size_t firstTrajectoryFailureRound{};
+    EvalRoundExactBound firstTrajectoryFailureInputError;
+    EvalRoundExactBound firstTrajectoryFailureCleanerLocalError;
+    EvalRoundExactBound firstTrajectoryFailureNextError;
+    EvalRoundExactBound minimumReachableDigitError;
+    std::size_t extractionOutputNode{}, outputLevel{};
+    double outputScale{};
+    std::string outputCenteredHeadroomNumerator;
+    std::size_t reachableNodes{}, ciphertextMultiplications{}, relinearizations{};
+    std::size_t rescales{}, modSwitches{}, plaintextMultiplications{};
+    bool bestExecutableByTotalInitialError{};
+};
 struct EvalRoundExecutionDiagnostics {
     std::vector<EvalRoundExecutionDigitDiagnostics> digits;
+    // Complete backend evaluation of the fixed bounded K=64 candidate space.
+    std::vector<EvalRoundBoundedCandidateDiagnostics> boundedCandidates;
+    std::vector<std::size_t> bestBoundedCandidateByDigit;
+    EvalRoundExactBound minimumWeightedDigitError;
+    std::string boundedSearchFailureDimension;
     std::size_t constructedNodes{};
     std::size_t ciphertextMultiplications{},relinearizations{},rescales{},modSwitches{};
     std::size_t plaintextMultiplications{},criticalMultiplicativeDepth{},criticalPathLevelConsumption{};

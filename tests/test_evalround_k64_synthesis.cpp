@@ -174,24 +174,25 @@ int main() { try {
         check(hand.states[handProduct].M==4&&hand.states[handProduct].E==mpq_class(41,100),
               "exact product propagation matches M=4 and E=41/100 without binary64 recurrence");
         const auto compiled=EvalRoundExecutionCompiler::compile(
-            adapter,input,*shallowestPlan,options);
+            adapter,input,search,options);
         std::cout<<std::setprecision(17);
         std::cout<<"backend_status="<<static_cast<int>(compiled.certification().status)
                  <<" nodes="<<compiled.nodes().size()
                  <<" blocker="<<compiled.certification().provenance<<'\n';
-        check(compiled.certification().status==BootstrapCertificationStatus::HeadroomViolation
+        check(compiled.certification().status==BootstrapCertificationStatus::ErrorBudgetExceeded
               &&compiled.certification().provenance.find(
-                  "No certified backend cleaning schedule")!=std::string::npos
-              &&compiled.certification().provenance.find(
-                  "first concrete backend limit")!=std::string::npos
-              &&compiled.certification().provenance.find(
-                  "Exact polynomial common denominator has no finite binary64 plaintext scale")==std::string::npos
-              &&compiled.certification().provenance.find(
-                  "Extraction digit 0 exact arithmetic error exceeds cleaner domain")==std::string::npos,
-              "scaled-Chebyshev execution passes extraction and reaches the later concrete headroom gate");
+                  "No certified K64 binary EvalRound plan in bounded search")!=std::string::npos
+              &&compiled.certification().provenance.find("first concrete backend limit")==std::string::npos
+              &&compiled.certification().provenance.find("NOT a global impossibility theorem")!=std::string::npos,
+              "complete bounded backend search reports the actual global error-budget cause");
         check(compiled.nodes().empty(),"non-Certified K64 compilation never publishes an executable DAG");
         const auto& diagnostic=compiled.diagnostics();
-        check(diagnostic.digits.size()==8&&diagnostic.constructedNodes>0
+        check(diagnostic.boundedCandidates.size()==64
+              &&diagnostic.bestBoundedCandidateByDigit.size()==8
+              &&diagnostic.boundedSearchFailureDimension=="reconstruction budget"
+              &&diagnostic.minimumWeightedDigitError.outwardBinary64
+              &&*diagnostic.minimumWeightedDigitError.outwardBinary64>problem.requiredIntegerError
+              &&diagnostic.constructedNodes>0
               &&diagnostic.ciphertextMultiplications>0
               &&diagnostic.ciphertextMultiplications==diagnostic.relinearizations
               &&diagnostic.rescales>=diagnostic.ciphertextMultiplications
@@ -199,26 +200,71 @@ int main() { try {
               &&diagnostic.minimumRuntimeScale&&diagnostic.maximumRuntimeScale
               &&!diagnostic.minimumCenteredHeadroomNumerator.empty()
               &&mpz_class(diagnostic.minimumCenteredHeadroomNumerator)>0,
-              "fail-closed K64 result retains exact resource diagnostics up to its first gate");
-        for(std::size_t digit=0;digit<diagnostic.digits.size();++digit) {
-            const auto& trace=diagnostic.digits[digit];
-            check(trace.approximationError.upperBound
-                      ==candidate.digits[digit].extractionError.upperBound
+              "fail-closed bounded result retains exact aggregate resource diagnostics");
+        bool rejectedInitialDomain=false,rejectedLeavingDomain=false;
+        bool stoppedNonContractive=false,sawUnusedHeadroom=false;
+        mpq_class independentlyWeighted=0;
+        for(std::size_t digit=0;digit<8;++digit) {
+            const auto& trace=diagnostic.boundedCandidates[
+                diagnostic.bestBoundedCandidateByDigit[digit]];
+            check(trace.digitIndex==digit&&trace.bestExecutableByTotalInitialError
                   &&trace.backendExtractionError.outwardBinary64
                   &&trace.initialCleanerError.outwardBinary64
                   &&*trace.initialCleanerError.outwardBinary64<=1
-                  &&!trace.cleanerLocalErrors.empty()
+                  &&trace.minimumReachableDigitError.outwardBinary64
                   &&trace.cleanerErrorAfterRounds.size()
-                      ==trace.cleanerLocalErrors.size()+1
-                  &&trace.chebyshevNodeCount>0,
-                  "every K64 digit passes exact a_0<=1 and reaches real cleaner arithmetic");
+                      ==trace.cleanerLocalErrors.size()+1,
+                  "every digit reports its best executable total-a0 candidate and finite trajectory");
+            independentlyWeighted+=mpq_class(mpz_class(1)<<digit)
+                *mpq_class(mpz_class(trace.minimumReachableDigitError.numerator),
+                           mpz_class(trace.minimumReachableDigitError.denominator));
             std::cout<<"digit="<<digit
+                     <<" family="<<trace.family
+                     <<" degree="<<trace.degree
                      <<" E_approx="<<trace.approximationError.upperBound
                      <<" E_backend="<<*trace.backendExtractionError.outwardBinary64
                      <<" a0="<<*trace.initialCleanerError.outwardBinary64
-                     <<" cleaner_rounds_reached="<<trace.cleanerLocalErrors.size()
-                     <<" chebyshev_nodes="<<trace.chebyshevNodeCount<<'\n';
+                     <<" cleaner_rounds_reached="<<trace.maximumReachableCleaningRounds
+                     <<" minimum_error="<<*trace.minimumReachableDigitError.outwardBinary64
+                     <<" first_failure="<<trace.firstTrajectoryFailureProvenance<<'\n';
         }
+        for(const auto& trace:diagnostic.boundedCandidates) {
+            if(trace.initialCleanerError.outwardBinary64
+               &&*trace.initialCleanerError.outwardBinary64>1
+               &&trace.maximumReachableCleaningRounds==0
+               &&trace.firstTrajectoryFailure==BootstrapCertificationStatus::DomainViolation)
+                rejectedInitialDomain=true;
+            rejectedLeavingDomain=rejectedLeavingDomain
+                ||trace.firstTrajectoryFailureProvenance.find("leaves a<=1")!=std::string::npos;
+            stoppedNonContractive=stoppedNonContractive
+                ||trace.firstTrajectoryFailureProvenance.find("non-contractive")!=std::string::npos;
+            sawUnusedHeadroom=sawUnusedHeadroom
+                ||trace.firstTrajectoryFailure==BootstrapCertificationStatus::HeadroomViolation;
+        }
+        const auto exactWeighted=mpq_class(
+            mpz_class(diagnostic.minimumWeightedDigitError.numerator),
+            mpz_class(diagnostic.minimumWeightedDigitError.denominator));
+        check(independentlyWeighted==exactWeighted,
+              "weighted reconstruction lower bound uses exact 2^j factors");
+        check(rejectedInitialDomain&&rejectedLeavingDomain&&stoppedNonContractive,
+              "domain-entry, domain-exit, and deterministic non-contraction gates are exercised");
+        check(sawUnusedHeadroom
+              &&compiled.certification().status!=BootstrapCertificationStatus::HeadroomViolation,
+              "an unused optional HeadroomViolation cannot determine the global result");
+        const auto& approximationBestDigit7=search.records[*search.selectedRecordByDigit[7]];
+        const auto& backendBestDigit7=diagnostic.boundedCandidates[
+            diagnostic.bestBoundedCandidateByDigit[7]];
+        check(approximationBestDigit7.requestedDegree==256
+              &&backendBestDigit7.degree==128
+              &&backendBestDigit7.approximationError.upperBound
+                    >approximationBestDigit7.rigorousIntervalError,
+              "worse approximation error can win through smaller actual backend error");
+        const std::array<std::size_t,8> deterministicBestDegrees{
+            256,128,256,256,256,256,192,128};
+        for(std::size_t digit=0;digit<8;++digit)
+            check(diagnostic.boundedCandidates[diagnostic.bestBoundedCandidateByDigit[digit]].degree
+                      ==deterministicBestDegrees[digit],
+                  "backend-aware bounded choice is deterministic");
         std::cout<<"constructed_nodes="<<diagnostic.constructedNodes
                  <<" ctct="<<diagnostic.ciphertextMultiplications
                  <<" relin="<<diagnostic.relinearizations
