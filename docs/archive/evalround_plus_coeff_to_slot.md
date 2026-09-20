@@ -1,4 +1,12 @@
-# EvalRound+ CoeffToSlot (PR-1)
+# Двухветвевое преобразование CoeffToSlot
+
+**Статус:** исторический исследовательский отчёт.  
+**Версия исходного текста:** `133fb59`.  
+**Действующий раздел:** [linear-transforms](../linear-transforms.md).
+
+> Параметры, ограничения и результаты далее относятся к описанной
+> версии исследования. Текущее состояние приведено в
+> [сводке реализации](../status.md).
 
 This change implements only the two linear branches from model v9 sections 3.2
 and 3.5. It does not implement EvalRound, a nonlinear cleaner or a full bootstrap.

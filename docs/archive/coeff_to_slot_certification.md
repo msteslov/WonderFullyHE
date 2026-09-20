@@ -1,4 +1,12 @@
-# Deterministic EvalRound+ CoeffToSlot certificate
+# Детерминированная сертификация CoeffToSlot
+
+**Статус:** исторический исследовательский отчёт.  
+**Версия исходного текста:** `2e2938a`.  
+**Действующий раздел:** [linear-transforms](../linear-transforms.md).
+
+> Параметры, ограничения и результаты далее относятся к описанной
+> версии исследования. Текущее состояние приведено в
+> [сводке реализации](../status.md).
 
 Scope: follow-up to PR-1, using the PR-4 linear-transform preparation and
 finite-support arithmetic. Mathematical source: v9 sections 3.2–3.3, especially

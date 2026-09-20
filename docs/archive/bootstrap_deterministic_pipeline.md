@@ -1,4 +1,12 @@
-# PR-5: deterministic EvalRound+ pipeline
+# Детерминированный интеграционный маршрут EvalRound+
+
+**Статус:** исторический исследовательский отчёт.  
+**Версия исходного текста:** `bb04c5c`.  
+**Действующий раздел:** [bootstrap](../bootstrap.md).
+
+> Параметры, ограничения и результаты далее относятся к описанной
+> версии исследования. Текущее состояние приведено в
+> [сводке реализации](../status.md).
 
 Base revision: `2e2938a13794fee8c128e384fca848a1645405ae`.
 Mathematical source: `ckks_bootstrapping_model_v9.pdf`, EvalRound+ decomposition

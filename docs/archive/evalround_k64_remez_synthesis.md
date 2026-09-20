@@ -1,4 +1,12 @@
-# K=64 direct multi-interval Remez follow-up
+# Многоинтервальный синтез Ремеза при K=64
+
+**Статус:** исторический исследовательский отчёт.  
+**Версия исходного текста:** `20494f1`.  
+**Действующий раздел:** [evalround](../evalround.md).
+
+> Параметры, ограничения и результаты далее относятся к описанной
+> версии исследования. Текущее состояние приведено в
+> [сводке реализации](../status.md).
 
 > Historical direct-x certificate results. The same unchanged candidates are
 > recertified with exact centered shifts in

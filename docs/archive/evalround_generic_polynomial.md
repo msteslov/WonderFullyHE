@@ -1,4 +1,12 @@
-# PR-3 follow-up: generic certified polynomial extraction
+# Сертифицированное полиномиальное извлечение
+
+**Статус:** исторический исследовательский отчёт.  
+**Версия исходного текста:** `7d83044`.  
+**Действующий раздел:** [evalround](../evalround.md).
+
+> Параметры, ограничения и результаты далее относятся к описанной
+> версии исследования. Текущее состояние приведено в
+> [сводке реализации](../status.md).
 
 Base revision: dd2ee4721045053560214e6789d7ce1d89d78277.
 See [the pre-edit contract audit](evalround_polynomial_contract_audit.md).

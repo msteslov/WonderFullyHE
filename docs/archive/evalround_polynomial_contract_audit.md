@@ -1,4 +1,12 @@
-# PR-3 polynomial follow-up audit (before implementation)
+# Аудит контракта полиномиального извлечения
+
+**Статус:** исторический исследовательский отчёт.  
+**Версия исходного текста:** `fc6576e`.  
+**Действующий раздел:** [evalround](../evalround.md).
+
+> Параметры, ограничения и результаты далее относятся к описанной
+> версии исследования. Текущее состояние приведено в
+> [сводке реализации](../status.md).
 
 Base dd2ee4721045053560214e6789d7ce1d89d78277.
 Reviewed evalround.hpp, evalround_execution.hpp, the reference planner/compiler,

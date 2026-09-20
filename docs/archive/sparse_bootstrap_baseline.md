@@ -1,4 +1,12 @@
-# PR-6: fixed-weight encapsulation and all-family security
+# Ключи фиксированного веса и модель безопасности
+
+**Статус:** исторический исследовательский отчёт.  
+**Версия исходного текста:** `dd2ee47`.  
+**Действующий раздел:** [bootstrap](../bootstrap.md).
+
+> Параметры, ограничения и результаты далее относятся к описанной
+> версии исследования. Текущее состояние приведено в
+> [сводке реализации](../status.md).
 
 This is the historical report for the base PR-6 revision. The focused
 [first-factor follow-up](sparse_coeff_to_slot_first_factor.md) supersedes its

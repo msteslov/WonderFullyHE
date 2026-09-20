@@ -1,4 +1,12 @@
-# K=64 exact centered-certificate follow-up
+# Центрированный интервальный сертификат при K=64
+
+**Статус:** исторический исследовательский отчёт.  
+**Версия исходного текста:** `6e3d184`.  
+**Действующий раздел:** [evalround](../evalround.md).
+
+> Параметры, ограничения и результаты далее относятся к описанной
+> версии исследования. Текущее состояние приведено в
+> [сводке реализации](../status.md).
 
 > The mathematical results remain current. Its former arithmetic-bound
 > representation blocker is resolved and the next backend gate is documented
@@ -6,7 +14,7 @@
 
 Base revision: `8c8033c77682cd81d05025408d98d959ab018621`.
 The hard mathematical contract for this follow-up is the repository-designated
-v9 EvalRound model plus `codex_bootstrap_implementation_spec_v1.md`. No v10
+v9 EvalRound model plus the bootstrap implementation specification, version 1. No v10
 text changes that contract. Candidate generation, `K=h_b=64`, rho bits
 `0x3f0b460edc2fc0f3`, cleaner, executor, security parameters, tolerances, and
 production modulus chain are unchanged.

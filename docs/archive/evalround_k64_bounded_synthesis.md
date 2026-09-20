@@ -1,4 +1,12 @@
-# K=64 binary-digit bounded synthesis follow-up
+# Ограниченный синтез бинарных цифр при K=64
+
+**Статус:** исторический исследовательский отчёт.  
+**Версия исходного текста:** `8c8033c`.  
+**Действующий раздел:** [evalround](../evalround.md).
+
+> Параметры, ограничения и результаты далее относятся к описанной
+> версии исследования. Текущее состояние приведено в
+> [сводке реализации](../status.md).
 
 > Historical cosine-bridge diagnostic from the earlier base. The direct
 > target-agnostic Remez follow-up and current strict feasibility gate are in

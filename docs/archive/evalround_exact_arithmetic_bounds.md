@@ -1,4 +1,12 @@
-# PR-3 exact arithmetic-bound representation follow-up
+# Точное представление арифметических границ
+
+**Статус:** исторический исследовательский отчёт.  
+**Версия исходного текста:** `7d83044`.  
+**Действующий раздел:** [evalround](../evalround.md).
+
+> Параметры, ограничения и результаты далее относятся к описанной
+> версии исследования. Текущее состояние приведено в
+> [сводке реализации](../status.md).
 
 Base revision: `20494f101e02f57404c57cb2271fc19f0b1cfff6`.
 This change follows the v9 EvalRound contract and does not alter extraction

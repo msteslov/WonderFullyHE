@@ -1,8 +1,17 @@
+# Базовый ciphertext-исполнитель EvalRound
+
+**Статус:** исторический исследовательский отчёт.  
+**Версия исходного текста:** `fc6576e`.  
+**Действующий раздел:** [evalround](../evalround.md).
+
+> Параметры, ограничения и результаты далее относятся к описанной
+> версии исследования. Текущее состояние приведено в
+> [сводке реализации](../status.md).
+
 > The [generic polynomial follow-up](evalround_generic_polynomial.md) replaces
 > the original hard-coded extraction compiler while preserving this K=1
 > regression schedule and certificate. This document records the original PR-3.
 
-# EvalRound ciphertext baseline (PR-3)
 
 `EvalRoundPlanStatus::Certified` remains a mathematical/reference certificate.
 It is not an execution capability. The core executor accepts only an immutable

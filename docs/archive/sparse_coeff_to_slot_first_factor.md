@@ -1,4 +1,12 @@
-# PR-6 follow-up: restoration belongs to the first CtS factor
+# Восстановление sparse-ключа в первом факторе CoeffToSlot
+
+**Статус:** исторический исследовательский отчёт.  
+**Версия исходного текста:** `dd2ee47`.  
+**Действующий раздел:** [linear-transforms](../linear-transforms.md).
+
+> Параметры, ограничения и результаты далее относятся к описанной
+> версии исследования. Текущее состояние приведено в
+> [сводке реализации](../status.md).
 
 Base revision: 22a640b717e52542dac413692c2055a9c3c1488c.
 The mathematical contract is v9 section 3.1–3.2; this follow-up adopts the
