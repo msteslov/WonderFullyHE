@@ -1,0 +1,36 @@
+{
+  "name": "baseline",
+  "build_dir": "build/bin",
+  "output_dir": "python/results",
+  "benchmarks": [
+    {
+      "name": "ckks-fast-demo",
+      "executable": "bench_ckks",
+      "arguments": ["fast_demo_ckks"],
+      "repeats": 3,
+      "timeout_seconds": 120
+    },
+    {
+      "name": "ckks-basic",
+      "executable": "bench_ckks",
+      "arguments": ["basic_ckks"],
+      "repeats": 3,
+      "timeout_seconds": 180
+    },
+    {
+      "name": "ckks-balanced",
+      "executable": "bench_ckks",
+      "arguments": ["balanced_ckks"],
+      "repeats": 3,
+      "timeout_seconds": 240
+    },
+    {
+      "name": "bootstrap-candidates",
+      "executable": "bench_bootstrap_candidates",
+      "arguments": ["--all"],
+      "repeats": 1,
+      "timeout_seconds": 900,
+      "allow_nonzero": true
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 #include "m2424/experimental/evalmod_analysis/evalround_synthesis.hpp"
 #include "bootstrap_fixture.hpp"
-#include "../src/planning/certified_arithmetic_internal.hpp"
+#include "../src/planning/certified_arithmetic_planning_internal.hpp"
 #include "../src/planning/evalround_polynomial_internal.hpp"
 
 #include <algorithm>

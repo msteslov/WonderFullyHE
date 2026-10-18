@@ -27,3 +27,12 @@
 # Misc
 compile_commands.json
 /outputs/
+
+# Python experiment tooling
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+/python/.venv/
+/python/results/

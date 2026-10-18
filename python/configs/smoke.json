@@ -1,0 +1,14 @@
+{
+  "name": "smoke",
+  "build_dir": "build/bin",
+  "output_dir": "python/results",
+  "benchmarks": [
+    {
+      "name": "ckks-fast-demo",
+      "executable": "bench_ckks",
+      "arguments": ["fast_demo_ckks"],
+      "repeats": 1,
+      "timeout_seconds": 120
+    }
+  ]
+}

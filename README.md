@@ -30,3 +30,17 @@ ctest --test-dir build --output-on-failure
 
 Экспериментальная конфигурация требует GMP/MPFR и включается отдельно.
 Условия сборки и полный перечень команд приведены в документации.
+
+## Воспроизводимые эксперименты на Python
+
+В каталоге [`python/`](python/README.md) находится отдельный пакет для запуска
+C++-бенчмарков, валидации конфигураций, сбора CSV/JSON, статистического анализа и
+построения графиков. Для быстрой проверки после сборки проекта:
+
+```bash
+python3 -m venv python/.venv
+python/.venv/bin/pip install -e 'python[dev]'
+python/.venv/bin/wfhe-experiments run python/configs/smoke.json
+```
+
+Протокол воспроизводимого исследования: [docs/research_protocol.md](docs/research_protocol.md).

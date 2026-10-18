@@ -15,6 +15,7 @@
 #include "m2424/seal_adapter.hpp"
 #include "m2424/slot_to_coeff.hpp"
 #include "m2424/security_report.hpp"
+#include "m2424/sparse_bootstrap.hpp"
 
 namespace m2424 {
 
@@ -22,5 +23,3 @@ namespace m2424 {
 const char* version() noexcept;
 
 } // namespace m2424
-
-#include "m2424/sparse_bootstrap.hpp"

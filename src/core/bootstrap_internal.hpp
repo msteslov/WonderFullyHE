@@ -1,6 +1,6 @@
 #pragma once
 #include "m2424/bootstrap.hpp"
-#include "certified_arithmetic_internal.hpp"
+#include "certified_arithmetic_runtime_internal.hpp"
 namespace m2424 {
 struct BootstrapPlan::Data {
     BootstrapTrace trace;

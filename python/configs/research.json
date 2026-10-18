@@ -1,0 +1,117 @@
+{
+  "name": "research",
+  "build_dir": "build-python-research/bin",
+  "output_dir": "python/results",
+  "benchmarks": [
+    {
+      "name": "ckks-fast-demo",
+      "executable": "bench_ckks",
+      "arguments": ["fast_demo_ckks"],
+      "repeats": 5,
+      "timeout_seconds": 120
+    },
+    {
+      "name": "ckks-basic",
+      "executable": "bench_ckks",
+      "arguments": ["basic_ckks"],
+      "repeats": 5,
+      "timeout_seconds": 180
+    },
+    {
+      "name": "ckks-balanced",
+      "executable": "bench_ckks",
+      "arguments": ["balanced_ckks"],
+      "repeats": 5,
+      "timeout_seconds": 240
+    },
+    {
+      "name": "ckks-depth",
+      "executable": "bench_ckks",
+      "arguments": ["depth_ckks"],
+      "repeats": 5,
+      "timeout_seconds": 300
+    },
+    {
+      "name": "ckks-high-precision",
+      "executable": "bench_ckks",
+      "arguments": ["high_precision_ckks"],
+      "repeats": 5,
+      "timeout_seconds": 300
+    },
+    {
+      "name": "chain-accuracy",
+      "executable": "bench_chain_accuracy",
+      "repeats": 3,
+      "timeout_seconds": 900
+    },
+    {
+      "name": "parallel-throughput",
+      "executable": "bench_parallel_throughput",
+      "arguments": ["basic_ckks", "32", "8"],
+      "repeats": 5,
+      "timeout_seconds": 300,
+      "allow_nonzero": true
+    },
+    {
+      "name": "parallel-throughput-precise",
+      "executable": "bench_parallel_throughput",
+      "arguments": ["high_precision_ckks", "16", "4"],
+      "repeats": 5,
+      "timeout_seconds": 600
+    },
+    {
+      "name": "bootstrap-candidates",
+      "executable": "bench_bootstrap_candidates",
+      "arguments": ["--all"],
+      "repeats": 3,
+      "timeout_seconds": 900,
+      "allow_nonzero": true
+    },
+    {
+      "name": "coeff-to-slot-0",
+      "executable": "bench_coeff_to_slot",
+      "arguments": ["0"],
+      "repeats": 3,
+      "timeout_seconds": 900,
+      "parser": "coeff_to_slot"
+    },
+    {
+      "name": "coeff-to-slot-1",
+      "executable": "bench_coeff_to_slot",
+      "arguments": ["1"],
+      "repeats": 3,
+      "timeout_seconds": 900,
+      "parser": "coeff_to_slot"
+    },
+    {
+      "name": "coeff-to-slot-2",
+      "executable": "bench_coeff_to_slot",
+      "arguments": ["2"],
+      "repeats": 3,
+      "timeout_seconds": 900,
+      "parser": "coeff_to_slot"
+    },
+    {
+      "name": "coeff-to-slot-3",
+      "executable": "bench_coeff_to_slot",
+      "arguments": ["3"],
+      "repeats": 3,
+      "timeout_seconds": 900,
+      "parser": "coeff_to_slot"
+    },
+    {
+      "name": "coeff-to-slot-4",
+      "executable": "bench_coeff_to_slot",
+      "arguments": ["4"],
+      "repeats": 3,
+      "timeout_seconds": 900,
+      "parser": "coeff_to_slot"
+    },
+    {
+      "name": "bootstrap-end-to-end-fixture",
+      "executable": "bench_bootstrap_end_to_end_fixture",
+      "repeats": 5,
+      "timeout_seconds": 600
+    }
+  ]
+}

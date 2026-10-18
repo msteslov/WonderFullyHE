@@ -4,7 +4,7 @@
 #include "bootstrap_fixture.hpp"
 #include "../src/math/evalround_interval_internal.hpp"
 #include "../src/planning/evalround_polynomial_internal.hpp"
-#include "../src/core/certified_arithmetic_internal.hpp"
+#include "../src/core/certified_arithmetic_runtime_internal.hpp"
 #include <algorithm>
 #include <iostream>
 #include <iomanip>

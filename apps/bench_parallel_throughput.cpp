@@ -7,6 +7,8 @@
 #include <cmath>
 #include <cstdio>
 #include <memory>
+#include <stdexcept>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -57,16 +59,48 @@ std::vector<double> square_ref(const std::vector<double>& input) {
     return ref;
 }
 
+std::size_t positiveArgument(const char* text, const char* name) {
+    const std::string input(text);
+    std::size_t consumed = 0;
+    const auto value = std::stoull(input, &consumed);
+    if (value == 0 || consumed != input.size() || input.front() == '-') {
+        throw std::invalid_argument(std::string(name) + " must be positive");
+    }
+    return static_cast<std::size_t>(value);
+}
+
+std::vector<std::size_t> threadCounts(std::size_t maximum) {
+    std::vector<std::size_t> counts;
+    for (std::size_t count = 1; count <= maximum; count *= 2) {
+        counts.push_back(count);
+        if (count > maximum / 2) {
+            break;
+        }
+    }
+    if (counts.back() != maximum) {
+        counts.push_back(maximum);
+    }
+    return counts;
+}
+
 } // namespace
 
-int main() {
+int main(int argc, char** argv) try {
+    if (argc > 4) {
+        std::fprintf(stderr, "usage: %s [profile] [tasks] [max_threads]\n", argv[0]);
+        return 2;
+    }
+    const std::string profile_name = argc > 1 ? argv[1] : "basic_ckks";
+    const std::size_t task_count = argc > 2 ? positiveArgument(argv[2], "tasks") : 32;
+    const std::size_t maximum_threads = argc > 3
+        ? positiveArgument(argv[3], "max_threads") : 8;
     const std::size_t payload_size = 64;
-    const std::size_t task_count = 32;
-    const auto profile = m2424::profiles::basic_ckks();
+    const auto profile = m2424::profiles::by_name(profile_name);
 
-    const std::vector<std::size_t> thread_counts{1, 2, 4, 8};
+    const auto thread_counts = threadCounts(maximum_threads);
 
-    std::printf("threads,tasks,payload_size,setup_ms,runtime_ms,throughput_tasks_per_sec,max_abs_error,mean_abs_error,status\n");
+    std::printf("profile,tolerance,threads,tasks,payload_size,setup_ms,runtime_ms,"
+                "throughput_tasks_per_sec,max_abs_error,mean_abs_error,status\n");
 
     bool all_ok = true;
     for (std::size_t thread_count : thread_counts) {
@@ -133,7 +167,9 @@ int main() {
             ? mean_abs_error_sum / static_cast<double>(checked)
             : 0.0;
 
-        std::printf("%zu,%zu,%zu,%.6f,%.6f,%.6f,%.6e,%.6e,%s\n",
+        std::printf("%s,%.6e,%zu,%zu,%zu,%.6f,%.6f,%.6f,%.6e,%.6e,%s\n",
+                    profile_name.c_str(),
+                    m2424::kTargetAbsoluteError,
                     worker_count,
                     task_count,
                     payload_size,
@@ -147,4 +183,7 @@ int main() {
     }
 
     return all_ok ? 0 : 1;
+} catch (const std::exception& error) {
+    std::fprintf(stderr, "%s\n", error.what());
+    return 2;
 }

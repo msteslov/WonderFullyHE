@@ -1,15 +1,8 @@
-#ifdef M2424_ENABLE_MOD_RAISE_CHECKS
-#include "../../tests/bootstrap_fixture.hpp"
-#include "../../tests/sparse_bootstrap_oracle.hpp"
-#endif
-#include "m2424/seal_adapter.hpp"
+#include "seal_adapter_internal.hpp"
 
 #include <seal/seal.h>
 #include <seal/util/iterator.h>
 #include <seal/util/rlwe.h>
-#include <random>
-#include <atomic>
-#include <numeric>
 #include <seal/util/ntt.h>
 #include <seal/util/rns.h>
 #include <seal/util/uintarith.h>
@@ -20,7 +13,6 @@
 #include <cmath>
 #include <complex>
 #include <cstdint>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -93,11 +85,6 @@ double scaledIntegerToDouble(const std::uint64_t* limbs, std::size_t limbCount,
 
 } // namespace
 
-// ---- Plain ----
-struct Plain::Impl {
-    seal::Plaintext pt;
-};
-
 Plain::Plain() : pimpl_(new Impl{}) {}
 Plain::~Plain() = default;
 Plain::Plain(const Plain& other) : pimpl_(other.pimpl_ ? std::make_unique<Impl>(*other.pimpl_) : nullptr) {}
@@ -109,11 +96,6 @@ Plain& Plain::operator=(const Plain& other) {
 }
 Plain::Plain(Plain&&) noexcept = default;
 Plain& Plain::operator=(Plain&&) noexcept = default;
-
-// ---- Cipher ----
-struct Cipher::Impl {
-    seal::Ciphertext ct;
-};
 
 Cipher::Cipher() : pimpl_(new Impl{}) {}
 Cipher::~Cipher() = default;
@@ -131,38 +113,6 @@ RaisedCipher::RaisedCipher(Cipher&& cipher, std::size_t sourceCoeffModulusSize)
     : cipher_(std::move(cipher)), sourceCoeffModulusSize_(sourceCoeffModulusSize) {}
 RaisedCipher::RaisedCipher(RaisedCipher&&) noexcept = default;
 RaisedCipher& RaisedCipher::operator=(RaisedCipher&&) noexcept = default;
-
-// ---- SealAdapter ----
-struct SealAdapter::Impl {
-    CkksProfile profile{};
-
-    std::shared_ptr<seal::SEALContext> context;
-    std::unique_ptr<seal::CKKSEncoder> encoder;
-    std::unique_ptr<seal::Evaluator> evaluator;
-    std::unique_ptr<seal::Encryptor> encryptor;
-    std::unique_ptr<seal::Decryptor> decryptor;
-
-#ifdef M2424_ENABLE_SPARSE_DIAGNOSTICS
-    std::size_t sparseRestorationOperations{};
-#endif
-    seal::SecretKey sparseSk;
-    seal::GaloisKeys encapsulationKey,restorationKey;
-    std::size_t sparseWeight{},encryptionSamples{};
-    std::uint64_t sparseGeneration{};
-    bool ordinaryDistributionKnown{};
-    std::vector<std::pair<std::vector<std::uint64_t>,std::size_t>> encryptionModuli;
-    seal::SecretKey sk;
-    seal::PublicKey pk;
-    seal::RelinKeys rlk;
-    seal::GaloisKeys gk;
-
-    double scale{0.0};
-    std::size_t slotCount{0};
-    bool has_public{false};
-    bool has_secret{false};
-    bool has_relin{false};
-    bool has_galois{false};
-};
 
 SealAdapter::SealAdapter() : pimpl_(new Impl{}) {}
 SealAdapter::~SealAdapter() = default;
@@ -291,34 +241,6 @@ static void validate_complex_values(const std::vector<std::complex<double>>& val
     }
 }
 
-template <class T>
-static std::size_t serialized_size_of(const T& value) {
-    std::ostringstream out(std::ios::binary);
-    value.save(out);
-    return static_cast<std::size_t>(out.tellp());
-}
-
-template <class T>
-static SerializedBuffer serialize_to_buffer(const T& value) {
-    std::ostringstream out(std::ios::binary);
-    value.save(out);
-    const auto bytes = out.str();
-    return SerializedBuffer(bytes.begin(), bytes.end());
-}
-
-static void require_non_empty_buffer(const SerializedBuffer& buffer, const char* name) {
-    if (buffer.empty()) {
-        throw std::invalid_argument(std::string(name) + " buffer must not be empty");
-    }
-}
-
-template <class T>
-static void load_from_buffer(T& value, const seal::SEALContext& context,
-                             const SerializedBuffer& buffer, const char* name) {
-    require_non_empty_buffer(buffer, name);
-    value.load(context, reinterpret_cast<const seal::seal_byte*>(buffer.data()), buffer.size());
-}
-
 Cipher SealAdapter::modSwitchToChainIndex(const Cipher& input,std::size_t index) {
     auto data=pimpl_->context->first_context_data();
     while(data&&data->chain_index()!=index) data=data->next_context_data();
@@ -346,26 +268,6 @@ SealAdapter SealAdapter::create(const CkksProfile& profile) {
     }
     return a;
 }
-
-#ifdef M2424_ENABLE_MOD_RAISE_CHECKS
-SealAdapter test::BootstrapFixture::create(const CkksProfile& profile) {
-    validate_profile_shape(profile); SealAdapter a; a.pimpl_->profile=profile;
-    a.pimpl_->context=std::make_shared<seal::SEALContext>(make_ckks_parms(profile),true,seal::sec_level_type::none);
-    if(!a.pimpl_->context->parameters_set()) throw std::invalid_argument("Invalid explicit test-only CKKS fixture");
-    a.pimpl_->encoder=std::make_unique<seal::CKKSEncoder>(*a.pimpl_->context);
-    a.pimpl_->evaluator=std::make_unique<seal::Evaluator>(*a.pimpl_->context);
-    a.pimpl_->scale=profile.scale; a.pimpl_->slotCount=a.pimpl_->encoder->slot_count(); return a;
-}
-Cipher test::BootstrapFixture::input(SealAdapter& a,const Plain& plain) {
-    auto data=a.pimpl_->context->get_context_data(plain.pimpl_->pt.parms_id());
-    if(!data||!plain.pimpl_->pt.is_ntt_form()) throw std::invalid_argument("Fixture requires NTT plaintext at source level");
-    Cipher out; out.pimpl_->ct.resize(*a.pimpl_->context,data->parms_id(),2);
-    const auto size=data->parms().poly_modulus_degree()*data->parms().coeff_modulus().size();
-    std::copy_n(plain.pimpl_->pt.data(),size,out.pimpl_->ct.data(0));
-    std::fill_n(out.pimpl_->ct.data(1),size,1); // NTT of constant polynomial 1
-    out.pimpl_->ct.is_ntt_form()=true; out.pimpl_->ct.scale()=plain.pimpl_->pt.scale(); return out;
-}
-#endif
 
 void SealAdapter::generateKeys(bool needRelin, bool needGalois) {
     if (!pimpl_->context) throw std::runtime_error("SealAdapter not initialized");
@@ -903,14 +805,6 @@ Cipher SealAdapter::conjugate(const Cipher& cipher) {
     return out;
 }
 
-std::size_t SealAdapter::serializedSize(const Cipher& cipher) const {
-    return serialized_size_of(cipher.pimpl_->ct);
-}
-
-std::size_t SealAdapter::serializedSize(const Plain& plain) const {
-    return serialized_size_of(plain.pimpl_->pt);
-}
-
 CipherInfo SealAdapter::info(const Cipher& cipher) const {
     if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
     const auto context_data = pimpl_->context->get_context_data(cipher.pimpl_->ct.parms_id());
@@ -999,21 +893,6 @@ std::size_t SealAdapter::coeffModulusSize(const Cipher& cipher) const {
     return info(cipher).coeffModulusSize;
 }
 
-std::size_t SealAdapter::publicKeySize() const {
-    if (!pimpl_->has_public) throw std::runtime_error("public key not loaded");
-    return serialized_size_of(pimpl_->pk);
-}
-
-std::size_t SealAdapter::relinKeysSize() const {
-    if (!pimpl_->has_relin) throw std::runtime_error("relin keys not generated");
-    return serialized_size_of(pimpl_->rlk);
-}
-
-std::size_t SealAdapter::galoisKeysSize() const {
-    if (!pimpl_->has_galois) throw std::runtime_error("galois keys not generated");
-    return serialized_size_of(pimpl_->gk);
-}
-
 bool SealAdapter::hasRelinKeys() const noexcept {
     return pimpl_ && pimpl_->has_relin;
 }
@@ -1045,190 +924,5 @@ bool SealAdapter::hasConjugationKey() const {
     return keyContext && keyContext->galois_tool()
         && pimpl_->gk.has_key(keyContext->galois_tool()->get_elt_from_step(0));
 }
-
-SerializedBuffer SealAdapter::savePublicKey() const {
-    if (!pimpl_->has_public) throw std::runtime_error("public key not loaded");
-    return serialize_to_buffer(pimpl_->pk);
-}
-
-SerializedBuffer SealAdapter::saveSecretKey() const {
-    if (!pimpl_->has_secret) throw std::runtime_error("secret key not loaded");
-    return serialize_to_buffer(pimpl_->sk);
-}
-
-SerializedBuffer SealAdapter::saveRelinKeys() const {
-    if (!pimpl_->has_relin) throw std::runtime_error("relin keys not generated");
-    return serialize_to_buffer(pimpl_->rlk);
-}
-
-SerializedBuffer SealAdapter::saveGaloisKeys() const {
-    if (!pimpl_->has_galois) throw std::runtime_error("galois keys not generated");
-    return serialize_to_buffer(pimpl_->gk);
-}
-
-SerializedBuffer SealAdapter::saveCipher(const Cipher& cipher) const {
-    return serialize_to_buffer(cipher.pimpl_->ct);
-}
-
-void SealAdapter::loadPublicKey(const SerializedBuffer& buffer) {
-    pimpl_->ordinaryDistributionKnown=false; pimpl_->encapsulationKey={}; pimpl_->restorationKey={}; pimpl_->sparseGeneration=0;
-    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
-    load_from_buffer(pimpl_->pk, *pimpl_->context, buffer, "public key");
-    pimpl_->encryptor = std::make_unique<seal::Encryptor>(*pimpl_->context, pimpl_->pk);
-    pimpl_->has_public = true;
-}
-
-void SealAdapter::loadSecretKey(const SerializedBuffer& buffer) {
-    pimpl_->encapsulationKey={}; pimpl_->restorationKey={}; pimpl_->sparseGeneration=0;
-    pimpl_->ordinaryDistributionKnown=false;
-    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
-    load_from_buffer(pimpl_->sk, *pimpl_->context, buffer, "secret key");
-    pimpl_->decryptor = std::make_unique<seal::Decryptor>(*pimpl_->context, pimpl_->sk);
-    pimpl_->has_secret = true;
-}
-
-void SealAdapter::loadRelinKeys(const SerializedBuffer& buffer) {
-    pimpl_->ordinaryDistributionKnown=false; pimpl_->encapsulationKey={}; pimpl_->restorationKey={}; pimpl_->sparseGeneration=0;
-    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
-    load_from_buffer(pimpl_->rlk, *pimpl_->context, buffer, "relin keys");
-    pimpl_->has_relin = true;
-}
-
-void SealAdapter::loadGaloisKeys(const SerializedBuffer& buffer) {
-    pimpl_->ordinaryDistributionKnown=false; pimpl_->encapsulationKey={}; pimpl_->restorationKey={}; pimpl_->sparseGeneration=0;
-    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
-    load_from_buffer(pimpl_->gk, *pimpl_->context, buffer, "galois keys");
-    pimpl_->has_galois = true;
-}
-
-Cipher SealAdapter::loadCipher(const SerializedBuffer& buffer) const {
-    if (!pimpl_->context) throw std::runtime_error("SEALContext not initialized");
-    Cipher out;
-    load_from_buffer(out.pimpl_->ct, *pimpl_->context, buffer, "ciphertext");
-    return out;
-}
-
-
-namespace {
-// Identity automorphism dispatches the audited generic switch_key_inplace.
-// The key container is separate from ordinary Galois keys; it encrypts the
-// SOURCE secret under the DESTINATION secret, not tau(s) under itself.
-seal::GaloisKeys identitySwitchKey(const seal::SEALContext& context,
-                                 const seal::SecretKey& from,const seal::SecretKey& to) {
-    const auto& parms=context.key_context_data()->parms();
-    const auto& moduli=parms.coeff_modulus(); const auto N=parms.poly_modulus_degree();
-    const auto d=context.first_context_data()->parms().coeff_modulus().size();
-    seal::GaloisKeys keys; keys.parms_id()=context.key_parms_id();
-    keys.data().resize(1); keys.data()[0].resize(d);
-    for(std::size_t j=0;j<d;++j) {
-        auto& out=keys.data()[0][j].data();
-        seal::util::encrypt_zero_symmetric(to,context,context.key_parms_id(),true,false,out);
-        const auto factor=moduli.back().value()%moduli[j].value();
-        for(std::size_t i=0;i<N;++i) {
-            const auto value=seal::util::multiply_uint_mod(from.data()[j*N+i],factor,moduli[j]);
-            out.data(0)[j*N+i]=seal::util::add_uint_mod(out.data(0)[j*N+i],value,moduli[j]);
-        }
-    }
-    return keys;
-}
-}
-void SealAdapter::generateSparseBootstrapKeys(std::size_t h) {
-    if(!pimpl_->has_secret||!pimpl_->ordinaryDistributionKnown)
-        throw std::invalid_argument("Sparse keys require an adapter-generated ordinary ternary secret");
-    const auto& data=*pimpl_->context->key_context_data();
-    const auto& parms=data.parms(); const auto N=parms.poly_modulus_degree();
-    if(h<2||h>N) throw std::invalid_argument("Sparse weight must be in [2,N]; no K=1 shortcut");
-    seal::RandomToStandardAdapter rng(parms.random_generator()->create());
-    std::vector<std::size_t> positions(N); std::iota(positions.begin(),positions.end(),0);
-    // Partial Fisher-Yates with unbiased bounded draws; uniform subset, iid signs.
-    std::vector<int> coefficients(N);
-    for(std::size_t i=0;i<h;++i) {
-        auto j=std::uniform_int_distribution<std::size_t>(i,N-1)(rng);
-        std::swap(positions[i],positions[j]);
-        coefficients[positions[i]]=std::uniform_int_distribution<int>(0,1)(rng)?1:-1;
-    }
-    seal::SecretKey sparse; const auto& moduli=parms.coeff_modulus();
-    sparse.data().resize(N*moduli.size());
-    for(std::size_t j=0;j<moduli.size();++j)
-        for(std::size_t i=0;i<N;++i)
-            sparse.data()[j*N+i]=coefficients[i]<0?moduli[j].value()-1:coefficients[i];
-    seal::util::ntt_negacyclic_harvey(seal::util::RNSIter(sparse.data().data(),N),moduli.size(),data.small_ntt_tables());
-    sparse.parms_id()=data.parms_id();
-    auto encapsulation=identitySwitchKey(*pimpl_->context,pimpl_->sk,sparse);
-    auto restoration=identitySwitchKey(*pimpl_->context,sparse,pimpl_->sk);
-    static std::atomic<std::uint64_t> generation{0};
-    pimpl_->sparseSk=std::move(sparse); pimpl_->sparseWeight=h;
-    pimpl_->encapsulationKey=std::move(encapsulation); pimpl_->restorationKey=std::move(restoration);
-    pimpl_->sparseGeneration=++generation;
-    seal::util::seal_memzero(coefficients.data(),coefficients.size()*sizeof(int));
-}
-bool SealAdapter::hasSparseEncapsulationKey() const noexcept { return pimpl_&&pimpl_->sparseGeneration&&pimpl_->encapsulationKey.has_key(1); }
-bool SealAdapter::hasSparseRestorationKey() const noexcept { return pimpl_&&pimpl_->sparseGeneration&&pimpl_->restorationKey.has_key(1); }
-SparseKeyMetadata SealAdapter::sparseKeyMetadata() const {
-    SparseKeyMetadata m; m.degree=slotCount()*2; m.weight=pimpl_->sparseWeight;
-    m.context=contextFingerprint(); m.generation=pimpl_->sparseGeneration;
-    m.ordinaryDistributionKnown=pimpl_->ordinaryDistributionKnown;
-    m.distribution="uniform signed fixed-weight ternary: uniform h-subset, independent uniform {-1,+1} signs";
-    auto count=[](const seal::KSwitchKeys& keys) { std::size_t n=0; for(const auto& row:keys.data()) n+=row.size(); return n; };
-    m.publicKeySamples=pimpl_->has_public?1:0; m.relinSamples=pimpl_->has_relin?count(pimpl_->rlk):0;
-    m.galoisSamples=pimpl_->has_galois?count(pimpl_->gk):0; m.encryptionSamples=pimpl_->encryptionSamples;
-    m.encryptionModuli=pimpl_->encryptionModuli;
-    if(pimpl_->has_galois) for(std::size_t i=0;i<pimpl_->gk.data().size();++i)
-        if(!pimpl_->gk.data()[i].empty()) m.galoisElements.push_back(static_cast<std::uint32_t>(2*i+1));
-    return m;
-}
-SparseCipher SealAdapter::encapsulateSparse(const Cipher& input) {
-    if(!hasSparseEncapsulationKey()) throw std::invalid_argument("Missing sparse encapsulation key");
-    if(info(input).ciphertextSize!=2) throw std::invalid_argument("Encapsulation requires two components");
-    Cipher out=input; pimpl_->evaluator->apply_galois_inplace(out.pimpl_->ct,1,pimpl_->encapsulationKey);
-    return SparseCipher(std::move(out),pimpl_->sparseGeneration);
-}
-SparseRaisedCipher SealAdapter::modRaiseSparse(const SparseCipher& input) {
-    if(!hasSparseEncapsulationKey()||input.generation_!=pimpl_->sparseGeneration)
-        throw std::invalid_argument("Sparse ciphertext key generation mismatch");
-    return SparseRaisedCipher(modRaiseToTop(input.cipher_),input.generation_);
-}
-RaisedCipher SealAdapter::restoreSparseForFirstFactor(const SparseRaisedCipher& input) {
-    if(!hasSparseRestorationKey()||input.generation_!=pimpl_->sparseGeneration)
-        throw std::invalid_argument("Missing or mismatched sparse restoration key");
-    Cipher out=input.cipher_.cipher_;
-    pimpl_->evaluator->apply_galois_inplace(out.pimpl_->ct,1,pimpl_->restorationKey);
-#ifdef M2424_ENABLE_SPARSE_DIAGNOSTICS
-    ++pimpl_->sparseRestorationOperations;
-#endif
-    return RaisedCipher(std::move(out),input.cipher_.sourceCoeffModulusSize_);
-}
-#ifdef M2424_ENABLE_SPARSE_DIAGNOSTICS
-RaisedCipher SealAdapter::restoreSparse(const SparseRaisedCipher& input) {
-    return restoreSparseForFirstFactor(input);
-}
-#endif
-#ifdef M2424_ENABLE_MOD_RAISE_CHECKS
-std::vector<int> test::SparseBootstrapOracle::secret(const SealAdapter& a) {
-    const auto& d=*a.pimpl_->context->key_context_data(); const auto N=a.slotCount()*2;
-    std::vector<std::uint64_t> c(a.pimpl_->sparseSk.data().data(),a.pimpl_->sparseSk.data().data()+N);
-    seal::util::inverse_ntt_negacyclic_harvey(c.data(),d.small_ntt_tables()[0]);
-    std::vector<int> out; for(auto x:c) out.push_back(x==d.parms().coeff_modulus()[0].value()-1?-1:static_cast<int>(x)); return out;
-}
-std::vector<double> test::SparseBootstrapOracle::original(SealAdapter& a,const Cipher& c) {
-    RaisedCipher r(Cipher(c),a.coeffModulusSize(c)); return a.decryptRaisedCoefficientsAtRaisedModulus(r);
-}
-std::vector<double> test::SparseBootstrapOracle::source(SealAdapter& a,const SparseCipher& c) {
-    auto old=std::move(a.pimpl_->decryptor);
-    a.pimpl_->decryptor=std::make_unique<seal::Decryptor>(*a.pimpl_->context,a.pimpl_->sparseSk);
-    try { auto out=original(a,c.cipher_); a.pimpl_->decryptor=std::move(old); return out; }
-    catch(...) { a.pimpl_->decryptor=std::move(old); throw; }
-}
-std::vector<double> test::SparseBootstrapOracle::raised(SealAdapter& a,const SparseRaisedCipher& c) {
-    auto old=std::move(a.pimpl_->decryptor);
-    a.pimpl_->decryptor=std::make_unique<seal::Decryptor>(*a.pimpl_->context,a.pimpl_->sparseSk);
-    try { auto out=a.decryptRaisedCoefficientsAtRaisedModulus(c.cipher_); a.pimpl_->decryptor=std::move(old); return out; }
-    catch(...) { a.pimpl_->decryptor=std::move(old); throw; }
-}
-std::size_t test::SparseBootstrapOracle::restorationCount(const SealAdapter& a) { return a.pimpl_->sparseRestorationOperations; }
-void test::SparseBootstrapOracle::removeKey(SealAdapter& a,bool restoration) {
-    if(restoration) a.pimpl_->restorationKey={}; else a.pimpl_->encapsulationKey={};
-}
-#endif
 
 } // namespace m2424

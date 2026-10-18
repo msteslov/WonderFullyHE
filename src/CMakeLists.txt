@@ -1,4 +1,4 @@
-add_library(m2424
+set(M2424_CORE_SOURCES
     core/abft.cpp
     core/accuracy.cpp
     core/bootstrap_candidates.cpp
@@ -9,19 +9,34 @@ add_library(m2424
     core/linear_transform_contract.cpp
     core/m2424.cpp
     core/profiles.cpp
+)
 
+set(M2424_BACKEND_SEAL_SOURCES
     ckks/evalround_execution.cpp
     ckks/bootstrap.cpp
     ckks/seal_adapter.cpp
+    ckks/seal_adapter_serialization.cpp
+    ckks/seal_adapter_sparse.cpp
+)
 
+set(M2424_MATH_SOURCES
     math/canonical_embedding_reference.cpp
     math/coeff_to_slot.cpp
     math/slot_to_coeff.cpp
     math/coeff_to_slot_cert.cpp
+)
 
+set(M2424_PLANNING_SOURCES
     planning/evalround_planner.cpp
     planning/profile_report.cpp
     planning/security_report.cpp
+)
+
+add_library(m2424
+    ${M2424_CORE_SOURCES}
+    ${M2424_BACKEND_SEAL_SOURCES}
+    ${M2424_MATH_SOURCES}
+    ${M2424_PLANNING_SOURCES}
 )
 add_library(m2424::m2424 ALIAS m2424)
 
@@ -45,21 +60,27 @@ if(M2424_ENABLE_EVALMOD_ANALYSIS)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GMPXX REQUIRED IMPORTED_TARGET gmpxx)
     pkg_check_modules(MPFR REQUIRED IMPORTED_TARGET mpfr)
-    add_library(m2424_evalmod_analysis
+    set(M2424_ANALYSIS_MATH_SOURCES
         core/evalmod_domain_analysis.cpp
         math/approximation_lab.cpp
         math/exact_modular_oracle.cpp
         math/evalround_reference.cpp
         math/certified_diagonal.cpp
+    )
+    set(M2424_ANALYSIS_PLANNING_SOURCES
         planning/slot_to_coeff_preparation.cpp
         planning/coeff_to_slot_preparation.cpp
         planning/sparse_bootstrap.cpp
         planning/bootstrap_planner.cpp
-        planning/evalround_execution.cpp
+        planning/evalround_execution_compiler.cpp
         planning/evalround_synthesis.cpp
         planning/evalmod_cost_model.cpp
         planning/evalmod_feasibility.cpp
         planning/evalmod_synthesis.cpp
+    )
+    add_library(m2424_evalmod_analysis
+        ${M2424_ANALYSIS_MATH_SOURCES}
+        ${M2424_ANALYSIS_PLANNING_SOURCES}
     )
     add_library(m2424::evalmod_analysis ALIAS m2424_evalmod_analysis)
     target_include_directories(m2424_evalmod_analysis PUBLIC
