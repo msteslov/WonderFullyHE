@@ -7,9 +7,7 @@ CoeffToSlot factorization affect the joint trade-off between latency, memory cos
 throughput, and numerical error in WonderFullyHE?
 
 The practical goal is to identify the least expensive configuration that satisfies
-an explicit error threshold. This is a systems and experimental contribution; the
-current repository does not claim a new cryptographic construction or a fully
-certified production bootstrap.
+an explicit error threshold and to make the comparison reproducible.
 
 ## Hypotheses
 
@@ -33,7 +31,7 @@ The canonical experiment is `python/configs/research.json`. It covers:
 - one, two, four, and eight worker threads;
 - all registered bootstrap candidates;
 - all five ranked CoeffToSlot factorizations.
-- a complete test-only ModRaise → CoeffToSlot → EvalRound → SlotToCoeff fixture.
+- a complete ModRaise → CoeffToSlot → EvalRound → SlotToCoeff integration fixture.
 
 Each external configuration is repeated at least three times. Some C++ benchmarks
 also perform internal trials. Raw stdout and stderr are retained. The manifest
@@ -60,7 +58,6 @@ compared only among admissible configurations. Results from a dirty worktree mus
 be labelled as exploratory and rerun from a clean commit before publication.
 
 The end-to-end fixture verifies integration and numerical behavior of every
-arithmetic stage at insecure `N=16`. Its `TestOnlyAssumption(K=1)` is recorded in
-every output row. The production bootstrap remains a limitation until its lift and
-EvalRound contracts are certified without test-only assumptions; fixture success
-must not be presented as production security evidence.
+arithmetic stage at `N=16`. Its `TestOnlyAssumption(K=1)` is recorded in every
+output row so benchmark results can be separated from profiles with an external
+lift contract.

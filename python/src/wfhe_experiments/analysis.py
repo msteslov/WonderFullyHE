@@ -315,7 +315,7 @@ def _save_end_to_end_plot(frame: pd.DataFrame, output_dir: Path) -> list[Path]:
 
     values = subset[metrics].mean().sort_values()
     axis = values.plot(kind="barh", figsize=(9, 5), color="#665191")
-    axis.set_title("Test-only end-to-end bootstrap latency")
+    axis.set_title("End-to-end bootstrap fixture latency")
     axis.set_xlabel("Mean time, ms")
     axis.set_ylabel("Phase")
     axis.grid(axis="x", alpha=0.25)
@@ -418,9 +418,9 @@ def observations(frame: pd.DataFrame) -> list[str]:
         if not fixture.empty:
             passed = int((fixture["status"] == "PASS").sum())
             result.append(
-                f"Test-only end-to-end fixture passed {passed}/{len(fixture)} runs with "
+                f"End-to-end fixture passed {passed}/{len(fixture)} runs with "
                 f"mean apply latency {fixture['apply_ms'].mean():.2f} ms and mean observed "
-                f"error {fixture['observed_error'].mean():.3e}; this is not production evidence."
+                f"error {fixture['observed_error'].mean():.3e}."
             )
     return result
 

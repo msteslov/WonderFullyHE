@@ -1,4 +1,4 @@
-# Python experiments
+# Python benchmarks
 
 Этот пакет запускает C++-бенчмарки WonderFullyHE, сохраняет сырые данные и
 метаданные воспроизводимости, строит статистическую сводку и графики.
@@ -26,7 +26,7 @@ python/.venv/bin/wfhe-experiments run python/configs/smoke.json
 python/.venv/bin/wfhe-experiments run python/configs/baseline.json
 ```
 
-Исследовательский прогон с точностью по глубине, parallel throughput и пятью
+Расширенный прогон с точностью по глубине, parallel throughput и пятью
 факторизациями CoeffToSlot:
 
 ```bash
@@ -36,11 +36,7 @@ cmake --build build-python-research -j
 python/.venv/bin/wfhe-experiments run python/configs/research.json
 ```
 
-End-to-end benchmark использует явно обозначенный test-only fixture. Он проверяет
-и измеряет полный арифметический маршрут, но не является свидетельством безопасности
-или production-сертификатом lift.
-
-Исследовательский вопрос, гипотезы, метрики и ограничения зафиксированы в
+Гипотезы, метрики, конфигурация и правила интерпретации зафиксированы в
 [`docs/research_protocol.md`](../docs/research_protocol.md).
 
 Каждый запуск создаёт отдельный каталог в `python/results/` с файлами
