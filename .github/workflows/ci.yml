@@ -30,10 +30,10 @@ jobs:
 
       - name: Run demos
         run: |
-          ./build/demo_secure_stats
-          ./build/demo_abft
-          ./build/demo_bootstrap_pipeline
-          ./build/demo_noise_growth
-          ./build/bench_ckks
-          ./build/demo_profile_report
-          ./build/demo_security_report
+          ./build/bin/demo_secure_stats
+          ./build/bin/demo_abft
+          ./build/bin/demo_noise_growth
+          ./build/bin/bench_ckks fast_demo_ckks
+          ./build/bin/demo_profile_report
+          ./build/bin/demo_security_report
+          ./build/bin/bench_bootstrap_end_to_end_fixture
